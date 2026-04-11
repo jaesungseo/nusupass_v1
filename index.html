@@ -1,312 +1,1203 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>누수패스 운영센터</title>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
-*{box-sizing:border-box;margin:0}
-body{font-family:'Noto Sans KR',system-ui,sans-serif;background:#f1f4f9;color:#111827;font-size:13px}
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&family=JetBrains+Mono:wght@400;600&display=swap');
+:root{
+  --bg:#f0f2f7;--surface:#fff;--line:#e4e7ef;--text:#111827;--muted:#6b7280;--subtle:#9ca3af;
+  --nav:#0f172a;--nav2:#1e293b;--primary:#2563eb;--primary-soft:#eff6ff;--primary-dark:#1d4ed8;
+  --green:#15803d;--green-soft:#f0fdf4;--amber:#d97706;--amber-soft:#fffbeb;
+  --red:#dc2626;--red-soft:#fef2f2;--teal:#0f766e;--teal-soft:#f0fdfa;
+  --shadow:0 1px 3px rgba(0,0,0,.06),0 8px 24px rgba(0,0,0,.08);
+  --radius:12px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text);font-size:14px}
 button,input,textarea,select{font:inherit}
+a{text-decoration:none;color:inherit}
 
-/* ── Login ── */
-.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:linear-gradient(135deg,#0c1528 0%,#1e293b 100%)}
-.login-box{background:#fff;border-radius:24px;padding:40px 36px;max-width:380px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.25)}
-.login-box h1{font-size:24px;font-weight:900;text-align:center;margin-bottom:4px;color:#0c1528}
-.login-box .sub{font-size:12px;color:#6b7280;text-align:center;margin-bottom:24px}
-.login-box .field{margin-bottom:14px}
-.login-box .lbl{font-size:11px;font-weight:700;color:#6b7280;margin-bottom:4px}
-.login-box input{width:100%;border:1px solid #d1d5db;border-radius:12px;padding:12px 14px;font-size:14px}
-.login-box input:focus{outline:none;border-color:#4f46e5;box-shadow:0 0 0 3px rgba(79,70,229,.12)}
-.login-box .login-btn{width:100%;border:none;border-radius:12px;padding:14px;font-size:15px;font-weight:900;background:#4f46e5;color:#fff;cursor:pointer;margin-top:8px;transition:.15s}
-.login-box .login-btn:hover{background:#4338ca}
-.login-box .login-btn:disabled{opacity:.5;cursor:wait}
-.login-box .login-error{margin-top:12px;padding:10px 14px;border-radius:10px;background:#fef2f2;color:#b91c1c;font-size:12px;font-weight:700;display:none}
-.login-box .login-info{margin-top:16px;padding:12px;border-radius:10px;background:#f8fafc;border:1px solid #e2e5eb;font-size:11px;color:#6b7280;line-height:1.6}
+/* ── 레이아웃 ── */
+.app{display:grid;grid-template-columns:220px 1fr;min-height:100vh}
+.sidebar{background:var(--nav);color:#fff;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto}
+.sb-brand{padding:20px 16px 16px;border-bottom:1px solid rgba(255,255,255,.07)}
+.sb-brand h1{font-size:17px;font-weight:900;letter-spacing:-.3px}
+.sb-brand p{font-size:11px;color:#64748b;margin-top:3px}
+.sb-user{padding:12px 16px;background:rgba(255,255,255,.04);display:flex;align-items:center;gap:10px}
+.sb-user-avatar{width:32px;height:32px;border-radius:50%;background:var(--primary);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0}
+.sb-user-info{min-width:0}
+.sb-user-name{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sb-user-role{font-size:10px;color:#64748b}
+.sb-nav{padding:12px 10px;flex:1;display:flex;flex-direction:column;gap:2px}
+.sb-group{padding:6px 6px 2px;font-size:10px;color:#475569;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-top:8px}
+.sb-btn{display:flex;align-items:center;gap:9px;width:100%;border:0;border-radius:8px;background:transparent;color:#94a3b8;text-align:left;padding:9px 10px;font-size:13px;font-weight:500;cursor:pointer;transition:all .15s}
+.sb-btn:hover{background:rgba(255,255,255,.06);color:#e2e8f0}
+.sb-btn.active{background:var(--primary);color:#fff}
+.sb-btn svg{flex-shrink:0;opacity:.8}
+.sb-footer{padding:12px 16px;border-top:1px solid rgba(255,255,255,.07)}
+.sb-logout{width:100%;border:1px solid rgba(255,255,255,.12);border-radius:8px;background:transparent;color:#64748b;padding:8px;font-size:12px;cursor:pointer;transition:all .15s}
+.sb-logout:hover{background:rgba(255,255,255,.06);color:#e2e8f0}
 
-/* ── App Layout (same as demo) ── */
-.app{display:none;min-height:100vh}
-.app.on{display:flex}
-.sidebar{width:220px;background:#0c1528;color:#fff;padding:18px 12px;display:flex;flex-direction:column;gap:16px;position:sticky;top:0;height:100vh;overflow-y:auto;flex-shrink:0}
-.brand{padding:4px 8px}.brand h1{font-size:17px;font-weight:900;margin:0 0 6px}.brand p{font-size:10px;color:#94a3b8;line-height:1.6;margin:0}
-.nav-group-label{font-size:9px;color:#64748b;padding:0 8px;text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:4px}
-.nav-btn{width:100%;border:0;border-radius:8px;background:transparent;color:#cbd5e1;text-align:left;padding:9px 10px;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:2px;transition:.15s}
-.nav-btn:hover,.nav-btn.on{background:rgba(255,255,255,.08);color:#fff}
-.user-info{margin-top:auto;padding:10px;border-radius:10px;background:rgba(255,255,255,.05)}
-.user-info .user-name{font-size:12px;font-weight:700;margin-bottom:2px}.user-info .user-role{font-size:10px;color:#94a3b8}
-.logout-btn{width:100%;border:0;border-radius:8px;padding:8px;font-size:11px;font-weight:700;background:rgba(185,28,28,.2);color:#fca5a5;cursor:pointer;margin-top:6px}
-.main{flex:1;padding:20px 24px;overflow-y:auto;min-width:0}
-.scr{display:none}.scr.on{display:block}
+.content{padding:24px 28px;overflow-y:auto;min-height:100vh}
+.screen{display:none}.screen.active{display:block}
 
-/* ── Shared UI (from demo) ── */
-.hdr{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:16px;flex-wrap:wrap}
-.hdr h1{font-size:22px;font-weight:900;margin:0}.hdr p{font-size:11px;color:#6b7280;margin-top:4px}
-.pill{display:inline-flex;padding:5px 10px;border-radius:99px;font-size:10px;font-weight:700;background:#eef2ff;color:#4f46e5;font-family:monospace}
-.badge{display:inline-flex;padding:3px 8px;border-radius:99px;font-size:10px;font-weight:700}
-.badge-접수{background:#fff7ed;color:#b45309}.badge-파트너배정중{background:#eef2ff;color:#4f46e5}.badge-배정완료{background:#ecfdf3;color:#15803d}.badge-수리완료{background:#ecfeff;color:#0f766e}.badge-방문중{background:#eff6ff;color:#1d4ed8}
-.card{background:#fff;border:1px solid #e2e5eb;border-radius:14px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
-.card-label{font-size:10px;color:#6b7280;font-weight:700;margin-bottom:4px}.card-value{font-size:26px;font-weight:900}
-.panel{background:#fff;border:1px solid #e2e5eb;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.04)}
-.panel-head{padding:12px 14px;border-bottom:1px solid #e2e5eb;font-weight:900;font-size:13px}
-.panel-body{padding:12px 14px}
-.grid-5{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
-.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-table{width:100%;border-collapse:collapse;font-size:11px}
-th,td{padding:7px 5px;text-align:left;border-bottom:1px solid #e2e5eb;white-space:nowrap}
-th{font-size:9px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;font-weight:700}
-.btn{border:none;border-radius:10px;padding:9px 14px;font-size:13px;font-weight:700;cursor:pointer}.btn:disabled{opacity:.4;cursor:not-allowed}
-.btn-primary{background:#4f46e5;color:#fff}.btn-outline{background:#fff;color:#4f46e5;border:1px solid #c7d2fe}.btn-light{background:#eef2f7;color:#111}
-.field{margin-bottom:8px}.field .lbl{font-size:10px;color:#6b7280;font-weight:700;margin-bottom:3px}
-input,textarea,select{width:100%;border:1px solid #d1d5db;border-radius:8px;padding:8px 10px;font-size:12px}
-input:focus,textarea:focus,select:focus{outline:none;border-color:#4f46e5}
-textarea{min-height:70px;resize:vertical}
-.code{padding:12px;border-radius:10px;background:#0b1220;color:#93c5fd;font-size:10px;font-family:monospace;line-height:1.7;white-space:pre-wrap}
-.guide{padding:10px;border-radius:10px;background:#f8fafc;border:1px solid #e2e5eb;font-size:10px;color:#6b7280;line-height:1.5}
-.mbox{background:#fff;border:1px solid #e2e5eb;border-radius:12px;padding:10px}
-.mbox .k{font-size:9px;color:#6b7280;font-weight:700;margin-bottom:2px}.mbox .v{font-size:12px;font-weight:700;line-height:1.5}
+/* ── 공통 컴포넌트 ── */
+.page-header{margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
+.page-title{font-size:20px;font-weight:900;letter-spacing:-.3px}
+.page-sub{font-size:13px;color:var(--muted);margin-top:2px}
 
-/* Phone */
-.phone{max-width:400px;margin:0 auto;background:#0f172a;border-radius:28px;padding:10px;box-shadow:0 16px 48px rgba(15,23,42,.22)}
-.phone-inner{background:#f8fafc;border-radius:20px;min-height:680px;display:flex;flex-direction:column;overflow:hidden}
-.m-head{background:#111827;color:#fff;padding:16px}.m-head h2{font-size:17px;font-weight:900;margin:0 0 4px}.m-head p{font-size:11px;color:#cbd5e1;margin:0}
-.m-body{padding:14px;display:grid;gap:10px;flex:1;align-content:start;overflow-y:auto}
-.m-cards{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.m-card{background:#fff;border:1px solid #e2e5eb;border-radius:14px;padding:12px}.m-card .k{font-size:10px;color:#6b7280;font-weight:700}.m-card .v{font-size:22px;font-weight:900;margin-top:4px}
-.m-item{background:#fff;border:1px solid #e2e5eb;border-radius:14px;padding:12px;cursor:pointer;transition:.15s}.m-item:hover{border-color:#a5b4fc;background:#f5f7ff}
-.m-item .m-row{display:flex;justify-content:space-between;align-items:center}.m-item .m-name{font-weight:900;font-size:13px}
-.m-item .m-meta{font-size:11px;color:#6b7280;margin-top:4px;line-height:1.6}
-.m-btn{width:100%;border:0;border-radius:12px;padding:12px 14px;font-size:13px;font-weight:900;cursor:pointer}.m-btn:disabled{opacity:.4;cursor:not-allowed}
-.m-tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;padding:10px 12px 14px;background:#fff;border-top:1px solid #e2e5eb;margin-top:auto}
-.m-tab{border:0;border-radius:8px;padding:8px 4px;font-size:10px;font-weight:700;cursor:pointer;background:#eef2f7;color:#6b7280}.m-tab.on{background:#eef2ff;color:#4f46e5}
+.card{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:20px}
+.card+.card{margin-top:16px}
 
-/* Toast */
-.toast-box{position:fixed;top:16px;right:16px;z-index:99999}
-.toast{padding:12px 20px;border-radius:12px;color:#fff;font-weight:700;font-size:13px;margin-bottom:6px;box-shadow:0 8px 24px rgba(0,0,0,.15);animation:slideIn .3s ease}
-.toast.s{background:#15803d}.toast.e{background:#b91c1c}.toast.i{background:#1d4ed8}
-@keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
-.loading-spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;border:0;transition:all .15s;white-space:nowrap}
+.btn-primary{background:var(--primary);color:#fff}.btn-primary:hover{background:var(--primary-dark)}
+.btn-success{background:var(--green);color:#fff}
+.btn-danger{background:var(--red);color:#fff}
+.btn-ghost{background:var(--bg);color:var(--muted);border:1px solid var(--line)}.btn-ghost:hover{color:var(--text)}
+.btn-sm{padding:6px 12px;font-size:12px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+
+.badge{display:inline-block;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:700}
+.badge-blue{background:#dbeafe;color:#1d4ed8}
+.badge-green{background:#dcfce7;color:#15803d}
+.badge-amber{background:#fef3c7;color:#d97706}
+.badge-red{background:#fee2e2;color:#dc2626}
+.badge-gray{background:#f1f5f9;color:#64748b}
+.badge-teal{background:#ccfbf1;color:#0f766e}
+
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:11px;font-weight:700;color:var(--muted);padding:10px 12px;border-bottom:2px solid var(--line);text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}
+td{padding:12px;border-bottom:1px solid var(--line);font-size:13px;vertical-align:middle}
+tr:last-child td{border-bottom:0}
+tr.clickable:hover td{background:#f8fafc;cursor:pointer}
+
+.form-group{margin-bottom:14px}
+.form-label{font-size:12px;font-weight:700;color:var(--muted);margin-bottom:5px;display:block}
+.form-control{width:100%;padding:9px 12px;border:1.5px solid var(--line);border-radius:8px;font-size:13px;background:var(--surface);transition:border-color .15s;outline:0}
+.form-control:focus{border-color:var(--primary)}
+textarea.form-control{resize:vertical;min-height:80px}
+select.form-control{cursor:pointer}
+
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px;margin-bottom:20px}
+.stat-card{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px;border-left:3px solid transparent}
+.stat-card.blue{border-color:var(--primary)}
+.stat-card.green{border-color:var(--green)}
+.stat-card.amber{border-color:var(--amber)}
+.stat-card.red{border-color:var(--red)}
+.stat-label{font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.stat-value{font-size:28px;font-weight:900;margin-top:4px;letter-spacing:-.5px}
+.stat-desc{font-size:11px;color:var(--muted);margin-top:2px}
+
+/* ── 로그인 ── */
+.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--nav);padding:20px}
+.login-box{background:var(--surface);border-radius:16px;padding:40px;width:100%;max-width:380px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.login-logo{font-size:22px;font-weight:900;color:var(--primary);margin-bottom:4px}
+.login-sub{font-size:13px;color:var(--muted);margin-bottom:28px}
+.login-err{background:var(--red-soft);border:1px solid #fca5a5;color:var(--red);padding:10px 12px;border-radius:8px;font-size:13px;margin-bottom:14px;display:none}
+
+/* ── 토스트 ── */
+#toast-container{position:fixed;top:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px}
+.toast{padding:12px 18px;border-radius:10px;font-size:13px;font-weight:500;box-shadow:0 4px 16px rgba(0,0,0,.15);animation:slide-in .2s ease;max-width:320px}
+.toast.s{background:#15803d;color:#fff}.toast.e{background:#dc2626;color:#fff}.toast.i{background:#1d4ed8;color:#fff}
+@keyframes slide-in{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+
+/* ── 모달 ── */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:center;justify-content:center;padding:20px}
+.modal-overlay.open{display:flex}
+.modal{background:var(--surface);border-radius:16px;padding:28px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+.modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+.modal-title{font-size:16px;font-weight:900}
+.modal-close{background:0;border:0;font-size:20px;cursor:pointer;color:var(--muted);line-height:1}
+.modal-footer{display:flex;gap:8px;justify-content:flex-end;margin-top:20px}
+
+/* ── 상세 패널 ── */
+.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.detail-item label{font-size:11px;color:var(--muted);font-weight:700;display:block;margin-bottom:3px;text-transform:uppercase}
+.detail-item span{font-size:13px;font-weight:500}
+.detail-item.full{grid-column:1/-1}
+
+/* ── 파트너 모바일 ── */
+.partner-card{background:var(--surface);border-radius:12px;box-shadow:var(--shadow);padding:16px;margin-bottom:12px;cursor:pointer;transition:all .15s;border:2px solid transparent}
+.partner-card:hover{border-color:var(--primary);transform:translateY(-1px)}
+.partner-card-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px}
+.partner-card-no{font-size:12px;color:var(--muted);font-family:'JetBrains Mono',monospace}
+.partner-card-title{font-size:15px;font-weight:700;margin-bottom:4px}
+.partner-card-desc{font-size:12px;color:var(--muted)}
+
+.step-header{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.step-num{width:28px;height:28px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;flex-shrink:0}
+.step-label{font-size:14px;font-weight:700}
+
+/* ── 사진 업로드 영역 ── */
+.photo-upload-area{border:2px dashed var(--line);border-radius:10px;padding:20px;text-align:center;cursor:pointer;transition:all .15s;background:var(--bg)}
+.photo-upload-area:hover{border-color:var(--primary);background:var(--primary-soft)}
+.photo-upload-area input[type=file]{display:none}
+.photo-preview{width:100%;height:120px;object-fit:cover;border-radius:8px;margin-top:8px}
+
+/* ── 빈 상태 ── */
+.empty{text-align:center;padding:48px 20px;color:var(--muted)}
+.empty-icon{font-size:36px;margin-bottom:12px;opacity:.5}
+.empty-text{font-size:14px;font-weight:500}
+.empty-sub{font-size:12px;margin-top:4px;opacity:.7}
+
+/* ── 로딩 ── */
+.loading{text-align:center;padding:32px;color:var(--muted);font-size:13px}
+.spinner{display:inline-block;width:20px;height:20px;border:2px solid var(--line);border-top-color:var(--primary);border-radius:50%;animation:spin .6s linear infinite;margin-right:8px;vertical-align:middle}
 @keyframes spin{to{transform:rotate(360deg)}}
 
-@media(max-width:1100px){.grid-5{grid-template-columns:repeat(3,1fr)}.grid-2{grid-template-columns:1fr}}
-@media(max-width:700px){.sidebar{display:none}.grid-5{grid-template-columns:1fr 1fr}}
+/* ── 검색/필터 바 ── */
+.filter-bar{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center}
+.search-input{flex:1;min-width:160px;padding:8px 12px;border:1.5px solid var(--line);border-radius:8px;font-size:13px;outline:0}
+.search-input:focus{border-color:var(--primary)}
+
+/* ── 타임라인 ── */
+.timeline{padding:0;list-style:none}
+.tl-item{display:flex;gap:12px;padding-bottom:16px;position:relative}
+.tl-item::before{content:'';position:absolute;left:9px;top:20px;bottom:0;width:2px;background:var(--line)}
+.tl-item:last-child::before{display:none}
+.tl-dot{width:20px;height:20px;border-radius:50%;background:var(--primary);flex-shrink:0;margin-top:2px}
+.tl-body{flex:1}
+.tl-title{font-size:13px;font-weight:700}
+.tl-meta{font-size:11px;color:var(--muted);margin-top:2px}
+
+@media(max-width:768px){
+  .app{grid-template-columns:1fr}
+  .sidebar{display:none}
+  .content{padding:16px}
+}
 </style>
 </head>
 <body>
 
-<div class="toast-box" id="toastBox"></div>
+<!-- ══════════════════════════════════════
+     설정 — 여기에 실제 Supabase 키를 넣으세요
+══════════════════════════════════════ -->
+<script>
+const SUPABASE_URL = 'https://rjlyhogkpwbsecipqpai.supabase.co';
+const SUPABASE_KEY = 'YOUR_ANON_KEY_HERE'; // ← Supabase 대시보드 > Settings > API > anon key
+</script>
 
-<!-- ══════════════════════════════════════════ -->
-<!-- LOGIN SCREEN -->
-<!-- ══════════════════════════════════════════ -->
-<div class="login-wrap" id="loginScreen">
+<!-- 로그인 화면 -->
+<div id="loginPage" style="display:none">
+<div class="login-wrap">
   <div class="login-box">
-    <h1>누수패스</h1>
-    <div class="sub">운영센터 로그인</div>
-    <div class="field">
-      <div class="lbl">이메일</div>
-      <input type="email" id="loginEmail" placeholder="admin@nusupass.com">
+    <div class="login-logo">누수패스</div>
+    <div class="login-sub">운영센터 — 관리자 / 파트너 전용</div>
+    <div class="login-err" id="loginErr"></div>
+    <div class="form-group">
+      <label class="form-label">이메일</label>
+      <input class="form-control" id="loginEmail" type="email" placeholder="이메일 입력" autocomplete="username"/>
     </div>
-    <div class="field">
-      <div class="lbl">비밀번호</div>
-      <input type="password" id="loginPw" placeholder="비밀번호 입력">
+    <div class="form-group">
+      <label class="form-label">비밀번호</label>
+      <input class="form-control" id="loginPw" type="password" placeholder="비밀번호 입력" autocomplete="current-password"/>
     </div>
-    <button class="login-btn" id="loginBtn">로그인</button>
-    <div class="login-error" id="loginError"></div>
-    <div class="login-info">
-      <strong>관리자/파트너 전용</strong><br>
-      계정은 관리자가 Supabase에서 직접 생성합니다.<br>
-      고객은 로그인 없이 접수폼을 이용합니다.
+    <button class="btn btn-primary" style="width:100%;justify-content:center;padding:12px" id="loginBtn" onclick="doLogin()">로그인</button>
+    <div style="text-align:center;margin-top:16px;font-size:12px;color:var(--muted)">누수패스손해사정 내부 시스템</div>
+  </div>
+</div>
+</div>
+
+<!-- 메인 앱 -->
+<div id="mainApp" style="display:none">
+<div class="app">
+
+  <!-- 사이드바 -->
+  <div class="sidebar">
+    <div class="sb-brand">
+      <h1>💧 누수패스</h1>
+      <p>운영센터</p>
+    </div>
+    <div class="sb-user">
+      <div class="sb-user-avatar" id="avatarLetter">?</div>
+      <div class="sb-user-info">
+        <div class="sb-user-name" id="userName">-</div>
+        <div class="sb-user-role" id="userRole">-</div>
+      </div>
+    </div>
+    <nav class="sb-nav">
+      <!-- 관리자 메뉴 -->
+      <div id="adminNav">
+        <div class="sb-group">관리자</div>
+        <button class="sb-btn" onclick="go('dashboard')">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+          대시보드
+        </button>
+        <button class="sb-btn" onclick="go('intake')">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+          사고접수
+        </button>
+        <button class="sb-btn" onclick="go('caseList')">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+          전체 접수 목록
+        </button>
+      </div>
+      <!-- 파트너 메뉴 -->
+      <div id="partnerNav" style="display:none">
+        <div class="sb-group">파트너</div>
+        <button class="sb-btn" onclick="go('pHome')">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+          홈
+        </button>
+        <button class="sb-btn" onclick="go('pAssignments')">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2"/></svg>
+          배정 목록
+        </button>
+      </div>
+    </nav>
+    <div class="sb-footer">
+      <button class="sb-logout" onclick="doLogout()">로그아웃</button>
+    </div>
+  </div>
+
+  <!-- 콘텐츠 영역 -->
+  <div class="content">
+
+    <!-- ───────────────── 관리자: 대시보드 ───────────────── -->
+    <div class="screen" id="screen-dashboard">
+      <div class="page-header">
+        <div>
+          <div class="page-title">대시보드</div>
+          <div class="page-sub">전체 현황 요약</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="loadDashboard()">↻ 새로고침</button>
+      </div>
+
+      <div class="stat-grid" id="dashStats">
+        <div class="loading"><span class="spinner"></span>로딩 중…</div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div class="card">
+          <div style="font-size:14px;font-weight:900;margin-bottom:14px">📋 최근 접수건</div>
+          <div id="dashRecentCases"><div class="loading"><span class="spinner"></span></div></div>
+        </div>
+        <div class="card">
+          <div style="font-size:14px;font-weight:900;margin-bottom:14px">🔧 파트너 현황</div>
+          <div id="dashPartners"><div class="loading"><span class="spinner"></span></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ───────────────── 관리자: 사고접수 ───────────────── -->
+    <div class="screen" id="screen-intake">
+      <div class="page-header">
+        <div>
+          <div class="page-title">사고접수</div>
+          <div class="page-sub">새 접수건 직접 등록</div>
+        </div>
+      </div>
+      <div class="card" style="max-width:600px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group">
+            <label class="form-label">고객명 *</label>
+            <input class="form-control" id="ic_name" placeholder="홍길동"/>
+          </div>
+          <div class="form-group">
+            <label class="form-label">연락처 *</label>
+            <input class="form-control" id="ic_phone" placeholder="010-0000-0000"/>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">주소 *</label>
+          <input class="form-control" id="ic_address" placeholder="서울시 강남구 역삼동 123-4 101호"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">지역구분</label>
+          <input class="form-control" id="ic_region" placeholder="강남구"/>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group">
+            <label class="form-label">서비스 범위</label>
+            <select class="form-control" id="ic_scope">
+              <option value="insurance_only">보험처리만</option>
+              <option value="insurance_detection">보험+탐지</option>
+              <option value="insurance_detection_repair">보험+탐지+복구</option>
+              <option value="undecided">미정</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">보험 가입 여부</label>
+            <select class="form-control" id="ic_insurance">
+              <option value="yes">예</option>
+              <option value="no">아니오</option>
+              <option value="unknown">모름</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">누수 증상</label>
+          <textarea class="form-control" id="ic_symptom" rows="3" placeholder="천장에서 물이 떨어짐, 벽에 곰팡이 발생 등…"></textarea>
+        </div>
+        <button class="btn btn-primary" onclick="submitIntake()" style="width:100%;justify-content:center">접수 등록</button>
+      </div>
+    </div>
+
+    <!-- ───────────────── 관리자: 전체 목록 ───────────────── -->
+    <div class="screen" id="screen-caseList">
+      <div class="page-header">
+        <div>
+          <div class="page-title">전체 접수 목록</div>
+          <div class="page-sub" id="caseListSub">로딩 중…</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="loadCaseList()">↻ 새로고침</button>
+      </div>
+      <div class="card">
+        <div class="filter-bar">
+          <input class="search-input" id="caseSearch" placeholder="고객명, 접수번호, 지역 검색…" oninput="filterCases()"/>
+          <select class="form-control" style="width:auto" id="caseStatusFilter" onchange="filterCases()">
+            <option value="">전체 상태</option>
+            <option value="접수">접수</option>
+            <option value="검토중">검토중</option>
+            <option value="파트너배정">파트너배정</option>
+            <option value="수리중">수리중</option>
+            <option value="수리완료">수리완료</option>
+            <option value="보험청구중">보험청구중</option>
+            <option value="완료">완료</option>
+          </select>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>접수번호</th>
+                <th>고객명</th>
+                <th>지역</th>
+                <th>서비스</th>
+                <th>상태</th>
+                <th>파트너</th>
+                <th>접수일</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="caseListBody">
+              <tr><td colspan="8" class="loading"><span class="spinner"></span> 로딩 중…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ───────────────── 파트너: 홈 ───────────────── -->
+    <div class="screen" id="screen-pHome">
+      <div class="page-header">
+        <div>
+          <div class="page-title" id="pHomeTitle">홈</div>
+          <div class="page-sub" id="pHomeSub">배정 현황</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="loadPartnerHome()">↻ 새로고침</button>
+      </div>
+      <div class="stat-grid" id="pHomeStats">
+        <div class="loading"><span class="spinner"></span></div>
+      </div>
+      <div class="card">
+        <div style="font-size:14px;font-weight:900;margin-bottom:14px">진행 중인 배정</div>
+        <div id="pHomeList"><div class="loading"><span class="spinner"></span></div></div>
+      </div>
+    </div>
+
+    <!-- ───────────────── 파트너: 배정 목록 ───────────────── -->
+    <div class="screen" id="screen-pAssignments">
+      <div class="page-header">
+        <div>
+          <div class="page-title">배정 목록</div>
+          <div class="page-sub">응답대기 및 진행 중인 배정</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="loadPartnerAssignments()">↻ 새로고침</button>
+      </div>
+      <div id="pAssignmentList"><div class="loading"><span class="spinner"></span></div></div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /app -->
+</div><!-- /mainApp -->
+
+<!-- ── 접수 상세 모달 ── -->
+<div class="modal-overlay" id="caseDetailModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="cdModalTitle">접수 상세</div>
+      <button class="modal-close" onclick="closeModal('caseDetailModal')">✕</button>
+    </div>
+    <div id="caseDetailBody"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('caseDetailModal')">닫기</button>
+      <button class="btn btn-primary" id="assignBtn" onclick="openAssignModal()">파트너 배정</button>
     </div>
   </div>
 </div>
 
-<!-- ══════════════════════════════════════════ -->
-<!-- APP (로그인 후 표시) -->
-<!-- ══════════════════════════════════════════ -->
-<div class="app" id="appScreen">
-  <aside class="sidebar">
-    <div class="brand"><h1>누수패스 운영센터</h1><p id="sidebarDesc">로딩중...</p></div>
-    <div id="adminNav" style="display:none">
-      <div class="nav-group-label">관리자</div>
-      <button class="nav-btn on" data-s="home">대시보드</button>
-      <button class="nav-btn" data-s="intake">사고접수</button>
-      <button class="nav-btn" data-s="all-list">전체목록</button>
+<!-- ── 파트너 배정 모달 ── -->
+<div class="modal-overlay" id="assignModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">파트너 배정</div>
+      <button class="modal-close" onclick="closeModal('assignModal')">✕</button>
     </div>
-    <div id="partnerNav" style="display:none">
-      <div class="nav-group-label">파트너</div>
-      <button class="nav-btn on" data-s="p-home">파트너 홈</button>
-      <button class="nav-btn" data-s="p-list">배정 요청</button>
-      <button class="nav-btn" data-s="p-work">작업 상세</button>
-      <button class="nav-btn" data-s="p-history">작업 이력</button>
+    <div class="form-group">
+      <label class="form-label">파트너 업체 선택</label>
+      <select class="form-control" id="assignCompanySelect">
+        <option value="">로딩 중…</option>
+      </select>
     </div>
-    <div class="user-info">
-      <div class="user-name" id="userName">—</div>
-      <div class="user-role" id="userRole">—</div>
-      <button class="logout-btn" id="logoutBtn">로그아웃</button>
+    <div class="form-group">
+      <label class="form-label">파트너 메모 (선택)</label>
+      <textarea class="form-control" id="assignNote" placeholder="현장 특이사항, 연락 시 참고 사항 등…"></textarea>
     </div>
-  </aside>
-  <main class="main">
-    <div class="scr on" id="s-home"><div class="hdr"><div><h1>대시보드</h1><p>Supabase 연결 후 실시간 데이터가 표시됩니다</p></div></div><div class="guide">로그인 성공! Supabase에서 데이터를 불러옵니다.</div></div>
-    <div class="scr" id="s-intake"><div class="hdr"><div><h1>사고접수</h1></div></div><div class="guide">접수 폼이 여기에 표시됩니다.</div></div>
-    <div class="scr" id="s-all-list"><div class="hdr"><div><h1>전체목록</h1></div></div><div class="guide">admin_case_list_v에서 데이터를 불러옵니다.</div></div>
-    <div class="scr" id="s-p-home"><div class="hdr"><div><h1>파트너 홈</h1></div></div><div class="guide">파트너 홈 화면입니다.</div></div>
-    <div class="scr" id="s-p-list"><div class="hdr"><div><h1>배정 요청</h1></div></div><div class="guide">partner_mobile_assignment_list_v에서 데이터를 불러옵니다.</div></div>
-    <div class="scr" id="s-p-work"><div class="hdr"><div><h1>작업 상세</h1></div></div><div class="guide">수락된 배정건이 여기에 표시됩니다.</div></div>
-    <div class="scr" id="s-p-history"><div class="hdr"><div><h1>작업 이력</h1></div></div><div class="guide">완료건이 여기에 표시됩니다.</div></div>
-  </main>
+    <div class="form-group">
+      <label class="form-label">응답 만료 시간 (시간)</label>
+      <select class="form-control" id="assignExpiry">
+        <option value="24">24시간</option>
+        <option value="48">48시간</option>
+        <option value="12">12시간</option>
+      </select>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('assignModal')">취소</button>
+      <button class="btn btn-primary" onclick="submitAssign()">배정 요청 전송</button>
+    </div>
+  </div>
 </div>
 
-<!-- ══════════════════════════════════════════ -->
-<!-- Supabase SDK -->
-<!-- ══════════════════════════════════════════ -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- ── 배정 상세 모달 (파트너용) ── -->
+<div class="modal-overlay" id="partnerAssignModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">배정 상세</div>
+      <button class="modal-close" onclick="closeModal('partnerAssignModal')">✕</button>
+    </div>
+    <div id="partnerAssignBody"></div>
+    <div class="modal-footer" id="partnerAssignFooter"></div>
+  </div>
+</div>
+
+<!-- ── 수리완료 보고서 모달 ── -->
+<div class="modal-overlay" id="workDoneModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">수리완료 보고서</div>
+      <button class="modal-close" onclick="closeModal('workDoneModal')">✕</button>
+    </div>
+    <div style="margin-bottom:16px;padding:12px;background:var(--amber-soft);border-radius:8px;font-size:12px;color:var(--amber)">
+      📸 사진은 보험 청구 시 핵심 증거입니다. 꼭 3단계 모두 촬영해 주세요.
+    </div>
+    <div class="form-group">
+      <div class="step-header"><div class="step-num">1</div><div class="step-label">작업 전 현장 사진</div></div>
+      <div class="photo-upload-area" onclick="document.getElementById('photo_before').click()">
+        <div id="photo_before_label">📷 클릭하여 사진 업로드</div>
+        <img id="photo_before_preview" class="photo-preview" style="display:none"/>
+        <input type="file" id="photo_before" accept="image/*" onchange="previewPhoto(this,'photo_before_preview','photo_before_label')"/>
+      </div>
+    </div>
+    <div class="form-group">
+      <div class="step-header"><div class="step-num">2</div><div class="step-label">작업 중 현장 사진</div></div>
+      <div class="photo-upload-area" onclick="document.getElementById('photo_during').click()">
+        <div id="photo_during_label">📷 클릭하여 사진 업로드</div>
+        <img id="photo_during_preview" class="photo-preview" style="display:none"/>
+        <input type="file" id="photo_during" accept="image/*" onchange="previewPhoto(this,'photo_during_preview','photo_during_label')"/>
+      </div>
+    </div>
+    <div class="form-group">
+      <div class="step-header"><div class="step-num">3</div><div class="step-label">작업 후 현장 사진</div></div>
+      <div class="photo-upload-area" onclick="document.getElementById('photo_after').click()">
+        <div id="photo_after_label">📷 클릭하여 사진 업로드</div>
+        <img id="photo_after_preview" class="photo-preview" style="display:none"/>
+        <input type="file" id="photo_after" accept="image/*" onchange="previewPhoto(this,'photo_after_preview','photo_after_label')"/>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">수리 금액 (원)</label>
+      <input class="form-control" id="wd_cost" type="number" placeholder="예: 350000"/>
+    </div>
+    <div class="form-group">
+      <label class="form-label">누수 소견</label>
+      <textarea class="form-control" id="wd_opinion" rows="4" placeholder="누수 원인, 수리 내용, 특이사항 등 상세히 기재…"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('workDoneModal')">취소</button>
+      <button class="btn btn-success" onclick="submitWorkDone()">보고서 제출</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
 <script>
-// ═══════════════════════════════════════════════════════════
-// ⚠️  여기에 본인의 Supabase 정보를 넣으세요
-// ═══════════════════════════════════════════════════════════
-const SUPABASE_URL = 'https://rjlyhogkpwbsecipqpai.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJqbHlob2drcHdic2VjaXBxcGFpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUyODQyOTAsImV4cCI6MjA5MDg2MDI5MH0.yJKfnbc-jKAmyYjP9ckviulm46XWHGRoaJ8y4EtS8G0';
+// ══════════════════════════════════════════════════════════
+// 초기화
+// ══════════════════════════════════════════════════════════
+const { createClient } = supabase;
+const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+const isReal = SUPABASE_KEY !== 'YOUR_ANON_KEY_HERE';
 
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-const isReal = SUPABASE_URL !== 'https://YOUR_PROJECT.supabase.co';
+let curRole = null;  // 'admin' | 'partner'
+let curUser = null;  // { id, email, name, company_id (파트너만) }
+let allCases = [];   // 캐시
+let selectedCaseId = null;
+let selectedAssignmentId = null;
 
-// ── Toast ──
-function toast(m,t="i"){const d=document.createElement("div");d.className=`toast ${t}`;d.textContent=m;document.getElementById("toastBox").appendChild(d);setTimeout(()=>d.remove(),3000)}
-
-// ── Nav ──
-let curRole = null; // 'admin' or 'partner'
-let curUser = null;
-
-function go(id){
-  document.querySelectorAll(".scr").forEach(s=>s.classList.toggle("on",s.id==="s-"+id));
-  document.querySelectorAll(".nav-btn").forEach(b=>b.classList.toggle("on",b.dataset.s===id));
-  document.querySelectorAll(".m-tab").forEach(t=>t.classList.toggle("on",t.dataset.go===id));
+// ══════════════════════════════════════════════════════════
+// 유틸
+// ══════════════════════════════════════════════════════════
+function toast(msg, type='i'){
+  const el = document.createElement('div');
+  el.className=`toast ${type}`;
+  el.textContent=msg;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(()=>el.remove(), 3200);
 }
-document.addEventListener("click",e=>{
-  const nb=e.target.closest(".nav-btn[data-s]");
-  if(nb)go(nb.dataset.s);
-  const mt=e.target.closest("[data-go]");
-  if(mt)go(mt.dataset.go);
-});
+function openModal(id){ document.getElementById(id).classList.add('open') }
+function closeModal(id){ document.getElementById(id).classList.remove('open') }
 
-// ═══════════════════════════════════════════════════════════
-// AUTH: 로그인 / 역할 분기 / 로그아웃
-// ═══════════════════════════════════════════════════════════
+function fmtDate(d){
+  if(!d) return '-';
+  const dt = new Date(d);
+  return `${dt.getFullYear()}.${String(dt.getMonth()+1).padStart(2,'0')}.${String(dt.getDate()).padStart(2,'0')}`;
+}
+function fmtDateTime(d){
+  if(!d) return '-';
+  const dt = new Date(d);
+  return `${fmtDate(d)} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
+}
 
-document.getElementById("loginBtn").addEventListener("click", async () => {
-  const email = document.getElementById("loginEmail").value.trim();
-  const pw = document.getElementById("loginPw").value;
-  const errEl = document.getElementById("loginError");
-  const btn = document.getElementById("loginBtn");
+const SERVICE_SCOPE_LABELS = {
+  insurance_only:'보험처리만',
+  insurance_detection:'보험+탐지',
+  insurance_detection_repair:'보험+탐지+복구',
+  undecided:'미정'
+};
+const STATUS_BADGE = {
+  '접수':'badge-blue','검토중':'badge-amber','파트너배정':'badge-teal',
+  '수리중':'badge-amber','수리완료':'badge-green','보험청구중':'badge-blue',
+  '완료':'badge-gray','거절':'badge-red'
+};
+function statusBadge(s){
+  const cls = STATUS_BADGE[s] || 'badge-gray';
+  return `<span class="badge ${cls}">${s||'-'}</span>`;
+}
+const WORK_STATUS_LABELS = {
+  pending:'응답대기', visiting:'방문중', visit_done:'방문완료',
+  repair_done:'수리완료'
+};
+function wsBadge(s){
+  const labels={pending:'badge-amber',visiting:'badge-blue',visit_done:'badge-teal',repair_done:'badge-green'};
+  return `<span class="badge ${labels[s]||'badge-gray'}">${WORK_STATUS_LABELS[s]||s||'-'}</span>`;
+}
 
-  if (!email || !pw) { errEl.textContent = "이메일과 비밀번호를 입력하세요"; errEl.style.display = "block"; return; }
+// ══════════════════════════════════════════════════════════
+// 인증
+// ══════════════════════════════════════════════════════════
+async function doLogin(){
+  const email = document.getElementById('loginEmail').value.trim();
+  const pw = document.getElementById('loginPw').value;
+  const errEl = document.getElementById('loginErr');
+  const btn = document.getElementById('loginBtn');
+  errEl.style.display='none';
+  if(!email||!pw){ errEl.textContent='이메일과 비밀번호를 입력해 주세요.'; errEl.style.display='block'; return; }
+  btn.disabled=true; btn.textContent='로그인 중…';
 
-  btn.disabled = true;
-  btn.innerHTML = '<span class="loading-spinner"></span> 로그인 중...';
-  errEl.style.display = "none";
+  if(!isReal){
+    // MOCK 모드
+    curRole = email.includes('partner') ? 'partner' : 'admin';
+    curUser = { id:'mock', email, name: curRole==='admin'?'재성(관리자)':'김팀장', company_id:'mock-company' };
+    showApp(); btn.disabled=false; btn.textContent='로그인'; return;
+  }
 
-  if (!isReal) {
-    // MOCK 모드: 아무 이메일이든 admin으로 로그인
-    setTimeout(() => {
-      curRole = email.includes("partner") ? "partner" : "admin";
-      curUser = { email, name: email.split("@")[0] };
-      showApp();
-      btn.disabled = false; btn.textContent = "로그인";
-    }, 800);
+  const { data, error } = await sb.auth.signInWithPassword({ email, password: pw });
+  if(error){ errEl.textContent=error.message||'로그인 실패'; errEl.style.display='block'; btn.disabled=false; btn.textContent='로그인'; return; }
+  await resolveRole(data.user.id, data.user.email);
+  btn.disabled=false; btn.textContent='로그인';
+}
+
+document.addEventListener('keydown', e=>{ if(e.key==='Enter'&&document.getElementById('loginPage').style.display!=='none') doLogin(); });
+
+async function resolveRole(uid, email){
+  // admin_users 우선 확인
+  const { data: adm } = await sb.from('admin_users').select('id,name,role_code').eq('id',uid).eq('is_active',true).maybeSingle();
+  if(adm){ curRole='admin'; curUser={id:uid,email,name:adm.name,role_code:adm.role_code}; showApp(); return; }
+
+  // partner_users 확인
+  const { data: pu } = await sb.from('partner_users').select('id,name,partner_company_id').eq('auth_user_id',uid).eq('is_active',true).maybeSingle();
+  if(pu){ curRole='partner'; curUser={id:uid,email,name:pu.name,partner_user_id:pu.id,company_id:pu.partner_company_id}; showApp(); return; }
+
+  // 인증은 됐지만 역할 없음
+  toast('등록된 관리자/파트너 계정이 아닙니다.','e');
+  await sb.auth.signOut();
+}
+
+async function doLogout(){
+  if(isReal) await sb.auth.signOut();
+  curRole=null; curUser=null; allCases=[];
+  document.getElementById('mainApp').style.display='none';
+  document.getElementById('loginPage').style.display='block';
+  document.getElementById('loginEmail').value='';
+  document.getElementById('loginPw').value='';
+}
+
+function showApp(){
+  document.getElementById('loginPage').style.display='none';
+  document.getElementById('mainApp').style.display='block';
+  document.getElementById('userName').textContent = curUser.name||curUser.email;
+  document.getElementById('avatarLetter').textContent = (curUser.name||curUser.email||'?')[0].toUpperCase();
+  document.getElementById('userRole').textContent = curRole==='admin'?'관리자':'파트너';
+  document.getElementById('adminNav').style.display = curRole==='admin'?'block':'none';
+  document.getElementById('partnerNav').style.display = curRole==='partner'?'block':'none';
+  if(curRole==='admin') go('dashboard');
+  else go('pHome');
+}
+
+// 세션 자동 복원
+(async()=>{
+  if(!isReal){ document.getElementById('loginPage').style.display='block'; return; }
+  const { data:{ session } } = await sb.auth.getSession();
+  if(session) await resolveRole(session.user.id, session.user.email);
+  else document.getElementById('loginPage').style.display='block';
+})();
+
+// ══════════════════════════════════════════════════════════
+// 화면 라우팅
+// ══════════════════════════════════════════════════════════
+function go(screen){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.sb-btn').forEach(b=>b.classList.remove('active'));
+  const el = document.getElementById('screen-'+screen);
+  if(el) el.classList.add('active');
+  const btn = document.querySelector(`.sb-btn[onclick="go('${screen}')"]`);
+  if(btn) btn.classList.add('active');
+
+  // 화면 진입 시 데이터 로드
+  if(screen==='dashboard') loadDashboard();
+  if(screen==='caseList') loadCaseList();
+  if(screen==='pHome') loadPartnerHome();
+  if(screen==='pAssignments') loadPartnerAssignments();
+}
+
+// ══════════════════════════════════════════════════════════
+// 관리자: 대시보드
+// ══════════════════════════════════════════════════════════
+async function loadDashboard(){
+  document.getElementById('dashStats').innerHTML='<div class="loading"><span class="spinner"></span>로딩 중…</div>';
+  document.getElementById('dashRecentCases').innerHTML='<div class="loading"><span class="spinner"></span></div>';
+  document.getElementById('dashPartners').innerHTML='<div class="loading"><span class="spinner"></span></div>';
+
+  if(!isReal){ renderDashboardMock(); return; }
+
+  // 접수건 통계
+  const { data: cases } = await sb.from('admin_case_list_v').select('customer_status,display_status');
+  const total = cases?.length||0;
+  const pending = cases?.filter(c=>!['완료','보험청구완료'].includes(c.display_status)).length||0;
+  const done = cases?.filter(c=>['완료'].includes(c.display_status)).length||0;
+
+  document.getElementById('dashStats').innerHTML=`
+    <div class="stat-card blue"><div class="stat-label">전체 접수</div><div class="stat-value">${total}</div></div>
+    <div class="stat-card amber"><div class="stat-label">진행 중</div><div class="stat-value">${pending}</div></div>
+    <div class="stat-card green"><div class="stat-label">완료</div><div class="stat-value">${done}</div></div>
+  `;
+
+  // 최근 5건
+  const { data: recent } = await sb.from('admin_case_list_v').select('case_no,customer_name,address_region,display_status,created_at').order('created_at',{ascending:false}).limit(5);
+  if(!recent||!recent.length){ document.getElementById('dashRecentCases').innerHTML='<div class="empty"><div class="empty-text">접수건 없음</div></div>'; }
+  else{
+    document.getElementById('dashRecentCases').innerHTML = recent.map(c=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)">
+        <div>
+          <div style="font-size:13px;font-weight:700">${c.customer_name}</div>
+          <div style="font-size:11px;color:var(--muted)">${c.case_no} · ${c.address_region||'-'}</div>
+        </div>
+        ${statusBadge(c.display_status)}
+      </div>
+    `).join('');
+  }
+
+  // 파트너 현황
+  const { data: partners } = await sb.from('partner_progress_summary_v').select('*');
+  if(!partners||!partners.length){ document.getElementById('dashPartners').innerHTML='<div class="empty"><div class="empty-text">파트너 없음</div></div>'; }
+  else{
+    document.getElementById('dashPartners').innerHTML = partners.map(p=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)">
+        <div>
+          <div style="font-size:13px;font-weight:700">${p.company_name}</div>
+          <div style="font-size:11px;color:var(--muted)">${p.main_user_name||'-'}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:13px;font-weight:700">진행 ${p.total_active}건</div>
+          <div style="font-size:11px;color:var(--muted)">수리완료 ${p.cnt_repair_done}</div>
+        </div>
+      </div>
+    `).join('');
+  }
+}
+
+function renderDashboardMock(){
+  document.getElementById('dashStats').innerHTML=`
+    <div class="stat-card blue"><div class="stat-label">전체 접수</div><div class="stat-value">0</div><div class="stat-desc">MOCK 모드</div></div>
+    <div class="stat-card amber"><div class="stat-label">진행 중</div><div class="stat-value">0</div></div>
+    <div class="stat-card green"><div class="stat-label">완료</div><div class="stat-value">0</div></div>
+  `;
+  document.getElementById('dashRecentCases').innerHTML='<div class="empty"><div class="empty-icon">🔑</div><div class="empty-text">MOCK 모드</div><div class="empty-sub">Supabase 키를 입력하면 실데이터가 표시됩니다</div></div>';
+  document.getElementById('dashPartners').innerHTML='<div class="empty"><div class="empty-text">-</div></div>';
+}
+
+// ══════════════════════════════════════════════════════════
+// 관리자: 사고접수
+// ══════════════════════════════════════════════════════════
+async function submitIntake(){
+  const name=document.getElementById('ic_name').value.trim();
+  const phone=document.getElementById('ic_phone').value.trim();
+  const address=document.getElementById('ic_address').value.trim();
+  const region=document.getElementById('ic_region').value.trim();
+  const scope=document.getElementById('ic_scope').value;
+  const insurance=document.getElementById('ic_insurance').value;
+  const symptom=document.getElementById('ic_symptom').value.trim();
+  if(!name||!phone||!address){toast('고객명, 연락처, 주소는 필수입니다.','e'); return;}
+
+  if(!isReal){
+    toast(`[MOCK] ${name} 접수 완료 (실제 저장 안 됨)`,'i');
+    ['ic_name','ic_phone','ic_address','ic_region','ic_symptom'].forEach(id=>document.getElementById(id).value='');
     return;
   }
 
-  try {
-    // 1. Supabase Auth 로그인
-    const { data: authData, error: authError } = await sb.auth.signInWithPassword({ email, password: pw });
-    if (authError) throw authError;
-
-    const uid = authData.user.id;
-
-    // 2. 역할 판별: admin_users 체크
-    const { data: adminRow } = await sb.from("admin_users").select("name, role_code").eq("id", uid).eq("is_active", true).single();
-
-    if (adminRow) {
-      curRole = "admin";
-      curUser = { email, name: adminRow.name, role: adminRow.role_code };
-      showApp();
-      btn.disabled = false; btn.textContent = "로그인";
-      return;
-    }
-
-    // 3. partner_users 체크
-    const { data: partnerRow } = await sb.from("partner_users").select("name, partner_company_id").eq("auth_user_id", uid).eq("is_active", true).single();
-
-    if (partnerRow) {
-      curRole = "partner";
-      curUser = { email, name: partnerRow.name, companyId: partnerRow.partner_company_id };
-      showApp();
-      btn.disabled = false; btn.textContent = "로그인";
-      return;
-    }
-
-    // 4. 둘 다 아님
-    throw { message: "등록된 관리자 또는 파트너 계정이 아닙니다.\n관리자에게 계정 등록을 요청하세요." };
-
-  } catch (err) {
-    errEl.textContent = err.message || "로그인 실패";
-    errEl.style.display = "block";
-    btn.disabled = false; btn.textContent = "로그인";
-  }
-});
-
-// Enter 키로 로그인
-document.getElementById("loginPw").addEventListener("keydown", e => { if(e.key==="Enter") document.getElementById("loginBtn").click(); });
-
-// 로그아웃
-document.getElementById("logoutBtn").addEventListener("click", async () => {
-  if (isReal) await sb.auth.signOut();
-  curRole = null; curUser = null;
-  document.getElementById("loginScreen").style.display = "flex";
-  document.getElementById("appScreen").classList.remove("on");
-  toast("로그아웃 완료", "i");
-});
-
-// ── 앱 표시 ──
-function showApp() {
-  document.getElementById("loginScreen").style.display = "none";
-  document.getElementById("appScreen").classList.add("on");
-
-  document.getElementById("userName").textContent = curUser.name || curUser.email;
-  document.getElementById("userRole").textContent = curRole === "admin" ? "관리자" : "파트너";
-
-  if (curRole === "admin") {
-    document.getElementById("adminNav").style.display = "block";
-    document.getElementById("partnerNav").style.display = "none";
-    document.getElementById("sidebarDesc").textContent = "관리자 모드";
-    go("home");
-  } else {
-    document.getElementById("adminNav").style.display = "none";
-    document.getElementById("partnerNav").style.display = "block";
-    document.getElementById("sidebarDesc").textContent = "파트너 모드";
-    go("p-home");
-  }
-
-  toast(`${curUser.name || curUser.email}님 환영합니다! (${curRole === "admin" ? "관리자" : "파트너"})`, "s");
+  const { error } = await sb.from('intake_cases').insert({
+    customer_name:name,
+    customer_phone:phone,
+    address_full:address,
+    address_region:region||null,
+    service_scope:scope,
+    insurance_known:insurance,
+    leak_symptom:symptom||null,
+    intake_type:'manual',
+    consent_privacy:true,
+    consent_adjuster_appointment:true,
+    customer_status:'접수',
+    internal_status:'new',
+    display_status:'접수'
+  });
+  if(error){ toast('접수 실패: '+error.message,'e'); return; }
+  toast(`${name} 고객 접수 완료!`,'s');
+  ['ic_name','ic_phone','ic_address','ic_region','ic_symptom'].forEach(id=>document.getElementById(id).value='');
+  go('caseList');
 }
 
-// ── 자동 세션 복원 ──
-async function checkSession() {
-  if (!isReal) return;
-  const { data: { session } } = await sb.auth.getSession();
-  if (!session) return;
+// ══════════════════════════════════════════════════════════
+// 관리자: 전체 목록
+// ══════════════════════════════════════════════════════════
+async function loadCaseList(){
+  document.getElementById('caseListBody').innerHTML='<tr><td colspan="8" class="loading"><span class="spinner"></span> 로딩 중…</td></tr>';
+  document.getElementById('caseListSub').textContent='로딩 중…';
 
-  const uid = session.user.id;
-  const email = session.user.email;
+  if(!isReal){ renderCaseListMock(); return; }
 
-  const { data: adminRow } = await sb.from("admin_users").select("name, role_code").eq("id", uid).eq("is_active", true).maybeSingle();
-  if (adminRow) { curRole = "admin"; curUser = { email, name: adminRow.name }; showApp(); return; }
-
-  const { data: partnerRow } = await sb.from("partner_users").select("name").eq("auth_user_id", uid).eq("is_active", true).maybeSingle();
-  if (partnerRow) { curRole = "partner"; curUser = { email, name: partnerRow.name }; showApp(); return; }
+  const { data, error } = await sb.from('admin_case_list_v').select('*').order('created_at',{ascending:false});
+  if(error){ document.getElementById('caseListBody').innerHTML=`<tr><td colspan="8" style="color:var(--red);padding:20px">오류: ${error.message}</td></tr>`; return; }
+  allCases = data||[];
+  document.getElementById('caseListSub').textContent=`총 ${allCases.length}건`;
+  renderCaseList(allCases);
 }
-checkSession();
+
+function renderCaseList(cases){
+  if(!cases.length){
+    document.getElementById('caseListBody').innerHTML='<tr><td colspan="8"><div class="empty"><div class="empty-icon">📋</div><div class="empty-text">접수건이 없습니다</div></div></td></tr>';
+    return;
+  }
+  document.getElementById('caseListBody').innerHTML = cases.map(c=>`
+    <tr class="clickable" onclick="openCaseDetail('${c.id}')">
+      <td><span style="font-family:'JetBrains Mono',monospace;font-size:12px">${c.case_no||'-'}</span></td>
+      <td><strong>${c.customer_name}</strong></td>
+      <td>${c.address_region||'-'}</td>
+      <td><span style="font-size:12px">${SERVICE_SCOPE_LABELS[c.service_scope]||c.service_scope||'-'}</span></td>
+      <td>${statusBadge(c.display_status)}</td>
+      <td style="font-size:12px;color:var(--muted)">${c.current_partner_name||'-'}</td>
+      <td style="font-size:12px;color:var(--muted)">${fmtDate(c.created_at)}</td>
+      <td><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openCaseDetail('${c.id}')">상세</button></td>
+    </tr>
+  `).join('');
+}
+
+function filterCases(){
+  const kw = document.getElementById('caseSearch').value.toLowerCase();
+  const st = document.getElementById('caseStatusFilter').value;
+  const filtered = allCases.filter(c=>{
+    const match = !kw || [c.case_no,c.customer_name,c.address_region,c.current_partner_name].some(v=>(v||'').toLowerCase().includes(kw));
+    const stMatch = !st || c.display_status===st;
+    return match && stMatch;
+  });
+  renderCaseList(filtered);
+}
+
+function renderCaseListMock(){
+  document.getElementById('caseListSub').textContent='MOCK 모드';
+  document.getElementById('caseListBody').innerHTML='<tr><td colspan="8"><div class="empty"><div class="empty-icon">🔑</div><div class="empty-text">실제 Supabase 키 필요</div></div></td></tr>';
+}
+
+// ══════════════════════════════════════════════════════════
+// 관리자: 접수 상세 & 배정
+// ══════════════════════════════════════════════════════════
+async function openCaseDetail(caseId){
+  selectedCaseId = caseId;
+  document.getElementById('caseDetailBody').innerHTML='<div class="loading"><span class="spinner"></span> 로딩 중…</div>';
+  openModal('caseDetailModal');
+
+  if(!isReal){ document.getElementById('caseDetailBody').innerHTML='<p style="color:var(--muted)">MOCK 모드 — 실제 키 필요</p>'; return; }
+
+  const { data, error } = await sb.from('admin_case_detail_v').select('*').eq('id',caseId).maybeSingle();
+  if(error||!data){ document.getElementById('caseDetailBody').innerHTML='<p style="color:var(--red)">조회 실패</p>'; return; }
+
+  document.getElementById('cdModalTitle').textContent=`접수 상세 — ${data.case_no}`;
+
+  // 배정 이력
+  const { data: assigns } = await sb.from('partner_assignments')
+    .select('id,assignment_status,work_status,requested_at,partner_companies(company_name)')
+    .eq('case_id',caseId)
+    .order('created_at',{ascending:false});
+
+  // 메모
+  const { data: notes } = await sb.from('case_notes').select('content,created_at').eq('case_id',caseId).order('created_at',{ascending:false}).limit(3);
+
+  document.getElementById('caseDetailBody').innerHTML=`
+    <div class="detail-grid" style="margin-bottom:16px">
+      <div class="detail-item"><label>접수번호</label><span style="font-family:'JetBrains Mono',monospace">${data.case_no||'-'}</span></div>
+      <div class="detail-item"><label>접수 상태</label>${statusBadge(data.display_status)}</div>
+      <div class="detail-item"><label>고객명</label><span>${data.customer_name}</span></div>
+      <div class="detail-item"><label>연락처</label><span>${data.customer_phone}</span></div>
+      <div class="detail-item full"><label>주소</label><span>${data.address_full||'-'}</span></div>
+      <div class="detail-item"><label>서비스 범위</label><span>${SERVICE_SCOPE_LABELS[data.service_scope]||'-'}</span></div>
+      <div class="detail-item"><label>보험 여부</label><span>${data.insurance_known||'-'}</span></div>
+      <div class="detail-item full"><label>누수 증상</label><span>${data.leak_symptom||'-'}</span></div>
+      <div class="detail-item"><label>접수일</label><span>${fmtDateTime(data.created_at)}</span></div>
+      <div class="detail-item"><label>최종 수정</label><span>${fmtDateTime(data.updated_at)}</span></div>
+    </div>
+
+    ${assigns&&assigns.length?`
+    <div style="margin-bottom:16px">
+      <div style="font-size:13px;font-weight:900;margin-bottom:10px">배정 이력</div>
+      ${assigns.map(a=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)">
+          <div>
+            <span style="font-size:13px;font-weight:700">${a.partner_companies?.company_name||'-'}</span>
+            <span style="font-size:11px;color:var(--muted);margin-left:6px">${fmtDate(a.requested_at)}</span>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center">
+            ${statusBadge(a.assignment_status)}
+            ${a.work_status?wsBadge(a.work_status):''}
+          </div>
+        </div>
+      `).join('')}
+    </div>`:``}
+
+    ${notes&&notes.length?`
+    <div>
+      <div style="font-size:13px;font-weight:900;margin-bottom:10px">최근 메모</div>
+      ${notes.map(n=>`<div style="padding:8px;background:var(--bg);border-radius:6px;font-size:12px;margin-bottom:6px">${n.content}<span style="color:var(--muted);margin-left:6px">${fmtDate(n.created_at)}</span></div>`).join('')}
+    </div>`:``}
+  `;
+
+  // 이미 배정 중인지 확인 (accepted & repair 미완료)
+  const activeAssign = assigns?.find(a=>a.assignment_status==='accepted'&&a.work_status!=='repair_done');
+  document.getElementById('assignBtn').style.display = activeAssign ? 'none' : 'inline-flex';
+}
+
+async function openAssignModal(){
+  closeModal('caseDetailModal');
+  openModal('assignModal');
+  document.getElementById('assignNote').value='';
+
+  if(!isReal){ document.getElementById('assignCompanySelect').innerHTML='<option>MOCK 모드</option>'; return; }
+
+  const { data } = await sb.from('partner_companies').select('id,company_name').eq('is_active',true);
+  document.getElementById('assignCompanySelect').innerHTML = data?.map(c=>`<option value="${c.id}">${c.company_name}</option>`).join('')||'<option>없음</option>';
+}
+
+async function submitAssign(){
+  const companyId = document.getElementById('assignCompanySelect').value;
+  const note = document.getElementById('assignNote').value.trim();
+  const hours = parseInt(document.getElementById('assignExpiry').value);
+  if(!companyId){ toast('업체를 선택해 주세요.','e'); return; }
+
+  if(!isReal){ toast('[MOCK] 배정 요청 전송 완료 (실제 저장 안 됨)','i'); closeModal('assignModal'); return; }
+
+  const { error } = await sb.rpc('rpc_create_partner_assignment',{
+    p_case_id: selectedCaseId,
+    p_partner_company_id: companyId,
+    p_assigned_by: curUser.id,
+    p_partner_note: note||null,
+    p_expires_hours: hours
+  });
+  if(error){ toast('배정 실패: '+error.message,'e'); return; }
+  toast('파트너 배정 요청 전송 완료!','s');
+  closeModal('assignModal');
+  loadCaseList();
+}
+
+// ══════════════════════════════════════════════════════════
+// 파트너: 홈
+// ══════════════════════════════════════════════════════════
+async function loadPartnerHome(){
+  document.getElementById('pHomeTitle').textContent=`안녕하세요, ${curUser.name}님`;
+  document.getElementById('pHomeStats').innerHTML='<div class="loading"><span class="spinner"></span></div>';
+  document.getElementById('pHomeList').innerHTML='<div class="loading"><span class="spinner"></span></div>';
+
+  if(!isReal){ renderPartnerHomeMock(); return; }
+
+  // partner_progress_summary_v — 본인 회사
+  const { data: summary } = await sb.from('partner_progress_summary_v')
+    .select('*')
+    .eq('partner_company_id', curUser.company_id)
+    .maybeSingle();
+
+  document.getElementById('pHomeStats').innerHTML=`
+    <div class="stat-card amber"><div class="stat-label">응답대기</div><div class="stat-value">${summary?.cnt_pending||0}</div></div>
+    <div class="stat-card blue"><div class="stat-label">방문중</div><div class="stat-value">${summary?.cnt_visiting||0}</div></div>
+    <div class="stat-card teal"><div class="stat-label">방문완료</div><div class="stat-value">${summary?.cnt_visit_done||0}</div></div>
+    <div class="stat-card green"><div class="stat-label">수리완료</div><div class="stat-value">${summary?.cnt_repair_done||0}</div></div>
+  `;
+
+  // 진행 중인 배정 목록
+  const { data: assigns } = await sb.from('partner_web_assignment_list_v')
+    .select('*')
+    .in('assignment_status',['requested','accepted'])
+    .order('requested_at',{ascending:false});
+
+  if(!assigns||!assigns.length){
+    document.getElementById('pHomeList').innerHTML='<div class="empty"><div class="empty-icon">✅</div><div class="empty-text">진행 중인 배정이 없습니다</div></div>';
+    return;
+  }
+  document.getElementById('pHomeList').innerHTML = assigns.map(a=>partnerAssignCard(a)).join('');
+}
+
+function renderPartnerHomeMock(){
+  document.getElementById('pHomeSub').textContent='MOCK 모드';
+  document.getElementById('pHomeStats').innerHTML=`
+    <div class="stat-card amber"><div class="stat-label">응답대기</div><div class="stat-value">-</div></div>
+    <div class="stat-card blue"><div class="stat-label">방문중</div><div class="stat-value">-</div></div>
+    <div class="stat-card teal"><div class="stat-label">방문완료</div><div class="stat-value">-</div></div>
+    <div class="stat-card green"><div class="stat-label">수리완료</div><div class="stat-value">-</div></div>
+  `;
+  document.getElementById('pHomeList').innerHTML='<div class="empty"><div class="empty-icon">🔑</div><div class="empty-text">Supabase 키를 입력하면 실데이터가 표시됩니다</div></div>';
+}
+
+// ══════════════════════════════════════════════════════════
+// 파트너: 배정 목록
+// ══════════════════════════════════════════════════════════
+async function loadPartnerAssignments(){
+  document.getElementById('pAssignmentList').innerHTML='<div class="loading"><span class="spinner"></span> 로딩 중…</div>';
+
+  if(!isReal){ document.getElementById('pAssignmentList').innerHTML='<div class="empty"><div class="empty-icon">🔑</div><div class="empty-text">Supabase 키 필요</div></div>'; return; }
+
+  const { data, error } = await sb.from('partner_web_assignment_list_v')
+    .select('*')
+    .order('requested_at',{ascending:false});
+
+  if(error){ document.getElementById('pAssignmentList').innerHTML=`<div style="color:var(--red);padding:20px">오류: ${error.message}</div>`; return; }
+
+  if(!data||!data.length){
+    document.getElementById('pAssignmentList').innerHTML='<div class="empty"><div class="empty-icon">📋</div><div class="empty-text">배정 이력이 없습니다</div></div>';
+    return;
+  }
+
+  // 상태별 분류
+  const requested = data.filter(a=>a.assignment_status==='requested');
+  const accepted = data.filter(a=>a.assignment_status==='accepted');
+  const others = data.filter(a=>!['requested','accepted'].includes(a.assignment_status));
+
+  let html='';
+  if(requested.length){
+    html+=`<div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">⏰ 응답 대기 (${requested.length})</div>`;
+    html+=requested.map(a=>partnerAssignCard(a)).join('');
+  }
+  if(accepted.length){
+    html+=`<div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:16px 0 8px">🔧 진행 중 (${accepted.length})</div>`;
+    html+=accepted.map(a=>partnerAssignCard(a)).join('');
+  }
+  if(others.length){
+    html+=`<div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:16px 0 8px">✅ 완료/거절 (${others.length})</div>`;
+    html+=others.map(a=>partnerAssignCard(a)).join('');
+  }
+  document.getElementById('pAssignmentList').innerHTML=html;
+}
+
+function partnerAssignCard(a){
+  const isReq = a.assignment_status==='requested';
+  const isAcc = a.assignment_status==='accepted';
+  const statusLabel = {requested:'응답대기',accepted:'수락',rejected:'거절',expired:'만료'}[a.assignment_status]||a.assignment_status;
+  const statusCls = {requested:'badge-amber',accepted:'badge-teal',rejected:'badge-red',expired:'badge-gray'}[a.assignment_status]||'badge-gray';
+
+  return `
+    <div class="partner-card" onclick="openPartnerAssignDetail('${a.assignment_id}')">
+      <div class="partner-card-header">
+        <div>
+          <div class="partner-card-no">${a.case_no||'-'}</div>
+          <div class="partner-card-title">${SERVICE_SCOPE_LABELS[a.service_scope]||a.service_scope||'-'}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+          <span class="badge ${statusCls}">${statusLabel}</span>
+          ${isAcc&&a.work_status?wsBadge(a.work_status):''}
+        </div>
+      </div>
+      <div class="partner-card-desc">📍 ${a.address_region||'-'} &nbsp;·&nbsp; 요청일: ${fmtDate(a.requested_at)}</div>
+      ${isReq&&a.expires_at?`<div style="font-size:11px;color:var(--red);margin-top:4px">⏰ 만료: ${fmtDateTime(a.expires_at)}</div>`:''}
+    </div>
+  `;
+}
+
+// ══════════════════════════════════════════════════════════
+// 파트너: 배정 상세 & 작업 상태 변경
+// ══════════════════════════════════════════════════════════
+async function openPartnerAssignDetail(assignmentId){
+  selectedAssignmentId = assignmentId;
+  document.getElementById('partnerAssignBody').innerHTML='<div class="loading"><span class="spinner"></span> 로딩 중…</div>';
+  document.getElementById('partnerAssignFooter').innerHTML='';
+  openModal('partnerAssignModal');
+
+  if(!isReal){ document.getElementById('partnerAssignBody').innerHTML='<p style="color:var(--muted)">MOCK 모드</p>'; return; }
+
+  const { data, error } = await sb.from('partner_web_assignment_detail_v').select('*').eq('id',assignmentId).maybeSingle();
+  if(error||!data){ document.getElementById('partnerAssignBody').innerHTML='<p style="color:var(--red)">조회 실패</p>'; return; }
+
+  const isReq = data.assignment_status==='requested';
+  const isAcc = data.assignment_status==='accepted';
+
+  document.getElementById('partnerAssignBody').innerHTML=`
+    <div class="detail-grid" style="margin-bottom:16px">
+      <div class="detail-item"><label>접수번호</label><span style="font-family:'JetBrains Mono',monospace">${data.case_no||'-'}</span></div>
+      <div class="detail-item"><label>배정 상태</label><span class="badge ${isReq?'badge-amber':isAcc?'badge-teal':'badge-gray'}">${{requested:'응답대기',accepted:'수락',rejected:'거절',expired:'만료'}[data.assignment_status]||'-'}</span></div>
+      <div class="detail-item"><label>고객명</label><span>${isAcc?data.customer_name:'(수락 후 공개)'}</span></div>
+      <div class="detail-item"><label>연락처</label><span>${isAcc?data.customer_phone:'(수락 후 공개)'}</span></div>
+      <div class="detail-item full"><label>주소</label><span>${isAcc?data.address_full:'(수락 후 공개)'}</span></div>
+      <div class="detail-item"><label>서비스 범위</label><span>${SERVICE_SCOPE_LABELS[data.service_scope]||'-'}</span></div>
+      <div class="detail-item full"><label>누수 증상</label><span>${data.leak_symptom||'-'}</span></div>
+      ${data.partner_note?`<div class="detail-item full"><label>관리자 메모</label><span>${data.partner_note}</span></div>`:''}
+      ${isAcc&&data.work_status?`<div class="detail-item"><label>작업 상태</label>${wsBadge(data.work_status)}</div>`:''}
+    </div>
+  `;
+
+  // 버튼
+  let footerHtml = `<button class="btn btn-ghost" onclick="closeModal('partnerAssignModal')">닫기</button>`;
+  if(isReq){
+    footerHtml += `<button class="btn btn-danger btn-sm" onclick="respondAssignment('rejected')">거절</button>`;
+    footerHtml += `<button class="btn btn-success" onclick="respondAssignment('accepted')">수락</button>`;
+  } else if(isAcc){
+    const ws = data.work_status;
+    if(ws==='pending') footerHtml += `<button class="btn btn-primary" onclick="updateWorkStatus('visiting')">방문 시작</button>`;
+    if(ws==='visiting') footerHtml += `<button class="btn btn-primary" onclick="updateWorkStatus('visit_done')">방문 완료</button>`;
+    if(ws==='visit_done') footerHtml += `<button class="btn btn-success" onclick="openWorkDoneModal()">수리완료 보고서 제출</button>`;
+    if(ws==='repair_done') footerHtml += `<span style="color:var(--green);font-weight:700;font-size:13px">✅ 수리완료 처리됨</span>`;
+  }
+  document.getElementById('partnerAssignFooter').innerHTML = footerHtml;
+}
+
+async function respondAssignment(response){
+  if(!isReal){ toast(`[MOCK] ${response==='accepted'?'수락':'거절'} 처리`,'i'); closeModal('partnerAssignModal'); return; }
+  const { error } = await sb.rpc('rpc_respond_partner_assignment',{
+    p_assignment_id: selectedAssignmentId,
+    p_response: response,
+    p_reject_reason: response==='rejected'?'파트너 거절':null
+  });
+  if(error){ toast('처리 실패: '+error.message,'e'); return; }
+  toast(response==='accepted'?'수락 완료! 고객 정보가 공개되었습니다.':'거절 처리 완료', response==='accepted'?'s':'i');
+  closeModal('partnerAssignModal');
+  loadPartnerAssignments();
+  loadPartnerHome();
+}
+
+async function updateWorkStatus(newStatus){
+  if(!isReal){ toast(`[MOCK] 상태 → ${WORK_STATUS_LABELS[newStatus]}`,'i'); closeModal('partnerAssignModal'); return; }
+  const { error } = await sb.rpc('rpc_update_work_status',{
+    p_assignment_id: selectedAssignmentId,
+    p_new_status: newStatus
+  });
+  if(error){ toast('상태 변경 실패: '+error.message,'e'); return; }
+  toast(`${WORK_STATUS_LABELS[newStatus]} 처리 완료`,'s');
+  closeModal('partnerAssignModal');
+  loadPartnerAssignments();
+  loadPartnerHome();
+}
+
+// ══════════════════════════════════════════════════════════
+// 파트너: 수리완료 보고서
+// ══════════════════════════════════════════════════════════
+function openWorkDoneModal(){
+  closeModal('partnerAssignModal');
+  document.getElementById('wd_cost').value='';
+  document.getElementById('wd_opinion').value='';
+  ['before','during','after'].forEach(k=>{
+    document.getElementById(`photo_${k}_preview`).style.display='none';
+    document.getElementById(`photo_${k}_label`).textContent='📷 클릭하여 사진 업로드';
+    document.getElementById(`photo_${k}`).value='';
+  });
+  openModal('workDoneModal');
+}
+
+function previewPhoto(input, previewId, labelId){
+  const file = input.files[0];
+  if(!file) return;
+  const url = URL.createObjectURL(file);
+  const img = document.getElementById(previewId);
+  img.src=url; img.style.display='block';
+  document.getElementById(labelId).textContent='✅ '+file.name;
+}
+
+async function submitWorkDone(){
+  const cost = parseInt(document.getElementById('wd_cost').value)||0;
+  const opinion = document.getElementById('wd_opinion').value.trim();
+  if(!opinion){ toast('누수 소견을 입력해 주세요.','e'); return; }
+
+  if(!isReal){ toast('[MOCK] 수리완료 보고서 제출 완료 (실제 저장 안 됨)','i'); closeModal('workDoneModal'); return; }
+
+  // Storage 업로드 (버킷: partner-work)
+  const uploads = {};
+  for(const k of ['before','during','after']){
+    const file = document.getElementById(`photo_${k}`).files[0];
+    if(file){
+      const path = `${selectedAssignmentId}/${k}_${Date.now()}.jpg`;
+      const { error: upErr } = await sb.storage.from('partner-work').upload(path,file,{upsert:true});
+      if(upErr){ toast(`사진(${k}) 업로드 실패: `+upErr.message,'e'); return; }
+      const { data: urlData } = sb.storage.from('partner-work').getPublicUrl(path);
+      uploads[k] = urlData.publicUrl;
+    }
+  }
+
+  const { error } = await sb.rpc('rpc_submit_work_done',{
+    p_assignment_id: selectedAssignmentId,
+    p_repair_cost: cost,
+    p_repair_opinion: opinion
+  });
+  if(error){ toast('보고서 제출 실패: '+error.message,'e'); return; }
+
+  // 사진 URL을 case_documents에 저장 (있으면)
+  if(Object.keys(uploads).length){
+    const { data: pa } = await sb.from('partner_assignments').select('case_id').eq('id',selectedAssignmentId).maybeSingle();
+    if(pa?.case_id){
+      for(const [k,url] of Object.entries(uploads)){
+        await sb.from('case_documents').insert({
+          case_id: pa.case_id,
+          doc_type: `repair_photo_${k}`,
+          file_url: url,
+          file_name: `${k}.jpg`,
+          uploaded_by_role: 'partner'
+        });
+      }
+    }
+  }
+
+  toast('수리완료 보고서 제출 완료! 수고하셨습니다.','s');
+  closeModal('workDoneModal');
+  loadPartnerAssignments();
+  loadPartnerHome();
+}
+
+// ══════════════════════════════════════════════════════════
+// 키보드 단축키 / 모달 외부 클릭
+// ══════════════════════════════════════════════════════════
+document.querySelectorAll('.modal-overlay').forEach(el=>{
+  el.addEventListener('click', e=>{ if(e.target===el) el.classList.remove('open'); });
+});
+document.addEventListener('keydown', e=>{
+  if(e.key==='Escape') document.querySelectorAll('.modal-overlay.open').forEach(m=>m.classList.remove('open'));
+});
 </script>
 </body>
 </html>
