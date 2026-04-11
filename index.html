@@ -616,17 +616,41 @@ async function doLogin(){
 document.addEventListener('keydown', e=>{ if(e.key==='Enter'&&document.getElementById('loginPage').style.display!=='none') doLogin(); });
 
 async function resolveRole(uid, email){
-  // admin_users 우선 확인
-  const { data: adm } = await sb.from('admin_users').select('id,name,role_code').eq('id',uid).eq('is_active',true).maybeSingle();
-  if(adm){ curRole='admin'; curUser={id:uid,email,name:adm.name,role_code:adm.role_code}; showApp(); return; }
+  console.log('[resolveRole] uid:', uid, 'email:', email);
 
-  // partner_users 확인
-  const { data: pu } = await sb.from('partner_users').select('id,name,partner_company_id').eq('auth_user_id',uid).eq('is_active',true).maybeSingle();
-  if(pu){ curRole='partner'; curUser={id:uid,email,name:pu.name,partner_user_id:pu.id,company_id:pu.partner_company_id}; showApp(); return; }
+  // 1) admin_users 확인
+  const { data: adm, error: admErr } = await sb.from('admin_users')
+    .select('id,name,role_code')
+    .eq('id', uid)
+    .eq('is_active', true)
+    .maybeSingle();
+  console.log('[admin_users] data:', adm, 'error:', admErr);
 
-  // 인증은 됐지만 역할 없음
+  if(adm && !admErr){
+    curRole='admin';
+    curUser={id:uid, email, name:adm.name, role_code:adm.role_code};
+    showApp(); return;
+  }
+
+  // 2) partner_users 확인
+  const { data: pu, error: puErr } = await sb.from('partner_users')
+    .select('id,name,partner_company_id')
+    .eq('auth_user_id', uid)
+    .eq('is_active', true)
+    .maybeSingle();
+  console.log('[partner_users] data:', pu, 'error:', puErr);
+
+  if(pu && !puErr){
+    curRole='partner';
+    curUser={id:uid, email, name:pu.name, partner_user_id:pu.id, company_id:pu.partner_company_id};
+    showApp(); return;
+  }
+
+  // 3) 둘 다 없음
+  console.log('[resolveRole] 역할 없음 → 로그아웃');
   toast('등록된 관리자/파트너 계정이 아닙니다.','e');
   await sb.auth.signOut();
+  document.getElementById('loginPage').style.display='block';
 }
 
 async function doLogout(){
