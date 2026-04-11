@@ -1,1 +1,312 @@
-<h1>nusupass v1</h1>
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>누수패스 운영센터</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0}
+body{font-family:'Noto Sans KR',system-ui,sans-serif;background:#f1f4f9;color:#111827;font-size:13px}
+button,input,textarea,select{font:inherit}
+
+/* ── Login ── */
+.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:linear-gradient(135deg,#0c1528 0%,#1e293b 100%)}
+.login-box{background:#fff;border-radius:24px;padding:40px 36px;max-width:380px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.25)}
+.login-box h1{font-size:24px;font-weight:900;text-align:center;margin-bottom:4px;color:#0c1528}
+.login-box .sub{font-size:12px;color:#6b7280;text-align:center;margin-bottom:24px}
+.login-box .field{margin-bottom:14px}
+.login-box .lbl{font-size:11px;font-weight:700;color:#6b7280;margin-bottom:4px}
+.login-box input{width:100%;border:1px solid #d1d5db;border-radius:12px;padding:12px 14px;font-size:14px}
+.login-box input:focus{outline:none;border-color:#4f46e5;box-shadow:0 0 0 3px rgba(79,70,229,.12)}
+.login-box .login-btn{width:100%;border:none;border-radius:12px;padding:14px;font-size:15px;font-weight:900;background:#4f46e5;color:#fff;cursor:pointer;margin-top:8px;transition:.15s}
+.login-box .login-btn:hover{background:#4338ca}
+.login-box .login-btn:disabled{opacity:.5;cursor:wait}
+.login-box .login-error{margin-top:12px;padding:10px 14px;border-radius:10px;background:#fef2f2;color:#b91c1c;font-size:12px;font-weight:700;display:none}
+.login-box .login-info{margin-top:16px;padding:12px;border-radius:10px;background:#f8fafc;border:1px solid #e2e5eb;font-size:11px;color:#6b7280;line-height:1.6}
+
+/* ── App Layout (same as demo) ── */
+.app{display:none;min-height:100vh}
+.app.on{display:flex}
+.sidebar{width:220px;background:#0c1528;color:#fff;padding:18px 12px;display:flex;flex-direction:column;gap:16px;position:sticky;top:0;height:100vh;overflow-y:auto;flex-shrink:0}
+.brand{padding:4px 8px}.brand h1{font-size:17px;font-weight:900;margin:0 0 6px}.brand p{font-size:10px;color:#94a3b8;line-height:1.6;margin:0}
+.nav-group-label{font-size:9px;color:#64748b;padding:0 8px;text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:4px}
+.nav-btn{width:100%;border:0;border-radius:8px;background:transparent;color:#cbd5e1;text-align:left;padding:9px 10px;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:2px;transition:.15s}
+.nav-btn:hover,.nav-btn.on{background:rgba(255,255,255,.08);color:#fff}
+.user-info{margin-top:auto;padding:10px;border-radius:10px;background:rgba(255,255,255,.05)}
+.user-info .user-name{font-size:12px;font-weight:700;margin-bottom:2px}.user-info .user-role{font-size:10px;color:#94a3b8}
+.logout-btn{width:100%;border:0;border-radius:8px;padding:8px;font-size:11px;font-weight:700;background:rgba(185,28,28,.2);color:#fca5a5;cursor:pointer;margin-top:6px}
+.main{flex:1;padding:20px 24px;overflow-y:auto;min-width:0}
+.scr{display:none}.scr.on{display:block}
+
+/* ── Shared UI (from demo) ── */
+.hdr{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.hdr h1{font-size:22px;font-weight:900;margin:0}.hdr p{font-size:11px;color:#6b7280;margin-top:4px}
+.pill{display:inline-flex;padding:5px 10px;border-radius:99px;font-size:10px;font-weight:700;background:#eef2ff;color:#4f46e5;font-family:monospace}
+.badge{display:inline-flex;padding:3px 8px;border-radius:99px;font-size:10px;font-weight:700}
+.badge-접수{background:#fff7ed;color:#b45309}.badge-파트너배정중{background:#eef2ff;color:#4f46e5}.badge-배정완료{background:#ecfdf3;color:#15803d}.badge-수리완료{background:#ecfeff;color:#0f766e}.badge-방문중{background:#eff6ff;color:#1d4ed8}
+.card{background:#fff;border:1px solid #e2e5eb;border-radius:14px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.card-label{font-size:10px;color:#6b7280;font-weight:700;margin-bottom:4px}.card-value{font-size:26px;font-weight:900}
+.panel{background:#fff;border:1px solid #e2e5eb;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.panel-head{padding:12px 14px;border-bottom:1px solid #e2e5eb;font-weight:900;font-size:13px}
+.panel-body{padding:12px 14px}
+.grid-5{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+table{width:100%;border-collapse:collapse;font-size:11px}
+th,td{padding:7px 5px;text-align:left;border-bottom:1px solid #e2e5eb;white-space:nowrap}
+th{font-size:9px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;font-weight:700}
+.btn{border:none;border-radius:10px;padding:9px 14px;font-size:13px;font-weight:700;cursor:pointer}.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-primary{background:#4f46e5;color:#fff}.btn-outline{background:#fff;color:#4f46e5;border:1px solid #c7d2fe}.btn-light{background:#eef2f7;color:#111}
+.field{margin-bottom:8px}.field .lbl{font-size:10px;color:#6b7280;font-weight:700;margin-bottom:3px}
+input,textarea,select{width:100%;border:1px solid #d1d5db;border-radius:8px;padding:8px 10px;font-size:12px}
+input:focus,textarea:focus,select:focus{outline:none;border-color:#4f46e5}
+textarea{min-height:70px;resize:vertical}
+.code{padding:12px;border-radius:10px;background:#0b1220;color:#93c5fd;font-size:10px;font-family:monospace;line-height:1.7;white-space:pre-wrap}
+.guide{padding:10px;border-radius:10px;background:#f8fafc;border:1px solid #e2e5eb;font-size:10px;color:#6b7280;line-height:1.5}
+.mbox{background:#fff;border:1px solid #e2e5eb;border-radius:12px;padding:10px}
+.mbox .k{font-size:9px;color:#6b7280;font-weight:700;margin-bottom:2px}.mbox .v{font-size:12px;font-weight:700;line-height:1.5}
+
+/* Phone */
+.phone{max-width:400px;margin:0 auto;background:#0f172a;border-radius:28px;padding:10px;box-shadow:0 16px 48px rgba(15,23,42,.22)}
+.phone-inner{background:#f8fafc;border-radius:20px;min-height:680px;display:flex;flex-direction:column;overflow:hidden}
+.m-head{background:#111827;color:#fff;padding:16px}.m-head h2{font-size:17px;font-weight:900;margin:0 0 4px}.m-head p{font-size:11px;color:#cbd5e1;margin:0}
+.m-body{padding:14px;display:grid;gap:10px;flex:1;align-content:start;overflow-y:auto}
+.m-cards{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.m-card{background:#fff;border:1px solid #e2e5eb;border-radius:14px;padding:12px}.m-card .k{font-size:10px;color:#6b7280;font-weight:700}.m-card .v{font-size:22px;font-weight:900;margin-top:4px}
+.m-item{background:#fff;border:1px solid #e2e5eb;border-radius:14px;padding:12px;cursor:pointer;transition:.15s}.m-item:hover{border-color:#a5b4fc;background:#f5f7ff}
+.m-item .m-row{display:flex;justify-content:space-between;align-items:center}.m-item .m-name{font-weight:900;font-size:13px}
+.m-item .m-meta{font-size:11px;color:#6b7280;margin-top:4px;line-height:1.6}
+.m-btn{width:100%;border:0;border-radius:12px;padding:12px 14px;font-size:13px;font-weight:900;cursor:pointer}.m-btn:disabled{opacity:.4;cursor:not-allowed}
+.m-tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;padding:10px 12px 14px;background:#fff;border-top:1px solid #e2e5eb;margin-top:auto}
+.m-tab{border:0;border-radius:8px;padding:8px 4px;font-size:10px;font-weight:700;cursor:pointer;background:#eef2f7;color:#6b7280}.m-tab.on{background:#eef2ff;color:#4f46e5}
+
+/* Toast */
+.toast-box{position:fixed;top:16px;right:16px;z-index:99999}
+.toast{padding:12px 20px;border-radius:12px;color:#fff;font-weight:700;font-size:13px;margin-bottom:6px;box-shadow:0 8px 24px rgba(0,0,0,.15);animation:slideIn .3s ease}
+.toast.s{background:#15803d}.toast.e{background:#b91c1c}.toast.i{background:#1d4ed8}
+@keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+.loading-spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+@media(max-width:1100px){.grid-5{grid-template-columns:repeat(3,1fr)}.grid-2{grid-template-columns:1fr}}
+@media(max-width:700px){.sidebar{display:none}.grid-5{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+
+<div class="toast-box" id="toastBox"></div>
+
+<!-- ══════════════════════════════════════════ -->
+<!-- LOGIN SCREEN -->
+<!-- ══════════════════════════════════════════ -->
+<div class="login-wrap" id="loginScreen">
+  <div class="login-box">
+    <h1>누수패스</h1>
+    <div class="sub">운영센터 로그인</div>
+    <div class="field">
+      <div class="lbl">이메일</div>
+      <input type="email" id="loginEmail" placeholder="admin@nusupass.com">
+    </div>
+    <div class="field">
+      <div class="lbl">비밀번호</div>
+      <input type="password" id="loginPw" placeholder="비밀번호 입력">
+    </div>
+    <button class="login-btn" id="loginBtn">로그인</button>
+    <div class="login-error" id="loginError"></div>
+    <div class="login-info">
+      <strong>관리자/파트너 전용</strong><br>
+      계정은 관리자가 Supabase에서 직접 생성합니다.<br>
+      고객은 로그인 없이 접수폼을 이용합니다.
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════ -->
+<!-- APP (로그인 후 표시) -->
+<!-- ══════════════════════════════════════════ -->
+<div class="app" id="appScreen">
+  <aside class="sidebar">
+    <div class="brand"><h1>누수패스 운영센터</h1><p id="sidebarDesc">로딩중...</p></div>
+    <div id="adminNav" style="display:none">
+      <div class="nav-group-label">관리자</div>
+      <button class="nav-btn on" data-s="home">대시보드</button>
+      <button class="nav-btn" data-s="intake">사고접수</button>
+      <button class="nav-btn" data-s="all-list">전체목록</button>
+    </div>
+    <div id="partnerNav" style="display:none">
+      <div class="nav-group-label">파트너</div>
+      <button class="nav-btn on" data-s="p-home">파트너 홈</button>
+      <button class="nav-btn" data-s="p-list">배정 요청</button>
+      <button class="nav-btn" data-s="p-work">작업 상세</button>
+      <button class="nav-btn" data-s="p-history">작업 이력</button>
+    </div>
+    <div class="user-info">
+      <div class="user-name" id="userName">—</div>
+      <div class="user-role" id="userRole">—</div>
+      <button class="logout-btn" id="logoutBtn">로그아웃</button>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="scr on" id="s-home"><div class="hdr"><div><h1>대시보드</h1><p>Supabase 연결 후 실시간 데이터가 표시됩니다</p></div></div><div class="guide">로그인 성공! Supabase에서 데이터를 불러옵니다.</div></div>
+    <div class="scr" id="s-intake"><div class="hdr"><div><h1>사고접수</h1></div></div><div class="guide">접수 폼이 여기에 표시됩니다.</div></div>
+    <div class="scr" id="s-all-list"><div class="hdr"><div><h1>전체목록</h1></div></div><div class="guide">admin_case_list_v에서 데이터를 불러옵니다.</div></div>
+    <div class="scr" id="s-p-home"><div class="hdr"><div><h1>파트너 홈</h1></div></div><div class="guide">파트너 홈 화면입니다.</div></div>
+    <div class="scr" id="s-p-list"><div class="hdr"><div><h1>배정 요청</h1></div></div><div class="guide">partner_mobile_assignment_list_v에서 데이터를 불러옵니다.</div></div>
+    <div class="scr" id="s-p-work"><div class="hdr"><div><h1>작업 상세</h1></div></div><div class="guide">수락된 배정건이 여기에 표시됩니다.</div></div>
+    <div class="scr" id="s-p-history"><div class="hdr"><div><h1>작업 이력</h1></div></div><div class="guide">완료건이 여기에 표시됩니다.</div></div>
+  </main>
+</div>
+
+<!-- ══════════════════════════════════════════ -->
+<!-- Supabase SDK -->
+<!-- ══════════════════════════════════════════ -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+// ═══════════════════════════════════════════════════════════
+// ⚠️  여기에 본인의 Supabase 정보를 넣으세요
+// ═══════════════════════════════════════════════════════════
+const SUPABASE_URL = 'https://rjlyhogkpwbsecipqpai.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJqbHlob2drcHdic2VjaXBxcGFpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUyODQyOTAsImV4cCI6MjA5MDg2MDI5MH0.yJKfnbc-jKAmyYjP9ckviulm46XWHGRoaJ8y4EtS8G0';
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const isReal = SUPABASE_URL !== 'https://YOUR_PROJECT.supabase.co';
+
+// ── Toast ──
+function toast(m,t="i"){const d=document.createElement("div");d.className=`toast ${t}`;d.textContent=m;document.getElementById("toastBox").appendChild(d);setTimeout(()=>d.remove(),3000)}
+
+// ── Nav ──
+let curRole = null; // 'admin' or 'partner'
+let curUser = null;
+
+function go(id){
+  document.querySelectorAll(".scr").forEach(s=>s.classList.toggle("on",s.id==="s-"+id));
+  document.querySelectorAll(".nav-btn").forEach(b=>b.classList.toggle("on",b.dataset.s===id));
+  document.querySelectorAll(".m-tab").forEach(t=>t.classList.toggle("on",t.dataset.go===id));
+}
+document.addEventListener("click",e=>{
+  const nb=e.target.closest(".nav-btn[data-s]");
+  if(nb)go(nb.dataset.s);
+  const mt=e.target.closest("[data-go]");
+  if(mt)go(mt.dataset.go);
+});
+
+// ═══════════════════════════════════════════════════════════
+// AUTH: 로그인 / 역할 분기 / 로그아웃
+// ═══════════════════════════════════════════════════════════
+
+document.getElementById("loginBtn").addEventListener("click", async () => {
+  const email = document.getElementById("loginEmail").value.trim();
+  const pw = document.getElementById("loginPw").value;
+  const errEl = document.getElementById("loginError");
+  const btn = document.getElementById("loginBtn");
+
+  if (!email || !pw) { errEl.textContent = "이메일과 비밀번호를 입력하세요"; errEl.style.display = "block"; return; }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loading-spinner"></span> 로그인 중...';
+  errEl.style.display = "none";
+
+  if (!isReal) {
+    // MOCK 모드: 아무 이메일이든 admin으로 로그인
+    setTimeout(() => {
+      curRole = email.includes("partner") ? "partner" : "admin";
+      curUser = { email, name: email.split("@")[0] };
+      showApp();
+      btn.disabled = false; btn.textContent = "로그인";
+    }, 800);
+    return;
+  }
+
+  try {
+    // 1. Supabase Auth 로그인
+    const { data: authData, error: authError } = await sb.auth.signInWithPassword({ email, password: pw });
+    if (authError) throw authError;
+
+    const uid = authData.user.id;
+
+    // 2. 역할 판별: admin_users 체크
+    const { data: adminRow } = await sb.from("admin_users").select("name, role_code").eq("id", uid).eq("is_active", true).single();
+
+    if (adminRow) {
+      curRole = "admin";
+      curUser = { email, name: adminRow.name, role: adminRow.role_code };
+      showApp();
+      btn.disabled = false; btn.textContent = "로그인";
+      return;
+    }
+
+    // 3. partner_users 체크
+    const { data: partnerRow } = await sb.from("partner_users").select("name, partner_company_id").eq("auth_user_id", uid).eq("is_active", true).single();
+
+    if (partnerRow) {
+      curRole = "partner";
+      curUser = { email, name: partnerRow.name, companyId: partnerRow.partner_company_id };
+      showApp();
+      btn.disabled = false; btn.textContent = "로그인";
+      return;
+    }
+
+    // 4. 둘 다 아님
+    throw { message: "등록된 관리자 또는 파트너 계정이 아닙니다.\n관리자에게 계정 등록을 요청하세요." };
+
+  } catch (err) {
+    errEl.textContent = err.message || "로그인 실패";
+    errEl.style.display = "block";
+    btn.disabled = false; btn.textContent = "로그인";
+  }
+});
+
+// Enter 키로 로그인
+document.getElementById("loginPw").addEventListener("keydown", e => { if(e.key==="Enter") document.getElementById("loginBtn").click(); });
+
+// 로그아웃
+document.getElementById("logoutBtn").addEventListener("click", async () => {
+  if (isReal) await sb.auth.signOut();
+  curRole = null; curUser = null;
+  document.getElementById("loginScreen").style.display = "flex";
+  document.getElementById("appScreen").classList.remove("on");
+  toast("로그아웃 완료", "i");
+});
+
+// ── 앱 표시 ──
+function showApp() {
+  document.getElementById("loginScreen").style.display = "none";
+  document.getElementById("appScreen").classList.add("on");
+
+  document.getElementById("userName").textContent = curUser.name || curUser.email;
+  document.getElementById("userRole").textContent = curRole === "admin" ? "관리자" : "파트너";
+
+  if (curRole === "admin") {
+    document.getElementById("adminNav").style.display = "block";
+    document.getElementById("partnerNav").style.display = "none";
+    document.getElementById("sidebarDesc").textContent = "관리자 모드";
+    go("home");
+  } else {
+    document.getElementById("adminNav").style.display = "none";
+    document.getElementById("partnerNav").style.display = "block";
+    document.getElementById("sidebarDesc").textContent = "파트너 모드";
+    go("p-home");
+  }
+
+  toast(`${curUser.name || curUser.email}님 환영합니다! (${curRole === "admin" ? "관리자" : "파트너"})`, "s");
+}
+
+// ── 자동 세션 복원 ──
+async function checkSession() {
+  if (!isReal) return;
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) return;
+
+  const uid = session.user.id;
+  const email = session.user.email;
+
+  const { data: adminRow } = await sb.from("admin_users").select("name, role_code").eq("id", uid).eq("is_active", true).maybeSingle();
+  if (adminRow) { curRole = "admin"; curUser = { email, name: adminRow.name }; showApp(); return; }
+
+  const { data: partnerRow } = await sb.from("partner_users").select("name").eq("auth_user_id", uid).eq("is_active", true).maybeSingle();
+  if (partnerRow) { curRole = "partner"; curUser = { email, name: partnerRow.name }; showApp(); return; }
+}
+checkSession();
+</script>
+</body>
+</html>
