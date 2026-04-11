@@ -353,8 +353,10 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
             <option value="">전체 상태</option>
             <option value="접수">접수</option>
             <option value="검토중">검토중</option>
-            <option value="파트너배정">파트너배정</option>
-            <option value="수리중">수리중</option>
+            <option value="파트너배정중">파트너배정중</option>
+            <option value="배정완료">배정완료</option>
+            <option value="방문중">방문중</option>
+            <option value="방문완료">방문완료</option>
             <option value="수리완료">수리완료</option>
             <option value="보험청구중">보험청구중</option>
             <option value="완료">완료</option>
@@ -571,9 +573,16 @@ const SERVICE_SCOPE_LABELS = {
   UNSURE:'미정'
 };
 const STATUS_BADGE = {
-  '접수':'badge-blue','검토중':'badge-amber','파트너배정':'badge-teal',
-  '수리중':'badge-amber','수리완료':'badge-green','보험청구중':'badge-blue',
-  '완료':'badge-gray','거절':'badge-red'
+  '접수':'badge-blue',
+  '검토중':'badge-amber',
+  '파트너배정중':'badge-amber',
+  '배정완료':'badge-teal',
+  '방문중':'badge-blue',
+  '방문완료':'badge-teal',
+  '수리완료':'badge-green',
+  '보험청구중':'badge-blue',
+  '완료':'badge-gray',
+  '거절':'badge-red'
 };
 function statusBadge(s){
   const cls = STATUS_BADGE[s] || 'badge-gray';
@@ -713,8 +722,9 @@ async function loadDashboard(){
   // 접수건 통계
   const { data: cases } = await sb.from('admin_case_list_v').select('customer_status,display_status');
   const total = cases?.length||0;
-  const pending = cases?.filter(c=>!['완료','보험청구완료'].includes(c.display_status)).length||0;
-  const done = cases?.filter(c=>['완료'].includes(c.display_status)).length||0;
+  const DONE_STATUSES = ['완료','보험청구완료','수리완료'];
+  const pending = cases?.filter(c=>!DONE_STATUSES.includes(c.display_status)).length||0;
+  const done = cases?.filter(c=>DONE_STATUSES.includes(c.display_status)).length||0;
 
   document.getElementById('dashStats').innerHTML=`
     <div class="stat-card blue"><div class="stat-label">전체 접수</div><div class="stat-value">${total}</div></div>
