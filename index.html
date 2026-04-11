@@ -314,10 +314,10 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
           <div class="form-group">
             <label class="form-label">서비스 범위</label>
             <select class="form-control" id="ic_scope">
-              <option value="insurance_only">보험처리만</option>
-              <option value="insurance_detection">보험+탐지</option>
-              <option value="insurance_detection_repair">보험+탐지+복구</option>
-              <option value="undecided">미정</option>
+              <option value="INSURANCE_ONLY">보험처리만</option>
+              <option value="INSURANCE_DETECTION">보험+탐지</option>
+              <option value="INSURANCE_DETECTION_RESTORE">보험+탐지+복구</option>
+              <option value="UNSURE">미정</option>
             </select>
           </div>
           <div class="form-group">
@@ -565,10 +565,10 @@ function fmtDateTime(d){
 }
 
 const SERVICE_SCOPE_LABELS = {
-  insurance_only:'보험처리만',
-  insurance_detection:'보험+탐지',
-  insurance_detection_repair:'보험+탐지+복구',
-  undecided:'미정'
+  INSURANCE_ONLY:'보험처리만',
+  INSURANCE_DETECTION:'보험+탐지',
+  INSURANCE_DETECTION_RESTORE:'보험+탐지+복구',
+  UNSURE:'미정'
 };
 const STATUS_BADGE = {
   '접수':'badge-blue','검토중':'badge-amber','파트너배정':'badge-teal',
