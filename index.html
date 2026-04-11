@@ -532,7 +532,7 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 // ══════════════════════════════════════════════════════════
 const { createClient } = supabase;
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
-const isReal = SUPABASE_KEY !== 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJqbHlob2drcHdic2VjaXBxcGFpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUyODQyOTAsImV4cCI6MjA5MDg2MDI5MH0.yJKfnbc-jKAmyYjP9ckviulm46XWHGRoaJ8y4EtS8G0';
+const isReal = const isReal = true;== 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJqbHlob2drcHdic2VjaXBxcGFpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUyODQyOTAsImV4cCI6MjA5MDg2MDI5MH0.yJKfnbc-jKAmyYjP9ckviulm46XWHGRoaJ8y4EtS8G0';
 
 let curRole = null;  // 'admin' | 'partner'
 let curUser = null;  // { id, email, name, company_id (파트너만) }
