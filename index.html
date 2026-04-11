@@ -891,6 +891,24 @@ async function openCaseDetail(caseId){
   // 메모
   const { data: notes } = await sb.from('case_notes').select('content,created_at').eq('case_id',caseId).order('created_at',{ascending:false}).limit(3);
 
+  // 수리완료 보고서 (repair_done 상태인 배정에서)
+  const repairAssign = assigns?.find(a=>a.work_status==='repair_done');
+  let repairReport = null;
+  let repairDocs = null;
+  if(repairAssign){
+    const { data: rd } = await sb.from('partner_assignments')
+      .select('repair_cost,repair_opinion,work_done_at,updated_at')
+      .eq('id', repairAssign.id)
+      .maybeSingle();
+    repairReport = rd;
+    const { data: docs } = await sb.from('case_documents')
+      .select('document_type,file_url,file_name')
+      .eq('case_id', caseId)
+      .in('document_type',['repair_photo_before','repair_photo_during','repair_photo_after'])
+      .order('created_at');
+    repairDocs = docs;
+  }
+
   document.getElementById('caseDetailBody').innerHTML=`
     <div class="detail-grid" style="margin-bottom:16px">
       <div class="detail-item"><label>접수번호</label><span style="font-family:'JetBrains Mono',monospace">${data.case_no||'-'}</span></div>
@@ -926,6 +944,44 @@ async function openCaseDetail(caseId){
     <div>
       <div style="font-size:13px;font-weight:900;margin-bottom:10px">최근 메모</div>
       ${notes.map(n=>`<div style="padding:8px;background:var(--bg);border-radius:6px;font-size:12px;margin-bottom:6px">${n.content}<span style="color:var(--muted);margin-left:6px">${fmtDate(n.created_at)}</span></div>`).join('')}
+    </div>`:``}
+
+    ${repairReport ? `
+    <div style="margin-top:4px">
+      <div style="font-size:13px;font-weight:900;margin-bottom:10px;color:var(--green)">✅ 수리완료 보고서</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div style="padding:10px;background:var(--green-soft);border-radius:8px">
+          <div style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:3px">수리 금액</div>
+          <div style="font-size:16px;font-weight:900;color:var(--green)">${repairReport.repair_cost ? repairReport.repair_cost.toLocaleString()+'원' : '-'}</div>
+        </div>
+        <div style="padding:10px;background:var(--bg);border-radius:8px">
+          <div style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:3px">완료일시</div>
+          <div style="font-size:13px;font-weight:700">${fmtDate(repairReport.work_done_at)||fmtDate(repairReport.updated_at)}</div>
+        </div>
+      </div>
+      <div style="padding:12px;background:var(--bg);border-radius:8px;margin-bottom:12px">
+        <div style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:6px">누수 소견</div>
+        <div style="font-size:13px;line-height:1.6">${repairReport.repair_opinion||'-'}</div>
+      </div>
+      ${repairDocs&&repairDocs.length?`
+      <div>
+        <div style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:8px">현장 사진</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+          ${repairDocs.map(d=>`
+            <div style="border-radius:8px;overflow:hidden;border:1px solid var(--line)">
+              <div style="font-size:10px;color:var(--muted);padding:4px 6px;background:var(--bg)">${
+                d.document_type==='repair_photo_before'?'작업 전':
+                d.document_type==='repair_photo_during'?'작업 중':
+                d.document_type==='repair_photo_after'?'작업 후':d.document_type
+              }</div>
+              <a href="${d.file_url}" target="_blank">
+                <img src="${d.file_url}" style="width:100%;height:90px;object-fit:cover;display:block" onerror="this.parentElement.innerHTML='<div style=padding:20px;text-align:center;font-size:11px;color:var(--muted)>사진 로드 실패</div>'"/>
+              </a>
+            </div>
+          `).join('')}
+        </div>
+      </div>`:
+      `<div style="font-size:12px;color:var(--muted);text-align:center;padding:12px;background:var(--bg);border-radius:8px">📷 업로드된 사진이 없습니다</div>`}
     </div>`:``}
   `;
 
