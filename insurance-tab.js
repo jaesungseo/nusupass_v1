@@ -233,7 +233,8 @@ async function insUploadDoc(file, docCode, docName) {
     .eq('doc_code', docCode)
     .eq('is_latest', true);
 
-  const filePath = `${_insClaim.id}/${docCode}/${Date.now()}_${file.name}`;
+  const safeExt = file.name.split('.').pop().toLowerCase() || 'pdf';
+  const filePath = `${_insClaim.id}/${docCode}/${Date.now()}.${safeExt}`;
   const { error: upErr } = await sb.storage.from('insurance-docs').upload(filePath, file, { cacheControl: '3600', upsert: false });
   if (upErr) throw new Error('Storage 업로드 실패: ' + upErr.message);
 
