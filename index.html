@@ -169,6 +169,35 @@ select.form-control{cursor:pointer}
   .sidebar{display:none}
   .content{padding:16px}
 }
+
+/* ── 보험자료 탭 스타일 ── */
+.ins-step-bar{display:flex;background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;margin-bottom:16px}
+.ins-step{flex:1;padding:10px 6px;text-align:center;border-right:1px solid var(--line)}
+.ins-step:last-child{border-right:0}
+.ins-step-dot{width:8px;height:8px;border-radius:50%;background:var(--line);margin:0 auto 4px}
+.ins-step-num{font-size:10px;color:var(--muted)}
+.ins-step-label{font-size:11px;font-weight:700;color:var(--muted)}
+.ins-step-active .ins-step-dot{background:var(--primary)}
+.ins-step-active .ins-step-label,.ins-step-active .ins-step-num{color:var(--primary)}
+.ins-step-done .ins-step-dot{background:var(--green)}
+.ins-step-done .ins-step-label,.ins-step-done .ins-step-num{color:var(--green)}
+.ins-step-locked{opacity:.4}
+.ins-doc-item{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-radius:8px;border:1px solid var(--line);margin-bottom:8px;background:var(--bg)}
+.ins-doc-done{border-color:#86efac;background:var(--green-soft)}
+.ins-doc-missing{border-color:#fca5a5;background:var(--red-soft)}
+.ins-doc-left{display:flex;align-items:center;gap:8px}
+.ins-doc-icon{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0}
+.ins-icon-ok{background:var(--green);color:#fff}
+.ins-icon-no{background:var(--red);color:#fff}
+.ins-doc-name{font-size:13px;font-weight:700}
+.ins-doc-sub{font-size:11px;color:var(--muted)}
+.ins-draft-content{font-size:13px;line-height:1.7;background:var(--bg);border-radius:8px;padding:10px 12px;border:1px solid var(--line);min-height:40px}
+.ins-draft-content:hover{border-color:var(--primary)}
+.ins-action-bar{display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding-top:12px;border-top:1px solid var(--line)}
+.ins-banner{padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:12px}
+.ins-banner-info{background:var(--primary-soft);color:var(--primary);border:1px solid #bfdbfe}
+.ins-banner-success{background:var(--green-soft);color:var(--green);border:1px solid #86efac}
+
 </style>
 </head>
 <body>
@@ -380,6 +409,34 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
               <tr><td colspan="8" class="loading"><span class="spinner"></span> 로딩 중…</td></tr>
             </tbody>
           </table>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- ───────────────── 관리자: 보험자료 탭 ───────────────── -->
+    <div class="screen" id="screen-insurance">
+      <div class="page-header">
+        <div>
+          <div class="page-title">보험자료 탭</div>
+          <div class="page-sub" id="insurancePageSub">사건을 선택하세요</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="go('caseList')">← 목록으로</button>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <div class="form-group" style="margin:0">
+          <label class="form-label">사건 선택 (수리완료 건만 표시)</label>
+          <select class="form-control" id="insuranceCaseSelect" onchange="onInsuranceCaseSelect(this.value)">
+            <option value="">— 사건 선택 —</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="insuranceTabBody">
+        <div class="empty">
+          <div class="empty-icon">🛡️</div>
+          <div class="empty-text">위에서 사건을 선택하거나, 접수 목록에서 "보험자료" 버튼을 클릭하세요</div>
         </div>
       </div>
     </div>
@@ -707,6 +764,7 @@ function go(screen){
   if(screen==='caseList') loadCaseList();
   if(screen==='pHome') loadPartnerHome();
   if(screen==='pAssignments') loadPartnerAssignments();
+      if(screen==='insurance') loadInsuranceCaseSelector();
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1289,5 +1347,7 @@ document.addEventListener('keydown', e=>{
   if(e.key==='Escape') document.querySelectorAll('.modal-overlay.open').forEach(m=>m.classList.remove('open'));
 });
 </script>
+
+<script src="./insurance-tab.js"></script>
 </body>
 </html>
