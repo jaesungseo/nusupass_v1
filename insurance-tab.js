@@ -1,4 +1,4 @@
-// v2026-04-13-02 — cache bust
+// v2026-04-13-03 — fixed: insSaveInfoClick + insOnTypeChange restored
 /**
  * insurance-tab.js
  * 누수패스 보험자료 탭 — Vanilla JS 완성본 (Phase 2 + Phase 3)
@@ -53,47 +53,43 @@ const INS_DRAFT_SECTIONS = [
 // ─────────────────────────────────────────────
 // 전역 상태
 // ─────────────────────────────────────────────
-let _insClaim    = null;   // insurance_claims 현재 row
-let _insCaseId   = null;   // intake_cases.id
-let _insField    = null;   // partner_assignments 현장 자료
-let _insDraft    = null;   // insurance_claim_drafts 현재 초안
-let _insSections = {};     // 편집 중인 섹션 데이터
-let _insStep     = 1;      // 현재 탭 단계 (1~5)
-let _insUploaded = [];     // insurance_doc_uploads (is_latest=true)
-let _insRequired = [];     // insurance_required_docs
+let _insClaim      = null;   // insurance_claims 현재 row
+let _insCaseId     = null;   // intake_cases.id
+let _insField      = null;   // partner_assignments 현장 자료
+let _insDraft      = null;   // insurance_claim_drafts 현재 초안
+let _insSections   = {};     // 편집 중인 섹션 데이터
+let _insStep       = 1;      // 현재 탭 단계 (1~5)
+let _insUploaded   = [];     // insurance_doc_uploads (is_latest=true)
+let _insRequired   = [];     // insurance_required_docs
 let _insGenerating = false;
 
 // ─────────────────────────────────────────────
 // 진입점: 사건 목록 → 보험자료 탭 열기
 // ─────────────────────────────────────────────
 async function openInsuranceTab(caseId, caseNo) {
-  // 전역 상태 초기화
-  _insClaim    = null;
-  _insCaseId   = caseId;
-  _insField    = null;
-  _insDraft    = null;
-  _insSections = {};
-  _insStep     = 1;
-  _insUploaded = [];
-  _insRequired = [];
+  _insClaim      = null;
+  _insCaseId     = caseId;
+  _insField      = null;
+  _insDraft      = null;
+  _insSections   = {};
+  _insStep       = 1;
+  _insUploaded   = [];
+  _insRequired   = [];
   _insGenerating = false;
 
-  // 화면 전환
   go('insurance');
   document.getElementById('insurancePageSub').textContent = `사건 ${caseNo || caseId.slice(0,8)}`;
-  document.getElementById('insuranceTabBody').innerHTML = `<div class="loading"><span class="spinner"></span> 데이터를 불러오는 중…</div>`;
+  document.getElementById('insuranceTabBody').innerHTML =
+    `<div class="loading"><span class="spinner"></span> 데이터를 불러오는 중…</div>`;
 
   try {
-    // 병렬 로드
     const [claimData, fieldRes] = await Promise.all([
       insEnsureClaim(caseId),
       insFetchFieldData(caseId),
     ]);
-
     _insClaim = claimData;
     _insField = fieldRes;
 
-    // 기존 업로드 + 필수서류 마스터
     const [uploads, docs] = await Promise.all([
       insFetchUploadedDocs(claimData.id),
       claimData.insurance_type ? insFetchRequiredDocs(claimData.insurance_type) : Promise.resolve([]),
@@ -101,19 +97,16 @@ async function openInsuranceTab(caseId, caseNo) {
     _insUploaded = uploads;
     _insRequired = docs;
 
-    // 기존 초안 복원
     if (claimData.current_draft_id) {
       _insDraft = await insFetchCurrentDraft(claimData.id);
       if (_insDraft) _insSections = _insDraft.sections_jsonb || {};
     }
 
-    // 상태에 따라 초기 스텝 결정
     const stepMap = {
       docs_pending: 1, docs_received: 1, info_in_progress: 2,
       ready_for_draft: 3, draft_generated: 4, pdf_submitted: 5,
     };
     _insStep = stepMap[claimData.insurance_tab_status] || 1;
-
     insRender();
   } catch(e) {
     document.getElementById('insuranceTabBody').innerHTML =
@@ -227,15 +220,12 @@ async function insSaveInfo(payload) {
 }
 
 async function insUploadDoc(file, docCode, docName) {
-  // ✅ 방어 코드 추가
   if (!_insClaim || !_insClaim.id) throw new Error('사건 정보가 없습니다. 페이지를 새로고침 해주세요.');
 
-  // 파일 유효성 검사
   const allowedTypes = ['application/pdf','image/jpeg','image/jpg','image/png','image/webp','image/heic'];
   if (!allowedTypes.includes(file.type)) throw new Error('허용되지 않는 파일 형식입니다: ' + file.type);
   if (file.size > 20 * 1024 * 1024) throw new Error('파일이 20MB를 초과합니다.');
 
-  // 기존 is_latest 해제
   await sb.from('insurance_doc_uploads')
     .update({ is_latest: false })
     .eq('claim_id', _insClaim.id)
@@ -249,7 +239,6 @@ async function insUploadDoc(file, docCode, docName) {
   const { error: upErr } = await sb.storage
     .from('insurance-docs')
     .upload(filePath, file, { cacheControl: '3600', upsert: true });
-
   if (upErr) throw new Error('Storage 업로드 실패: ' + upErr.message);
 
   const { error: dbErr } = await sb.from('insurance_doc_uploads').insert({
@@ -344,7 +333,6 @@ ${INS_LEGAL_BUNDLE}`;
 방문일: ${vars.work_done_at || '미확인'}
 `;
 
-  // 진행 표시
   for (let i = 0; i < stages.length; i++) {
     onProgress(i + 1, stages[i], stages.length);
     await new Promise(r => setTimeout(r, 100));
@@ -386,7 +374,7 @@ async function insSaveDraft(inputVars, sections) {
     p_sections_jsonb:       sections,
   });
   if (error) throw new Error('초안 저장 실패: ' + error.message);
-  return data?.[0]; // { draft_id, draft_version }
+  return data?.[0];
 }
 
 async function insFetchCurrentDraft(claimId) {
@@ -431,13 +419,7 @@ async function insSubmitToInsurer(contact, memo) {
 function insRender() {
   const body = document.getElementById('insuranceTabBody');
   if (!body) return;
-
-  // 스텝 바 + 현재 단계 콘텐츠
-  body.innerHTML = `
-    ${insRenderStepBar()}
-    <div id="insStepContent"></div>
-  `;
-
+  body.innerHTML = `${insRenderStepBar()}<div id="insStepContent"></div>`;
   const content = document.getElementById('insStepContent');
   if      (_insStep === 1) content.innerHTML = insStep1HTML();
   else if (_insStep === 2) content.innerHTML = insStep2HTML();
@@ -448,17 +430,11 @@ function insRender() {
 
 function insRenderStepBar() {
   const steps = ['현장제출 자료', '보험정보 입력', '생성 준비 확인', '초안 검토', 'PDF 제출관리'];
-  const items = steps.map((label, i) => {
-    const n = i + 1;
+  return `<div class="ins-step-bar">${steps.map((label, i) => {
+    const n   = i + 1;
     const cls = n < _insStep ? 'ins-step-done' : n === _insStep ? 'ins-step-active' : 'ins-step-locked';
-    return `
-      <div class="ins-step ${cls}">
-        <div class="ins-step-dot"></div>
-        <div class="ins-step-num">${n}단계</div>
-        <div class="ins-step-label">${label}</div>
-      </div>`;
-  }).join('');
-  return `<div class="ins-step-bar">${items}</div>`;
+    return `<div class="ins-step ${cls}"><div class="ins-step-dot"></div><div class="ins-step-num">${n}단계</div><div class="ins-step-label">${label}</div></div>`;
+  }).join('')}</div>`;
 }
 
 // ── 1단계 ──
@@ -493,7 +469,7 @@ function insStep2HTML() {
   const docListHTML = !cl.insurance_type
     ? `<div class="ins-banner ins-banner-info">보험종목을 선택하면 필수서류 목록이 표시됩니다.</div>`
     : _insRequired.map(doc => {
-        const done = uploadedSet.has(doc.doc_code);
+        const done       = uploadedSet.has(doc.doc_code);
         const uploadedAt = done
           ? (_insUploaded.find(u => u.doc_code === doc.doc_code)?.uploaded_at?.slice(0,10) || '')
           : null;
@@ -515,7 +491,7 @@ function insStep2HTML() {
       }).join('');
 
   const allRequired = _insRequired.filter(d => d.is_required).every(d => uploadedSet.has(d.doc_code));
-  const canNext = !!cl.insurance_type && !!cl.accident_date && allRequired;
+  const canNext     = !!cl.insurance_type && !!cl.accident_date && allRequired;
 
   return `
     <div class="card">
@@ -621,7 +597,6 @@ function insStep4HTML() {
         displayVal = String(val);
       }
     }
-
     return `
       <div class="ins-draft-section" style="margin-bottom:16px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
@@ -647,12 +622,10 @@ function insStep4HTML() {
 
   return `
     <div class="ins-banner ins-banner-success">${draftInfo} <span id="insDraftSaving" style="margin-left:8px;opacity:.6;display:none">저장 중…</span></div>
-
     <div class="card">
       <div style="font-size:14px;font-weight:900;margin-bottom:14px">손해사정서 초안 — 섹션별 검토·수정</div>
       ${sectionsHTML}
     </div>
-
     <div class="ins-action-bar">
       <button class="btn btn-ghost" onclick="insGoStep(3)">이전</button>
       <div style="display:flex;gap:8px">
@@ -667,10 +640,9 @@ function insStep4HTML() {
 // ── 5단계 ──
 function insStep5HTML() {
   const submitted = _insClaim?.insurance_tab_status === 'pdf_submitted';
-  const banner = submitted
+  const banner    = submitted
     ? `<div class="ins-banner ins-banner-success">✓ 보험사 제출 완료 처리됨 — 사건 종결 대기</div>`
     : '';
-
   return `
     ${banner}
     <div class="card">
@@ -693,7 +665,6 @@ function insStep5HTML() {
           <div class="detail-item"><label>담당자</label><span>${_insClaim?.insurer_contact||'—'}</span></div>
         </div>`}
     </div>
-
     <div class="ins-action-bar">
       <button class="btn btn-ghost" onclick="insGoStep(4)">이전</button>
       <span class="badge ${submitted?'badge-green':'badge-blue'}">${submitted?'PDF 제출 완료':'제출 대기'}</span>
@@ -707,13 +678,11 @@ function insStep5HTML() {
 function insGoStep(n) {
   _insStep = n;
   insRender();
-  // 3단계 진입 시 체크리스트 자동 로드
   if (n === 3) insLoadChecklist();
 }
 
 async function insGoStep3Click() {
   try {
-    // 현재 입력값 먼저 저장
     await insSaveInfoClick();
     insGoStep(3);
   } catch(e) {
@@ -721,26 +690,24 @@ async function insGoStep3Click() {
   }
 }
 
+// ✅ 수정됨: 깨진 함수 복원
 async function insSaveInfoClick() {
   const payload = {
-async function insHandleFileUpload(e, docCode, docName) {
-  const file = e.target.files?.[0];
-  if (!file) return;
-  try {
-    await insUploadDoc(file, docCode, docName);
-    toast(docName + ' 업로드 완료', 's');
-    // 업로드 후 목록 새로고침
-    _insUploaded = await insFetchUploadedDocs(_insClaim.id);
-    insRender();
-  } catch(err) {
-    console.error('업로드 에러 상세:', err); // ← 개발자도구 콘솔에서 정확한 에러 확인
-    toast('업로드 실패: ' + err.message, 'e');
-  }
-  e.target.value = '';
+    insurance_type: document.getElementById('insTypeSelect')?.value || _insClaim?.insurance_type,
+    accident_date:  document.getElementById('insDateInput')?.value  || _insClaim?.accident_date,
+    insurer_name:   document.getElementById('insInsurerInput')?.value,
+    coverage_limit: document.getElementById('insCovInput')?.value,
+    deductible:     document.getElementById('insDedInput')?.value,
+  };
+  await insSaveInfo(payload);
+  toast('임시 저장 완료', 's');
 }
+
+// ✅ 수정됨: 깨진 함수 복원
+async function insOnTypeChange(val) {
+  _insClaim    = { ..._insClaim, insurance_type: val };
   _insRequired = await insFetchRequiredDocs(val);
-  // 2단계 재렌더 (입력값 유지)
-  _insStep = 2;
+  _insStep     = 2;
   insRender();
 }
 
@@ -750,8 +717,10 @@ async function insHandleFileUpload(e, docCode, docName) {
   try {
     await insUploadDoc(file, docCode, docName);
     toast(docName + ' 업로드 완료', 's');
+    _insUploaded = await insFetchUploadedDocs(_insClaim.id);
     insRender();
   } catch(err) {
+    console.error('업로드 에러 상세:', err);
     toast('업로드 실패: ' + err.message, 'e');
   }
   e.target.value = '';
@@ -759,9 +728,9 @@ async function insHandleFileUpload(e, docCode, docName) {
 
 async function insLoadChecklist() {
   try {
-    const checks = await insValidateReady();
+    const checks  = await insValidateReady();
     const allPass = checks.every(c => c.pass);
-    const html = checks.map(c => `
+    const html    = checks.map(c => `
       <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;color:${c.pass?'var(--green)':'var(--red)'}">
         <span style="width:18px;height:18px;border-radius:50%;background:${c.pass?'var(--green)':'var(--red)'};color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0">${c.pass?'✓':'!'}</span>
         <div>
@@ -772,14 +741,12 @@ async function insLoadChecklist() {
 
     const box = document.getElementById('insChecklist');
     if (box) {
-      box.style.background = allPass ? 'var(--green-soft)' : 'var(--red-soft)';
-      box.style.borderLeft = `3px solid ${allPass ? 'var(--green)' : 'var(--red)'}`;
+      box.style.background  = allPass ? 'var(--green-soft)' : 'var(--red-soft)';
+      box.style.borderLeft  = `3px solid ${allPass ? 'var(--green)' : 'var(--red)'}`;
       box.innerHTML = `<div style="font-size:14px;font-weight:900;margin-bottom:12px">생성 준비 체크리스트</div>${html}`;
     }
-
     const btn = document.getElementById('insGenerateBtn');
     if (btn) btn.disabled = !allPass;
-
     if (allPass) await insMarkReady();
   } catch(e) {
     toast('검증 오류: ' + e.message, 'e');
@@ -790,44 +757,43 @@ async function insGenerateClick() {
   if (_insGenerating || !_insField) return;
   _insGenerating = true;
 
-  const btn = document.getElementById('insGenerateBtn');
-  const bar = document.getElementById('insProgressBar');
-  const fill = document.getElementById('insProgressFill');
+  const btn   = document.getElementById('insGenerateBtn');
+  const bar   = document.getElementById('insProgressBar');
+  const fill  = document.getElementById('insProgressFill');
   const label = document.getElementById('insProgressLabel');
   if (btn) btn.disabled = true;
   if (bar) bar.style.display = 'block';
 
   try {
     const inputVars = {
-      insurance_type_label:    INS_TYPE_LABELS[_insClaim.insurance_type] || _insClaim.insurance_type,
-      accident_date:           _insClaim.accident_date,
-      insurer_name:            _insClaim.insurer_name,
-      coverage_limit:          _insClaim.coverage_limit,
-      deductible:              _insClaim.deductible,
-      insured_name_masked:     '홍○○',
-      accident_location_masked:'용인시 수지구',
-      repair_cost:             _insField.repair_cost,
-      repair_opinion:          _insField.repair_opinion,
-      work_done_at:            (_insField.work_done_at||'').slice(0,10),
+      insurance_type_label:     INS_TYPE_LABELS[_insClaim.insurance_type] || _insClaim.insurance_type,
+      accident_date:            _insClaim.accident_date,
+      insurer_name:             _insClaim.insurer_name,
+      coverage_limit:           _insClaim.coverage_limit,
+      deductible:               _insClaim.deductible,
+      insured_name_masked:      '홍○○',
+      accident_location_masked: '용인시 수지구',
+      repair_cost:              _insField.repair_cost,
+      repair_opinion:           _insField.repair_opinion,
+      work_done_at:             (_insField.work_done_at||'').slice(0,10),
     };
 
     const generated = await insRunClaude(inputVars, (stage, stageName, total) => {
-      if (btn)  btn.textContent = `${stage}/${total} — ${stageName}`;
-      if (fill) fill.style.width = `${(stage/total)*100}%`;
-      if (label) label.textContent = stageName + ' 분석 중…';
+      if (btn)   btn.textContent     = `${stage}/${total} — ${stageName}`;
+      if (fill)  fill.style.width    = `${(stage/total)*100}%`;
+      if (label) label.textContent   = stageName + ' 분석 중…';
     });
 
     const saved = await insSaveDraft(inputVars, generated);
     _insSections = generated;
-    _insDraft = {
+    _insDraft    = {
       id:            saved.draft_id,
       draft_version: saved.draft_version,
       model_name:    INS_MODEL_NAME,
       created_at:    new Date().toISOString(),
     };
     _insClaim = { ..._insClaim, insurance_tab_status: 'draft_generated', current_draft_id: saved.draft_id };
-
-    _insStep = 4;
+    _insStep  = 4;
     insRender();
     toast('초안 생성 완료!', 's');
   } catch(e) {
@@ -844,7 +810,6 @@ async function insRegenerate() {
   _insStep = 3;
   insRender();
   await insLoadChecklist();
-  // 체크리스트 통과 시 자동 생성
   const checks = await insValidateReady();
   if (checks.every(c => c.pass)) await insGenerateClick();
 }
@@ -873,7 +838,6 @@ async function insConfirmEdit(key) {
 
   _insSections = { ..._insSections, [key]: val };
 
-  // 화면 업데이트
   const display = document.getElementById(`insSecDisplay_${key}`);
   const editDiv = document.getElementById(`insSecEdit_${key}`);
   if (display) {
@@ -888,7 +852,6 @@ async function insConfirmEdit(key) {
   }
   if (editDiv) editDiv.style.display = 'none';
 
-  // DB 저장
   const savingEl = document.getElementById('insDraftSaving');
   if (savingEl) savingEl.style.display = 'inline';
   try { await insUpdateDraftSections(_insSections); }
