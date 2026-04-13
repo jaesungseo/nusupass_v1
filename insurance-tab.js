@@ -227,6 +227,14 @@ async function insSaveInfo(payload) {
 }
 
 async function insUploadDoc(file, docCode, docName) {
+  // ✅ 방어 코드 추가
+  if (!_insClaim || !_insClaim.id) throw new Error('사건 정보가 없습니다. 페이지를 새로고침 해주세요.');
+
+  // 파일 유효성 검사
+  const allowedTypes = ['application/pdf','image/jpeg','image/jpg','image/png','image/webp','image/heic'];
+  if (!allowedTypes.includes(file.type)) throw new Error('허용되지 않는 파일 형식입니다: ' + file.type);
+  if (file.size > 20 * 1024 * 1024) throw new Error('파일이 20MB를 초과합니다.');
+
   // 기존 is_latest 해제
   await sb.from('insurance_doc_uploads')
     .update({ is_latest: false })
@@ -234,15 +242,25 @@ async function insUploadDoc(file, docCode, docName) {
     .eq('doc_code', docCode)
     .eq('is_latest', true);
 
-  const safeExt = file.name.split('.').pop().toLowerCase() || 'pdf';
+  const ext = file.name.split('.').pop().toLowerCase() || 'pdf';
+  const safeExt = ['pdf','jpg','jpeg','png','webp','heic'].includes(ext) ? ext : 'pdf';
   const filePath = `${_insClaim.id}/${docCode}/${Date.now()}.${safeExt}`;
-  const { error: upErr } = await sb.storage.from('insurance-docs').upload(filePath, file, { cacheControl: '3600', upsert: true });
+
+  const { error: upErr } = await sb.storage
+    .from('insurance-docs')
+    .upload(filePath, file, { cacheControl: '3600', upsert: true });
+
   if (upErr) throw new Error('Storage 업로드 실패: ' + upErr.message);
 
   const { error: dbErr } = await sb.from('insurance_doc_uploads').insert({
-    claim_id: _insClaim.id, doc_code: docCode, doc_name: docName,
-    doc_category: 'insured', file_path: filePath,
-    file_kind: 'original', source_type: 'admin', is_latest: true,
+    claim_id:     _insClaim.id,
+    doc_code:     docCode,
+    doc_name:     docName,
+    doc_category: 'insured',
+    file_path:    filePath,
+    file_kind:    'original',
+    source_type:  'admin',
+    is_latest:    true,
   });
   if (dbErr) throw new Error('서류 DB 저장 실패: ' + dbErr.message);
 
@@ -705,18 +723,21 @@ async function insGoStep3Click() {
 
 async function insSaveInfoClick() {
   const payload = {
-    insurance_type: document.getElementById('insTypeSelect')?.value || _insClaim?.insurance_type,
-    accident_date:  document.getElementById('insDateInput')?.value  || _insClaim?.accident_date,
-    insurer_name:   document.getElementById('insInsurerInput')?.value,
-    coverage_limit: document.getElementById('insCovInput')?.value,
-    deductible:     document.getElementById('insDedInput')?.value,
-  };
-  await insSaveInfo(payload);
-  toast('임시 저장 완료', 's');
+async function insHandleFileUpload(e, docCode, docName) {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  try {
+    await insUploadDoc(file, docCode, docName);
+    toast(docName + ' 업로드 완료', 's');
+    // 업로드 후 목록 새로고침
+    _insUploaded = await insFetchUploadedDocs(_insClaim.id);
+    insRender();
+  } catch(err) {
+    console.error('업로드 에러 상세:', err); // ← 개발자도구 콘솔에서 정확한 에러 확인
+    toast('업로드 실패: ' + err.message, 'e');
+  }
+  e.target.value = '';
 }
-
-async function insOnTypeChange(val) {
-  _insClaim = { ..._insClaim, insurance_type: val };
   _insRequired = await insFetchRequiredDocs(val);
   // 2단계 재렌더 (입력값 유지)
   _insStep = 2;
