@@ -1,3 +1,4 @@
+// v2026-04-13-02 — cache bust
 /**
  * insurance-tab.js
  * 누수패스 보험자료 탭 — Vanilla JS 완성본 (Phase 2 + Phase 3)
