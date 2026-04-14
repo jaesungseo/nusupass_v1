@@ -1329,9 +1329,11 @@ async function submitWorkDone(){
       for(const [k,url] of Object.entries(uploads)){
         await sb.from('case_documents').insert({
           case_id: pa.case_id,
+          document_type: `repair_photo_${k}`,
           doc_type: `repair_photo_${k}`,
           file_url: url,
           file_name: `${k}.jpg`,
+          uploaded_by_type: 'partner',
           uploaded_by_role: 'partner'
         });
       }
