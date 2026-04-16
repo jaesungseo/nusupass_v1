@@ -653,90 +653,128 @@ async function ins3RunExtraction() {
     }
 
     // 3. Claude API 호출 (서류 텍스트 추출 + 피보험자 지위 판단)
-    const messages = [{ role: 'user', content: [] }];
+    // ── 서류별 순차 추출 (413 방지: 파일을 나눠서 호출) ──
+    clearInterval(progressTimer);
 
-    // 서류 문서 첨부 (PDF/이미지)
-    const docDescriptions = {
-      insurance_policy:     '보험증권',
-      building_reg_insured: '피보험자(가해자) 건축물대장',
-      building_reg_victim:  '피해자 건축물대장',
-      resident_reg:         '주민등록등본',
-    };
-
-    for (const [key, b64data] of Object.entries(b64)) {
-      if (!b64data) continue;
-      const doc = docs[key];
-      const ext = (doc.file_path || '').split('.').pop().toLowerCase();
+    async function callClaude(docKey, b64data, filePath, prompt, systemMsg) {
+      const ext = (filePath || '').split('.').pop().toLowerCase();
       const isPdf = ext === 'pdf';
-      messages[0].content.push({
-        type: isPdf ? 'document' : 'image',
-        source: {
-          type: 'base64',
-          media_type: isPdf ? 'application/pdf' : (ext === 'png' ? 'image/png' : 'image/jpeg'),
-          data: b64data,
-        },
-        ...(isPdf ? { title: docDescriptions[key] } : {}),
+      const mediaType = isPdf ? 'application/pdf'
+        : (ext === 'png' ? 'image/png' : 'image/jpeg');
+
+      const resp = await fetch('/api/claude', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model:      INS_MODEL,
+          max_tokens: 800,
+          system:     systemMsg,
+          messages: [{
+            role: 'user',
+            content: [
+              {
+                type: isPdf ? 'document' : 'image',
+                source: { type: 'base64', media_type: mediaType, data: b64data },
+              },
+              { type: 'text', text: prompt },
+            ],
+          }],
+        }),
       });
+      if (!resp.ok) {
+        const err = await resp.json().catch(()=>({}));
+        throw new Error(`API 오류 ${resp.status}: ${err?.error?.message || ''}`);
+      }
+      const r = await resp.json();
+      const raw = r.content?.[0]?.text || '';
+      return JSON.parse(raw.replace(/```json|```/g,'').trim());
     }
 
-    messages[0].content.push({
-      type: 'text',
-      text: `위 서류들을 분석하여 아래 JSON을 반환하세요. 마크다운 없이 순수 JSON만 반환합니다.
-개인정보는 반드시 비식별화: 성명→홍○○, 주민번호→앞6자리만, 주소→시·구 단위까지만.
+    const SYS = `대한민국 독립손해사정사입니다. 서류에서 정보를 추출합니다.
+개인정보 비식별화: 성명→홍○○, 주민번호→앞6자리만, 주소→시·구 단위까지.
+순수 JSON만 반환. 마크다운 코드블록 금지.`;
 
+    const parsed = {
+      policy_product:'', policy_no:'', insurance_type:'daily_liability_old',
+      insurance_type_reason:'', policy_start:'', policy_end:'',
+      insured_name:'홍○○', insured_status:'확인불가', insured_status_reason:'',
+      coverage_limit:null, deductible:null,
+      victim_address:'', address_match:'ok', address_match_note:null,
+      _confidence:{},
+    };
+
+    // 1) 보험증권 → 핵심 정보 추출
+    if (b64['insurance_policy']) {
+      if (fill) fill.style.width='30%';
+      if (label) label.textContent='보험증권 분석 중…';
+      try {
+        const r1 = await callClaude('insurance_policy', b64['insurance_policy'],
+          docs['insurance_policy']?.file_path,
+          `보험증권에서 아래 JSON을 추출하세요.
 {
-  "policy_product": "보험종목명 (보험증권에서)",
-  "policy_no": "증권번호 (보험증권에서, *마스킹 유지)",
-  "insurance_type": "daily_liability_old | daily_liability_new | facility_liability | water_damage",
-  "insurance_type_reason": "구형/신형 판단 근거 1문장",
-  "policy_start": "YYYY.MM.DD",
-  "policy_end": "YYYY.MM.DD",
-  "insured_name": "홍○○ (비식별)",
-  "insured_status": "소유자 겸 점유자 | 임차인 겸 점유자 | 임대인 | 확인불가",
-  "insured_status_reason": "피보험자 지위 판단 근거 — 건축물대장 소유자와 주민등록 세대주 비교",
-  "coverage_limit": 숫자 (원),
-  "deductible": 숫자 (원),
-  "victim_address": "피해자 건축물대장 기준 동호수 (예: 101동 1204호)",
-  "address_match": "ok | warn | error",
-  "address_match_note": "주소 표기 차이 설명 (일치하면 null)",
-  "_confidence": {
-    "policy_product": "ok | warn",
-    "policy_no": "ok | warn",
-    "insurance_type": "ok | warn",
-    "policy_period": "ok | warn",
-    "insured_name": "ok | warn",
-    "insured_status": "ok | warn",
-    "coverage_limit": "ok | warn",
-    "deductible": "ok | warn",
-    "victim_address": "ok | warn | error"
-  }
-}`,
-    });
+  "policy_product":"보험종목명",
+  "policy_no":"증권번호(*마스킹유지)",
+  "insurance_type":"daily_liability_old|daily_liability_new|facility_liability|water_damage",
+  "insurance_type_reason":"구형/신형 판단근거 1문장",
+  "policy_start":"YYYY.MM.DD",
+  "policy_end":"YYYY.MM.DD",
+  "insured_name":"홍○○",
+  "coverage_limit":숫자,
+  "deductible":숫자,
+  "_confidence":{"policy_product":"ok|warn","policy_no":"ok","insurance_type":"ok|warn","policy_period":"ok|warn","insured_name":"ok","coverage_limit":"ok|warn","deductible":"ok|warn"}
+}`, SYS);
+        Object.assign(parsed, r1);
+        if (r1._confidence) Object.assign(parsed._confidence, r1._confidence);
+      } catch(e) { console.warn('보험증권 추출 실패:', e.message); }
+    }
 
-    clearInterval(progressTimer);
-    if (fill)  fill.style.width  = '85%';
-    if (label) label.textContent = 'Claude 응답 대기 중…';
+    // 2) 가해자 건축물대장 + 주민등록등본 → 피보험자 지위 판단
+    const hasRegInsured = b64['building_reg_insured'];
+    const hasResident   = b64['resident_reg'];
+    if (hasRegInsured || hasResident) {
+      if (fill) fill.style.width='60%';
+      if (label) label.textContent='피보험자 지위 판단 중…';
+      // 두 서류 중 있는 것 우선 사용 (건축물대장 우선)
+      const docKey  = hasRegInsured ? 'building_reg_insured' : 'resident_reg';
+      const b64data = b64[docKey];
+      try {
+        const r2 = await callClaude(docKey, b64data,
+          docs[docKey]?.file_path,
+          `이 서류(건축물대장 또는 주민등록등본)를 분석하여 피보험자 지위를 판단하세요.
+{
+  "insured_status":"소유자 겸 점유자|임차인 겸 점유자|임대인|확인불가",
+  "insured_status_reason":"판단근거 1문장",
+  "address_match":"ok|warn|error",
+  "address_match_note":"주소 표기 차이 설명(일치하면 null)",
+  "_confidence":{"insured_status":"ok|warn"}
+}
+피보험자 지위 판단기준: 건축물대장 소유자=세대주이면 '소유자 겸 점유자', 다르면 '임차인 겸 점유자'.
+주소 일치 판단: 보험증권 주소(${parsed.policy_product ? '기확인' : '미확인'})와 비교. 도로명↔지번 차이는 warn.`, SYS);
+        if (r2.insured_status) parsed.insured_status = r2.insured_status;
+        if (r2.insured_status_reason) parsed.insured_status_reason = r2.insured_status_reason;
+        if (r2.address_match) parsed.address_match = r2.address_match;
+        if (r2.address_match_note) parsed.address_match_note = r2.address_match_note;
+        if (r2._confidence) Object.assign(parsed._confidence, r2._confidence);
+      } catch(e) { console.warn('피보험자 지위 판단 실패:', e.message); }
+    }
 
-    const response = await fetch('/api/claude', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model:      INS_MODEL,
-        max_tokens: 1500,
-        system: `당신은 대한민국 독립손해사정사입니다. 
-업로드된 보험 서류(보험증권, 건축물대장, 주민등록등본)를 읽고 정보를 추출합니다.
-개인정보(실명, 전체 주민번호, 전체 주소)는 반드시 비식별화하세요.
-구형/신형 약관 판단: 보험증권 특약 조항에 '누수 직접손해' 담보가 있으면 신형(new), 없으면 구형(old).
-피보험자 지위 판단: 건축물대장 소유자와 주민등록 세대주가 동일하면 소유자, 다르면 임차인.
-반드시 순수 JSON만 반환하세요. 마크다운 코드블록 금지.`,
-        messages,
-      }),
-    });
+    // 3) 피해자 건축물대장 → 피해자 소재지
+    if (b64['building_reg_victim']) {
+      if (fill) fill.style.width='85%';
+      if (label) label.textContent='피해자 소재지 추출 중…';
+      try {
+        const r3 = await callClaude('building_reg_victim', b64['building_reg_victim'],
+          docs['building_reg_victim']?.file_path,
+          `피해자 건축물대장에서 피해자 소재지(동호수)를 추출하세요.
+{"victim_address":"동호수 (예: 101동 1204호)","_confidence":{"victim_address":"ok|warn"}}`, SYS);
+        if (r3.victim_address) parsed.victim_address = r3.victim_address;
+        if (r3._confidence) Object.assign(parsed._confidence, r3._confidence);
+      } catch(e) { console.warn('피해자 소재지 추출 실패:', e.message); }
+    }
 
-    if (!response.ok) throw new Error('API 오류: ' + response.status);
-    const result = await response.json();
-    const raw    = result.content?.[0]?.text || '';
-    const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
+    if (fill)  fill.style.width  = '100%';
+    if (label) label.textContent = '✓ 추출 완료!';
+    setTimeout(() => { if (loading) loading.style.display = 'none'; }, 800);
 
     if (fill)  fill.style.width  = '100%';
     if (label) label.textContent = '✓ 추출 완료!';
