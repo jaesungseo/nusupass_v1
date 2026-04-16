@@ -38,9 +38,14 @@ const INS_TYPE_LABELS = {
 };
 
 const INS_INSURERS = [
-  'DB손해보험주식회사','삼성화재해상보험','현대해상화재보험',
+  '삼성화재해상보험','현대해상화재보험','DB손해보험주식회사',
   'KB손해보험','메리츠화재','한화손해보험','흥국화재해상보험',
-  '롯데손해보험','MG손해보험',
+  '롯데손해보험','농협손해보험',
+];
+
+const INS_CAUSES = [
+  '배관','방수층','분배기','보일러',
+  '세탁기 호스이탈','배수구 막힘','수도꼭지 미잠금','기타(직접입력)',
 ];
 
 // 필수/선택 서류 정의
@@ -253,22 +258,22 @@ function insStep1HTML() {
       <div class="form-group">
         <label class="form-label">참조 (담당팀/담당자)</label>
         <input class="form-control" id="ins1-contact" value="${cl.insurer_contact || ''}"
-          placeholder="예: 가정종합보험파트 홍길동 과장"/>
+          placeholder="예: 일반보험팀 OOO 과장"/>
       </div>
     </div>
     <div id="ins1-custom-wrap" style="display:none;margin-top:-4px;margin-bottom:12px">
       <label class="form-label">보험사명 직접 입력</label>
       <input class="form-control" id="ins1-insurer-custom" placeholder="보험사명을 입력하세요"/>
     </div>
+    <div id="ins1-cause-custom-wrap" style="display:none;margin-top:-4px;margin-bottom:12px">
+      <label class="form-label">사고원인 직접 입력</label>
+      <input class="form-control" id="ins1-cause-custom" placeholder="사고원인을 직접 입력하세요"/>
+    </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <div class="form-group">
         <label class="form-label">사고원인 분류 *</label>
-        <select class="form-control" id="ins1-cause">
-          <option value="배관 노후화" ${(cl.accident_cause_type||'')===('배관 노후화')?'selected':''}>배관 노후화</option>
-          <option value="개인기기 결함 (정수기·세탁기 등)" ${(cl.accident_cause_type||'')==='개인기기 결함 (정수기·세탁기 등)'?'selected':''}>개인기기 결함 (정수기·세탁기 등)</option>
-          <option value="방수 불량" ${(cl.accident_cause_type||'')==='방수 불량'?'selected':''}>방수 불량</option>
-          <option value="설비 시공 불량" ${(cl.accident_cause_type||'')==='설비 시공 불량'?'selected':''}>설비 시공 불량</option>
-          <option value="기타" ${(cl.accident_cause_type||'')==='기타'?'selected':''}>기타</option>
+        <select class="form-control" id="ins1-cause" onchange="ins1OnCauseChange(this.value)">
+          ${INS_CAUSES.map(c => `<option value="${c}" ${(cl.accident_cause_type||'')===c?'selected':''}>${c}</option>`).join('')}
         </select>
       </div>
       <div class="form-group">
@@ -288,6 +293,11 @@ function ins1OnInsurerChange(val) {
   document.getElementById('ins1-custom-wrap').style.display = val === '기타' ? 'block' : 'none';
 }
 
+function ins1OnCauseChange(val) {
+  document.getElementById('ins1-cause-custom-wrap').style.display =
+    val === '기타(직접입력)' ? 'block' : 'none';
+}
+
 async function insStep1Save() {
   let insurer = document.getElementById('ins1-insurer').value;
   if (insurer === '기타') insurer = document.getElementById('ins1-insurer-custom')?.value?.trim() || '';
@@ -298,7 +308,9 @@ async function insStep1Save() {
       p_claim_id:      _insClaim.id,
       p_insurer_name:  insurer,
       p_insurer_contact: document.getElementById('ins1-contact').value || null,
-      p_cause_type:    document.getElementById('ins1-cause').value,
+      p_cause_type:    (document.getElementById('ins1-cause').value === '기타(직접입력)'
+        ? document.getElementById('ins1-cause-custom')?.value?.trim() || '기타'
+        : document.getElementById('ins1-cause').value),
       p_investigator:  document.getElementById('ins1-investigator').value,
       p_submit_date:   document.getElementById('ins1-date').value,
     });
@@ -465,90 +477,111 @@ async function insUploadFile(file, docCode, docName) {
 // ─────────────────────────────────────────────
 function insStep3HTML() {
   const cl = _insClaim || {};
-
+  const hasExtracted = !!(cl.policy_product || cl.policy_no);
   const addrMatch = cl.address_match || 'ok';
   const addrColor = addrMatch === 'ok' ? 'var(--green)' : addrMatch === 'warn' ? 'var(--amber)' : 'var(--red)';
   const addrBg    = addrMatch === 'ok' ? 'var(--green-soft)' : addrMatch === 'warn' ? 'var(--amber-soft)' : 'var(--red-soft)';
 
+  // 신뢰도 배지
+  const conf = (key) => {
+    const v = (cl._conf || {})[key];
+    if (!v || v === 'ok')   return '<span class="ins-conf-ok">자동추출</span>';
+    if (v === 'warn')        return '<span class="ins-conf-warn">추정</span>';
+    return '<span class="ins-conf-err">확인필요</span>';
+  };
+
   return `
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-      <div style="font-size:14px;font-weight:900">🔍 서류 자동 추출 결과</div>
-      <div style="font-size:11px;color:var(--muted)">틀린 값은 직접 수정 가능</div>
+      <div>
+        <div style="font-size:14px;font-weight:900">🔍 서류 자동 추출 결과</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">Claude가 보험증권·건축물대장을 읽고 자동으로 채웁니다 · 틀린 값은 직접 수정</div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="ins3RunExtraction()">
+        ${hasExtracted ? '↺ 재추출' : '▶ 서류 분석 시작'}
+      </button>
     </div>
 
-    <div id="ins3-extract-loading" style="display:none;padding:12px;background:var(--primary-soft);border-radius:8px;margin-bottom:12px">
-      <span class="spinner"></span> Claude가 서류를 분석 중입니다… (10~30초 소요)
+    <div id="ins3-loading" style="display:none;padding:14px;background:var(--primary-soft);border-radius:8px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <span class="spinner"></span>
+        <span id="ins3-label" style="font-size:13px;color:var(--primary)">보험증권 분석 중…</span>
+      </div>
+      <div style="height:5px;background:var(--line);border-radius:3px;overflow:hidden">
+        <div id="ins3-fill" style="height:100%;background:var(--primary);border-radius:3px;transition:width .4s;width:0%"></div>
+      </div>
     </div>
+
+    ${!hasExtracted ? `<div class="ins-banner ins-banner-info" style="margin-bottom:12px">
+      서류 업로드 완료 후 위 버튼을 누르면 아래 항목이 자동으로 채워집니다.
+    </div>` : ''}
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-
       <div class="form-group">
-        <label class="form-label">보험종목</label>
-        <input class="form-control" id="ex-product" value="${cl.policy_product||''}" placeholder="보험증권에서 추출"/>
+        <label class="form-label">보험종목 ${conf('policy_product')}</label>
+        <input class="form-control" id="ex-product" value="${cl.policy_product||''}" placeholder="보험증권에서 자동 추출"/>
       </div>
       <div class="form-group">
-        <label class="form-label">증권번호</label>
-        <input class="form-control" id="ex-policy-no" value="${cl.policy_no||''}" placeholder="보험증권에서 추출"/>
+        <label class="form-label">증권번호 ${conf('policy_no')}</label>
+        <input class="form-control" id="ex-policy-no" value="${cl.policy_no||''}" placeholder="보험증권에서 자동 추출"/>
       </div>
       <div class="form-group">
-        <label class="form-label">약관 구분</label>
+        <label class="form-label">약관 구분 ${conf('insurance_type')}<span style="font-size:10px;color:var(--muted);font-weight:400"> Claude 판단</span></label>
         <select class="form-control" id="ex-policy-type">
           <option value="daily_liability_old" ${(cl.insurance_type||'')==='daily_liability_old'?'selected':''}>일상생활배상책임 (구형)</option>
           <option value="daily_liability_new" ${(cl.insurance_type||'')==='daily_liability_new'?'selected':''}>일상생활배상책임 (신형)</option>
           <option value="facility_liability"  ${(cl.insurance_type||'')==='facility_liability' ?'selected':''}>시설소유(관리)자배상책임</option>
-          <option value="water_damage"        ${(cl.insurance_type||'')==='water_damage'       ?'selected':''}>급배수누출손해</option>
+          <option value="water_damage"        ${(cl.insurance_type||'')==='water_damage'?'selected':''}>급배수누출손해</option>
         </select>
       </div>
       <div class="form-group">
-        <label class="form-label">보험기간</label>
+        <label class="form-label">보험기간 ${conf('policy_period')}</label>
         <input class="form-control" id="ex-period"
           value="${cl.policy_start && cl.policy_end ? cl.policy_start+' ~ '+cl.policy_end : ''}"
-          placeholder="예: 2009.05.28 ~ 2090.05.28"/>
+          placeholder="보험증권에서 자동 추출"/>
       </div>
       <div class="form-group">
-        <label class="form-label">피보험자</label>
-        <input class="form-control" id="ex-insured-name" value="${cl.insured_name||''}" placeholder="비식별 처리 (홍○○)"/>
+        <label class="form-label">피보험자 ${conf('insured_name')}</label>
+        <input class="form-control" id="ex-insured-name" value="${cl.insured_name||''}" placeholder="성명 비식별 (홍○○)"/>
       </div>
       <div class="form-group">
-        <label class="form-label">피보험자 지위</label>
+        <label class="form-label">피보험자 지위 ${conf('insured_status')}<span style="font-size:10px;color:var(--muted);font-weight:400"> Claude 판단</span></label>
         <select class="form-control" id="ex-insured-status">
-          <option value="임차인 겸 점유자" ${(cl.insured_status||'')==='임차인 겸 점유자'?'selected':''}>임차인 겸 점유자</option>
           <option value="소유자 겸 점유자" ${(cl.insured_status||'')==='소유자 겸 점유자'?'selected':''}>소유자 겸 점유자</option>
-          <option value="임대인"            ${(cl.insured_status||'')==='임대인'?'selected':''}>임대인</option>
-          <option value="확인불가"          ${(cl.insured_status||'')==='확인불가'?'selected':''}>확인불가</option>
+          <option value="임차인 겸 점유자" ${(cl.insured_status||'')==='임차인 겸 점유자'?'selected':''}>임차인 겸 점유자</option>
+          <option value="임대인"           ${(cl.insured_status||'')==='임대인'?'selected':''}>임대인</option>
+          <option value="확인불가"         ${(cl.insured_status||'')==='확인불가'?'selected':''}>확인불가</option>
         </select>
       </div>
       <div class="form-group">
-        <label class="form-label">보상한도액 (원)</label>
-        <input class="form-control" id="ex-coverage" value="${cl.coverage_limit||''}" type="number" placeholder="100000000"/>
+        <label class="form-label">보상한도액 ${conf('coverage_limit')}</label>
+        <input class="form-control" id="ex-coverage" value="${cl.coverage_limit||''}" type="number" placeholder="보험증권에서 자동 추출"/>
       </div>
       <div class="form-group">
-        <label class="form-label">자기부담금 (원)</label>
-        <input class="form-control" id="ex-deductible" value="${cl.deductible||''}" type="number" placeholder="200000"/>
+        <label class="form-label">자기부담금 ${conf('deductible')}</label>
+        <input class="form-control" id="ex-deductible" value="${cl.deductible||''}" type="number" placeholder="보험증권에서 자동 추출"/>
       </div>
       <div class="form-group" style="grid-column:1/-1">
-        <label class="form-label">피해자 소재지 (동호수)</label>
+        <label class="form-label">피해자 소재지 ${conf('victim_address')}<span style="font-size:10px;color:var(--muted);font-weight:400"> 피해자 건축물대장 기반</span></label>
         <input class="form-control" id="ex-victim-addr" value="${cl.victim_address||''}" placeholder="예: 101동 1204호"/>
       </div>
-
     </div>
 
-    <!-- 주소 일치 여부 -->
+    <!-- 주소 일치 판단 -->
     <div style="margin-top:12px;padding:12px;background:${addrBg};border-radius:8px;border-left:3px solid ${addrColor}">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-        <strong style="font-size:13px;color:${addrColor}">주소 일치 여부</strong>
+        <strong style="font-size:13px;color:${addrColor}">주소 일치 (보험증권 ↔ 건축물대장)</strong>
         <select class="form-control" id="ex-addr-match" style="width:auto;font-size:12px" onchange="ins3UpdateAddrStyle()">
           <option value="ok"    ${addrMatch==='ok'   ?'selected':''}>✓ 일치</option>
-          <option value="warn"  ${addrMatch==='warn' ?'selected':''}>⚠ 추정 일치 (확인 필요)</option>
+          <option value="warn"  ${addrMatch==='warn' ?'selected':''}>⚠ 추정 일치</option>
           <option value="error" ${addrMatch==='error'?'selected':''}>✕ 불일치</option>
         </select>
       </div>
       <div id="ex-addr-note-wrap" style="display:${addrMatch!=='ok'?'block':'none'}">
         <input class="form-control" id="ex-addr-note" value="${cl.address_match_note||''}"
-          placeholder="예: 보험증권은 도로명, 건축물대장은 지번 — 동일 건물로 추정" style="font-size:12px"/>
+          placeholder="예: 보험증권 도로명 ↔ 건축물대장 지번 — 동일 건물 추정" style="font-size:12px"/>
         <div style="font-size:11px;color:var(--muted);margin-top:4px">
-          동일 건물 도로명/지번 표기 차이는 추정 일치, 동·호수가 다르면 불일치
+          도로명/지번 표기 차이 → 추정 일치 · 동·호수 불일치 → 불일치
         </div>
       </div>
     </div>
@@ -558,6 +591,203 @@ function insStep3HTML() {
     <button class="btn btn-ghost" onclick="insGoStep(2)">이전</button>
     <button class="btn btn-primary" onclick="insStep3Save()">저장 후 책임 판단 →</button>
   </div>`;
+}
+
+// ─────────────────────────────────────────────
+// STEP 3: Claude 서류 자동 추출
+// ─────────────────────────────────────────────
+async function ins3RunExtraction() {
+  const loading = document.getElementById('ins3-loading');
+  const fill    = document.getElementById('ins3-fill');
+  const label   = document.getElementById('ins3-label');
+  const btn     = document.querySelector('#insStepContent .btn-primary.btn-sm');
+  if (loading) loading.style.display = 'block';
+  if (btn) btn.disabled = true;
+
+  const stages = [
+    [10, '보험증권 읽는 중…'],
+    [30, '증권번호 · 보험기간 추출 중…'],
+    [50, '피보험자 정보 확인 중…'],
+    [65, '건축물대장 (가해자) 분석 중…'],
+    [80, '건축물대장 (피해자) 분석 중…'],
+    [90, '피보험자 지위 판단 중…'],
+    [100,'추출 완료'],
+  ];
+
+  try {
+    // 1. Supabase Storage에서 업로드된 서류 파일 Base64 변환
+    async function fetchBase64(filePath) {
+      const { data } = await sb.storage.from('insurance-docs').download(filePath);
+      if (!data) return null;
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload  = () => resolve(reader.result.split(',')[1]); // base64만
+        reader.onerror = reject;
+        reader.readAsDataURL(data);
+      });
+    }
+
+    // 진행 애니메이션 시작
+    let stageIdx = 0;
+    const progressTimer = setInterval(() => {
+      if (stageIdx < stages.length - 1) {
+        if (fill)  fill.style.width  = stages[stageIdx][0] + '%';
+        if (label) label.textContent = stages[stageIdx][1];
+        stageIdx++;
+      }
+    }, 900);
+
+    // 2. 서류별 Base64 준비
+    const docs = {
+      insurance_policy:     _insUploaded['insurance_policy'],
+      building_reg_insured: _insUploaded['building_reg_insured'],
+      building_reg_victim:  _insUploaded['building_reg_victim'],
+      resident_reg:         _insUploaded['resident_reg'],
+    };
+
+    const b64 = {};
+    for (const [key, doc] of Object.entries(docs)) {
+      if (doc?.file_path) {
+        try { b64[key] = await fetchBase64(doc.file_path); } catch(e) { b64[key] = null; }
+      }
+    }
+
+    // 3. Claude API 호출 (서류 텍스트 추출 + 피보험자 지위 판단)
+    const messages = [{ role: 'user', content: [] }];
+
+    // 서류 문서 첨부 (PDF/이미지)
+    const docDescriptions = {
+      insurance_policy:     '보험증권',
+      building_reg_insured: '피보험자(가해자) 건축물대장',
+      building_reg_victim:  '피해자 건축물대장',
+      resident_reg:         '주민등록등본',
+    };
+
+    for (const [key, b64data] of Object.entries(b64)) {
+      if (!b64data) continue;
+      const doc = docs[key];
+      const ext = (doc.file_path || '').split('.').pop().toLowerCase();
+      const isPdf = ext === 'pdf';
+      messages[0].content.push({
+        type: isPdf ? 'document' : 'image',
+        source: {
+          type: 'base64',
+          media_type: isPdf ? 'application/pdf' : (ext === 'png' ? 'image/png' : 'image/jpeg'),
+          data: b64data,
+        },
+        ...(isPdf ? { title: docDescriptions[key] } : {}),
+      });
+    }
+
+    messages[0].content.push({
+      type: 'text',
+      text: `위 서류들을 분석하여 아래 JSON을 반환하세요. 마크다운 없이 순수 JSON만 반환합니다.
+개인정보는 반드시 비식별화: 성명→홍○○, 주민번호→앞6자리만, 주소→시·구 단위까지만.
+
+{
+  "policy_product": "보험종목명 (보험증권에서)",
+  "policy_no": "증권번호 (보험증권에서, *마스킹 유지)",
+  "insurance_type": "daily_liability_old | daily_liability_new | facility_liability | water_damage",
+  "insurance_type_reason": "구형/신형 판단 근거 1문장",
+  "policy_start": "YYYY.MM.DD",
+  "policy_end": "YYYY.MM.DD",
+  "insured_name": "홍○○ (비식별)",
+  "insured_status": "소유자 겸 점유자 | 임차인 겸 점유자 | 임대인 | 확인불가",
+  "insured_status_reason": "피보험자 지위 판단 근거 — 건축물대장 소유자와 주민등록 세대주 비교",
+  "coverage_limit": 숫자 (원),
+  "deductible": 숫자 (원),
+  "victim_address": "피해자 건축물대장 기준 동호수 (예: 101동 1204호)",
+  "address_match": "ok | warn | error",
+  "address_match_note": "주소 표기 차이 설명 (일치하면 null)",
+  "_confidence": {
+    "policy_product": "ok | warn",
+    "policy_no": "ok | warn",
+    "insurance_type": "ok | warn",
+    "policy_period": "ok | warn",
+    "insured_name": "ok | warn",
+    "insured_status": "ok | warn",
+    "coverage_limit": "ok | warn",
+    "deductible": "ok | warn",
+    "victim_address": "ok | warn | error"
+  }
+}`,
+    });
+
+    clearInterval(progressTimer);
+    if (fill)  fill.style.width  = '85%';
+    if (label) label.textContent = 'Claude 응답 대기 중…';
+
+    const response = await fetch('/api/claude', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model:      INS_MODEL,
+        max_tokens: 1500,
+        system: `당신은 대한민국 독립손해사정사입니다. 
+업로드된 보험 서류(보험증권, 건축물대장, 주민등록등본)를 읽고 정보를 추출합니다.
+개인정보(실명, 전체 주민번호, 전체 주소)는 반드시 비식별화하세요.
+구형/신형 약관 판단: 보험증권 특약 조항에 '누수 직접손해' 담보가 있으면 신형(new), 없으면 구형(old).
+피보험자 지위 판단: 건축물대장 소유자와 주민등록 세대주가 동일하면 소유자, 다르면 임차인.
+반드시 순수 JSON만 반환하세요. 마크다운 코드블록 금지.`,
+        messages,
+      }),
+    });
+
+    if (!response.ok) throw new Error('API 오류: ' + response.status);
+    const result = await response.json();
+    const raw    = result.content?.[0]?.text || '';
+    const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
+
+    if (fill)  fill.style.width  = '100%';
+    if (label) label.textContent = '✓ 추출 완료!';
+    setTimeout(() => { if (loading) loading.style.display = 'none'; }, 800);
+
+    // 4. 화면 필드에 반영
+    const set = (id, val) => {
+      const el = document.getElementById(id);
+      if (!el || !val) return;
+      if (el.tagName === 'SELECT') { for (let o of el.options) if (o.value === val) { o.selected = true; break; } }
+      else el.value = val;
+    };
+
+    set('ex-product',     parsed.policy_product);
+    set('ex-policy-no',   parsed.policy_no);
+    set('ex-policy-type', parsed.insurance_type);
+    if (parsed.policy_start && parsed.policy_end) {
+      set('ex-period', parsed.policy_start + ' ~ ' + parsed.policy_end);
+    }
+    set('ex-insured-name',   parsed.insured_name);
+    set('ex-insured-status', parsed.insured_status);
+    if (parsed.coverage_limit) set('ex-coverage',  String(parsed.coverage_limit));
+    if (parsed.deductible)     set('ex-deductible', String(parsed.deductible));
+    set('ex-victim-addr', parsed.victim_address);
+
+    // 주소 일치 여부 반영
+    const addrSel = document.getElementById('ex-addr-match');
+    if (addrSel && parsed.address_match) {
+      for (let o of addrSel.options) if (o.value === parsed.address_match) { o.selected = true; break; }
+      ins3UpdateAddrStyle();
+    }
+    if (parsed.address_match_note) {
+      const noteEl = document.getElementById('ex-addr-note');
+      if (noteEl) noteEl.value = parsed.address_match_note;
+    }
+
+    // confidence 로컬 저장
+    _insClaim = { ..._insClaim, _conf: parsed._confidence || {} };
+
+    // 판단 근거 토스트
+    const reasons = [];
+    if (parsed.insurance_type_reason) reasons.push('약관: ' + parsed.insurance_type_reason);
+    if (parsed.insured_status_reason) reasons.push('지위: ' + parsed.insured_status_reason);
+    toast('서류 추출 완료' + (reasons.length ? ' · ' + reasons[0] : ''), 's');
+
+  } catch(e) {
+    if (loading) loading.style.display = 'none';
+    toast('추출 실패: ' + e.message, 'e');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 function ins3UpdateAddrStyle() {
