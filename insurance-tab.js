@@ -278,9 +278,9 @@ async function insValidateReady() {
       pass: !!_insClaim.accident_date, reason: '사고일자를 입력해 주세요.' },
     { key: 'required_docs',  label: '필수서류 전체 업로드 완료',
       pass: missing.length === 0, reason: missing.length ? '미업로드: ' + missing.join(', ') : null },
-    { key: 'field_data',     label: '현장 자료 확인 완료 (수리비·소견·방문일)',
-      pass: !!(pa?.repair_cost && pa?.repair_opinion && pa?.work_done_at),
-      reason: '기사가 수리완료 보고서를 제출해야 합니다.' },
+    { key: 'field_data',     label: '현장 자료 확인 완료 (수리비·소견)',
+      pass: !!(pa?.repair_cost && pa?.repair_opinion),
+      reason: '기사가 수리완료 보고서를 제출해야 합니다. (수리금액·소견 필수)' },
     { key: 'sanitized_vars', label: '비식별화 처리 완료 (Phase 2: 수동 입력)', pass: true },
   ];
 }
