@@ -1,15 +1,20 @@
-// v2026-04-13-03 — fixed: insSaveInfoClick + insOnTypeChange restored
+// v2026-04-16 — 6단계 플로우 + 드래그앤드롭 업로드 + 판단 드롭다운 수정
 /**
  * insurance-tab.js
- * 누수패스 보험자료 탭 — Vanilla JS 완성본 (Phase 2 + Phase 3)
+ * 누수패스 보험자료 탭 — 완성본 v3
  *
- * 의존성:
- *   - sb       : index.html에서 선언된 Supabase 클라이언트
- *   - toast()  : index.html에서 선언된 토스트 함수
- *   - fmtDate(): index.html에서 선언된 날짜 포맷 함수
+ * 의존성 (index.html에서 선언):
+ *   - sb       : Supabase 클라이언트
+ *   - toast()  : 토스트 함수
+ *   - curUser  : 현재 로그인 사용자
  *
- * 이 파일은 index.html </body> 직전에 아래 한 줄로 로드합니다:
- *   <script src="./insurance-tab.js"></script>
+ * 6단계 플로우:
+ *   1. 보고서 시작  (보험사, 조사자, 사고원인 분류)
+ *   2. 서류 업로드  (드래그앤드롭 + 클릭, 파트너 수리정보 자동 연동)
+ *   3. 정보 추출    (Claude 자동 추출 + 수정 가능)
+ *   4. 책임 판단    (드롭다운으로 직접 수정)
+ *   5. 보고서 초안  (핵심 필드만 수정)
+ *   6. 최종 출력    (PDF + 제출 완료)
  */
 
 'use strict';
@@ -17,9 +22,13 @@
 // ─────────────────────────────────────────────
 // 상수
 // ─────────────────────────────────────────────
-const INS_PROMPT_VERSION       = 'v2.3';
-const INS_MODEL_NAME           = 'claude-sonnet-4-6';
-const INS_LEGAL_BUNDLE_VERSION = 'v1.0';
+const INS_MODEL        = 'claude-sonnet-4-6';
+const INS_PROMPT_VER   = 'v3.0';
+const INS_LEGAL_VER    = 'v1.1';
+
+const INS_LEGAL_BUNDLE = `[민법 제750조] 고의 또는 과실로 인한 위법행위로 타인에게 손해를 가한 자는 그 손해를 배상할 책임이 있다.
+[민법 제758조] 공작물의 설치 또는 보존의 하자로 인하여 타인에게 손해를 가한 때에는 공작물점유자가 손해를 배상할 책임이 있다. 그러나 점유자가 손해의 방지에 필요한 주의를 해태하지 아니한 때에는 그 소유자가 배상할 책임이 있다.
+[상법 제680조] 보험계약자와 피보험자는 손해의 방지와 경감을 위하여 노력하여야 한다.`;
 
 const INS_TYPE_LABELS = {
   daily_liability_old: '일상생활배상책임 (구형)',
@@ -28,54 +37,52 @@ const INS_TYPE_LABELS = {
   water_damage:        '급배수누출손해',
 };
 
-const INS_STATUS_KO = {
-  docs_pending:     '기사제출 대기',
-  docs_received:    '자료 도착',
-  info_in_progress: '보험정보 입력중',
-  ready_for_draft:  '생성 준비 완료',
-  draft_generated:  '초안 생성 완료',
-  pdf_submitted:    'PDF 제출 완료',
-};
-
-const INS_LEGAL_BUNDLE = `[민법 제750조] 고의 또는 과실로 인한 위법행위로 타인에게 손해를 가한 자는 그 손해를 배상할 책임이 있다.
-[민법 제758조] 공작물의 설치 또는 보존의 하자로 인하여 타인에게 손해를 가한 때에는 공작물점유자가 손해를 배상할 책임이 있다. 그러나 점유자가 손해의 방지에 필요한 주의를 해태하지 아니한 때에는 그 소유자가 배상할 책임이 있다.`;
-
-const INS_DRAFT_SECTIONS = [
-  { key: 'insured_status',          label: '1. 피보험자 지위',      desc: '소유자겸점유자 / 임대인 / 임차인 / 확인불가' },
-  { key: 'accident_cause',          label: '2. 사고원인',           desc: '위치 + 설비 + 원인 구조' },
-  { key: 'accident_description',    label: '3. 사고내용(경위)',      desc: '날짜 + 장소 + 원인 + 피해 1문장' },
-  { key: 'insurance_period_match',  label: '4. 보험기간 부합 여부', desc: '일치 / 불일치 / 확인불가' },
-  { key: 'accident_location_match', label: '5. 사고장소 부합 여부', desc: '주소 표기 차이 허용' },
-  { key: 'victim_damages',          label: '6. 피해사항',           desc: 'JSON 배열 — 피해자 다수 대응' },
-  { key: 'investigator_opinion',    label: '7. 조사자 의견',        desc: '2~3문장, ~됨·~판단됨 간결체' },
+const INS_INSURERS = [
+  'DB손해보험주식회사','삼성화재해상보험','현대해상화재보험',
+  'KB손해보험','메리츠화재','한화손해보험','흥국화재해상보험',
+  '롯데손해보험','MG손해보험',
 ];
+
+// 필수/선택 서류 정의
+const INS_DOCS = [
+  { code:'insurance_policy',    name:'보험증권',           type:'pdf', required:true },
+  { code:'resident_reg',        name:'주민등록등본',        type:'img', required:true },
+  { code:'building_reg_insured',name:'건축물대장 (가해자)', type:'pdf', required:true },
+  { code:'building_reg_victim', name:'건축물대장 (피해자)', type:'pdf', required:true },
+  { code:'family_cert',         name:'가족관계증명서',      type:'img', required:false },
+  { code:'claim_form',          name:'보험청구서',          type:'pdf', required:false },
+];
+
+const STATUS_MAP = {
+  docs_pending:     1,
+  docs_received:    2,
+  info_in_progress: 3,
+  ready_for_draft:  4,
+  draft_generated:  5,
+  pdf_submitted:    6,
+};
 
 // ─────────────────────────────────────────────
 // 전역 상태
 // ─────────────────────────────────────────────
-let _insClaim      = null;   // insurance_claims 현재 row
-let _insCaseId     = null;   // intake_cases.id
-let _insField      = null;   // partner_assignments 현장 자료
-let _insDraft      = null;   // insurance_claim_drafts 현재 초안
-let _insSections   = {};     // 편집 중인 섹션 데이터
-let _insStep       = 1;      // 현재 탭 단계 (1~5)
-let _insUploaded   = [];     // insurance_doc_uploads (is_latest=true)
-let _insRequired   = [];     // insurance_required_docs
+let _insClaim      = null;
+let _insCaseId     = null;
+let _insField      = null;   // partner_assignments 수리 자료
+let _insDraft      = null;
+let _insSections   = {};
+let _insStep       = 1;
+let _insUploaded   = {};     // { doc_code: { id, file_path, doc_name, uploaded_at } }
+let _insCompany    = null;   // company_settings
 let _insGenerating = false;
 
 // ─────────────────────────────────────────────
-// 진입점: 사건 목록 → 보험자료 탭 열기
+// 진입점
 // ─────────────────────────────────────────────
 async function openInsuranceTab(caseId, caseNo) {
-  _insClaim      = null;
-  _insCaseId     = caseId;
-  _insField      = null;
-  _insDraft      = null;
-  _insSections   = {};
-  _insStep       = 1;
-  _insUploaded   = [];
-  _insRequired   = [];
-  _insGenerating = false;
+  // 초기화
+  _insClaim = null; _insCaseId = caseId; _insField = null;
+  _insDraft = null; _insSections = {}; _insStep = 1;
+  _insUploaded = {};
 
   go('insurance');
   document.getElementById('insurancePageSub').textContent = `사건 ${caseNo || caseId.slice(0,8)}`;
@@ -83,30 +90,28 @@ async function openInsuranceTab(caseId, caseNo) {
     `<div class="loading"><span class="spinner"></span> 데이터를 불러오는 중…</div>`;
 
   try {
-    const [claimData, fieldRes] = await Promise.all([
+    // 병렬 로드
+    const [claim, field, company] = await Promise.all([
       insEnsureClaim(caseId),
       insFetchFieldData(caseId),
+      insFetchCompany(),
     ]);
-    _insClaim = claimData;
-    _insField = fieldRes;
+    _insClaim  = claim;
+    _insField  = field;
+    _insCompany = company;
 
-    const [uploads, docs] = await Promise.all([
-      insFetchUploadedDocs(claimData.id),
-      claimData.insurance_type ? insFetchRequiredDocs(claimData.insurance_type) : Promise.resolve([]),
-    ]);
-    _insUploaded = uploads;
-    _insRequired = docs;
+    // 업로드된 서류
+    const uploads = await insFetchUploadedDocs(claim.id);
+    uploads.forEach(u => { _insUploaded[u.doc_code] = u; });
 
-    if (claimData.current_draft_id) {
-      _insDraft = await insFetchCurrentDraft(claimData.id);
+    // 기존 초안
+    if (claim.current_draft_id) {
+      _insDraft = await insFetchCurrentDraft(claim.id);
       if (_insDraft) _insSections = _insDraft.sections_jsonb || {};
     }
 
-    const stepMap = {
-      docs_pending: 1, docs_received: 1, info_in_progress: 2,
-      ready_for_draft: 3, draft_generated: 4, pdf_submitted: 5,
-    };
-    _insStep = stepMap[claimData.insurance_tab_status] || 1;
+    // 단계 복원
+    _insStep = STATUS_MAP[claim.insurance_tab_status] || 1;
     insRender();
   } catch(e) {
     document.getElementById('insuranceTabBody').innerHTML =
@@ -114,7 +119,7 @@ async function openInsuranceTab(caseId, caseNo) {
   }
 }
 
-// 드롭다운용: 수리완료 사건 목록 로드
+// 드롭다운용 수리완료 사건 로드
 async function loadInsuranceCaseSelector() {
   const sel = document.getElementById('insuranceCaseSelect');
   if (!sel) return;
@@ -127,188 +132,801 @@ async function loadInsuranceCaseSelector() {
     .eq('assignment_status', 'accepted')
     .order('created_at', { ascending: false });
 
-  if (!data || !data.length) {
-    sel.innerHTML = '<option value="">수리완료 사건이 없습니다</option>';
-    return;
+  if (!data?.length) {
+    sel.innerHTML = '<option value="">수리완료 사건이 없습니다</option>'; return;
   }
   sel.innerHTML = '<option value="">— 사건 선택 —</option>' +
     data.map(a =>
-      `<option value="${a.case_id}">${a.intake_cases?.case_no || '-'} · ${a.intake_cases?.customer_name || '-'}</option>`
+      `<option value="${a.case_id}">${a.intake_cases?.case_no||'-'} · ${a.intake_cases?.customer_name||'-'}</option>`
     ).join('');
 }
 
-// 드롭다운 선택 시
 async function onInsuranceCaseSelect(val) {
   if (!val) return;
   const sel = document.getElementById('insuranceCaseSelect');
-  const opt = sel.options[sel.selectedIndex];
-  const caseNo = opt.text.split('·')[0].trim();
+  const caseNo = sel.options[sel.selectedIndex].text.split('·')[0].trim();
   await openInsuranceTab(val, caseNo);
 }
 
 // ─────────────────────────────────────────────
-// Phase 2 API 함수
+// API 함수
 // ─────────────────────────────────────────────
-
 async function insEnsureClaim(caseId) {
-  const { data: existing } = await sb
-    .from('insurance_claims')
-    .select('id, insurance_tab_status, insurance_type, accident_date, insurer_name, coverage_limit, deductible, current_draft_id, pdf_submitted_at, insurer_contact')
-    .eq('case_id', caseId)
-    .maybeSingle();
-  if (existing) return existing;
-
-  const { data, error } = await sb
-    .from('insurance_claims')
-    .insert({ case_id: caseId, insurance_tab_status: 'docs_received' })
-    .select('id, insurance_tab_status, insurance_type, accident_date, insurer_name, coverage_limit, deductible, current_draft_id, pdf_submitted_at, insurer_contact')
-    .single();
+  const { data: ex } = await sb.from('insurance_claims').select('*')
+    .eq('case_id', caseId).maybeSingle();
+  if (ex) return ex;
+  const { data, error } = await sb.from('insurance_claims')
+    .insert({ case_id: caseId, insurance_tab_status: 'docs_pending' })
+    .select('*').single();
   if (error) throw new Error('claim 생성 실패: ' + error.message);
   return data;
 }
 
 async function insFetchFieldData(caseId) {
-  const { data, error } = await sb
-    .from('partner_assignments')
-    .select('id, repair_cost, repair_opinion, work_done_at, visited_at')
+  const { data } = await sb.from('partner_assignments')
+    .select('id, repair_cost, repair_opinion, work_done_at, visited_at, case_id')
     .eq('case_id', caseId)
-    .eq('work_status', 'repair_done')
-    .eq('assignment_status', 'accepted')
+    .in('work_status', ['repair_done', 'repair_completed'])
     .order('work_done_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error) throw new Error('현장 자료 조회 실패: ' + error.message);
+    .limit(1).maybeSingle();
   return data;
 }
 
-async function insFetchRequiredDocs(insuranceType) {
-  if (!insuranceType) return [];
-  const { data, error } = await sb
-    .from('insurance_required_docs')
-    .select('doc_code, doc_name, is_required, display_order')
-    .eq('insurance_type', insuranceType)
-    .order('display_order', { ascending: true });
-  if (error) throw new Error('필수서류 조회 실패: ' + error.message);
-  return data || [];
-}
-
 async function insFetchUploadedDocs(claimId) {
-  const { data, error } = await sb
-    .from('insurance_doc_uploads')
+  const { data } = await sb.from('insurance_doc_uploads')
     .select('id, doc_code, doc_name, file_path, uploaded_at')
-    .eq('claim_id', claimId)
-    .eq('is_latest', true)
-    .order('uploaded_at', { ascending: false });
-  if (error) throw new Error('업로드 목록 조회 실패: ' + error.message);
+    .eq('claim_id', claimId).eq('is_latest', true);
   return data || [];
 }
 
-async function insSaveInfo(payload) {
-  const { error } = await sb
-    .from('insurance_claims')
-    .update({
-      insurance_type:       payload.insurance_type  || null,
-      accident_date:        payload.accident_date   || null,
-      insurer_name:         payload.insurer_name    || null,
-      coverage_limit:       payload.coverage_limit  ? Number(payload.coverage_limit)  : null,
-      deductible:           payload.deductible      ? Number(payload.deductible)      : null,
-      insurance_tab_status: 'info_in_progress',
-    })
-    .eq('id', _insClaim.id);
-  if (error) throw new Error('보험정보 저장 실패: ' + error.message);
-  _insClaim = { ..._insClaim, ...payload, insurance_tab_status: 'info_in_progress' };
+async function insFetchCurrentDraft(claimId) {
+  const { data } = await sb.from('insurance_claim_drafts')
+    .select('id, draft_version, sections_jsonb, model_name, created_at, status')
+    .eq('claim_id', claimId).eq('is_current', true).maybeSingle();
+  return data;
 }
 
-async function insUploadDoc(file, docCode, docName) {
-  if (!_insClaim || !_insClaim.id) throw new Error('사건 정보가 없습니다. 페이지를 새로고침 해주세요.');
+async function insFetchCompany() {
+  const { data } = await sb.from('company_settings').select('*').eq('id', 1).maybeSingle();
+  return data;
+}
 
+// ─────────────────────────────────────────────
+// 렌더링 (메인)
+// ─────────────────────────────────────────────
+function insRender() {
+  const body = document.getElementById('insuranceTabBody');
+  if (!body) return;
+  body.innerHTML = insStepBarHTML() + `<div id="insStepContent"></div>`;
+  const c = document.getElementById('insStepContent');
+  const renders = [insStep1HTML, insStep2HTML, insStep3HTML, insStep4HTML, insStep5HTML, insStep6HTML];
+  c.innerHTML = (renders[_insStep - 1] || insStep1HTML)();
+  // 드롭존 초기화 (2단계)
+  if (_insStep === 2) insInitDropzones();
+}
+
+function insStepBarHTML() {
+  const labels = ['보고서 시작', '서류 업로드', '정보 추출', '책임 판단', '보고서 초안', '최종 출력'];
+  return `<div class="ins-step-bar">${labels.map((label, i) => {
+    const n = i + 1;
+    const cls = n < _insStep ? 'ins-step-done' : n === _insStep ? 'ins-step-active' : 'ins-step-locked';
+    return `<div class="ins-step ${cls}" onclick="${n <= _insStep ? `insGoStep(${n})` : ''}">
+      <div class="ins-step-dot"></div>
+      <div class="ins-step-num">${n}단계</div>
+      <div class="ins-step-label">${label}</div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+// ─────────────────────────────────────────────
+// STEP 1: 보고서 시작
+// ─────────────────────────────────────────────
+function insStep1HTML() {
+  const cl = _insClaim || {};
+  const co = _insCompany || {};
+  const today = new Date().toISOString().split('T')[0];
+
+  const insurerOptions = INS_INSURERS
+    .map(n => `<option ${cl.insurer_name === n ? 'selected' : ''}>${n}</option>`)
+    .join('') + `<option value="기타">기타 (직접 입력)</option>`;
+
+  return `
+  <div class="card">
+    <div style="font-size:14px;font-weight:900;margin-bottom:16px">📋 보고서 기본 정보</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-group">
+        <label class="form-label">보고서 번호</label>
+        <input class="form-control" id="ins1-report-no" value="${cl.report_no || ''}" placeholder="저장 시 자동채번" readonly
+          style="background:var(--bg);color:var(--muted)"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">제출일자 *</label>
+        <input class="form-control" type="date" id="ins1-date" value="${cl.submit_date || today}"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">수신 보험사 *</label>
+        <select class="form-control" id="ins1-insurer" onchange="ins1OnInsurerChange(this.value)">
+          <option value="">— 선택 —</option>
+          ${insurerOptions}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">참조 (담당팀/담당자)</label>
+        <input class="form-control" id="ins1-contact" value="${cl.insurer_contact || ''}"
+          placeholder="예: 가정종합보험파트 홍길동 과장"/>
+      </div>
+    </div>
+    <div id="ins1-custom-wrap" style="display:none;margin-top:-4px;margin-bottom:12px">
+      <label class="form-label">보험사명 직접 입력</label>
+      <input class="form-control" id="ins1-insurer-custom" placeholder="보험사명을 입력하세요"/>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-group">
+        <label class="form-label">사고원인 분류 *</label>
+        <select class="form-control" id="ins1-cause">
+          <option value="배관 노후화" ${(cl.accident_cause_type||'')===('배관 노후화')?'selected':''}>배관 노후화</option>
+          <option value="개인기기 결함 (정수기·세탁기 등)" ${(cl.accident_cause_type||'')==='개인기기 결함 (정수기·세탁기 등)'?'selected':''}>개인기기 결함 (정수기·세탁기 등)</option>
+          <option value="방수 불량" ${(cl.accident_cause_type||'')==='방수 불량'?'selected':''}>방수 불량</option>
+          <option value="설비 시공 불량" ${(cl.accident_cause_type||'')==='설비 시공 불량'?'selected':''}>설비 시공 불량</option>
+          <option value="기타" ${(cl.accident_cause_type||'')==='기타'?'selected':''}>기타</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">조사자</label>
+        <input class="form-control" id="ins1-investigator"
+          value="${cl.investigator_name || co.investigator_name || co.adjuster_name || '서재성'}"/>
+      </div>
+    </div>
+  </div>
+  <div class="ins-action-bar">
+    <span></span>
+    <button class="btn btn-primary" onclick="insStep1Save()">저장 후 서류 업로드 →</button>
+  </div>`;
+}
+
+function ins1OnInsurerChange(val) {
+  document.getElementById('ins1-custom-wrap').style.display = val === '기타' ? 'block' : 'none';
+}
+
+async function insStep1Save() {
+  let insurer = document.getElementById('ins1-insurer').value;
+  if (insurer === '기타') insurer = document.getElementById('ins1-insurer-custom')?.value?.trim() || '';
+  if (!insurer) { toast('보험사를 선택하거나 입력해 주세요.', 'e'); return; }
+
+  try {
+    const { data, error } = await sb.rpc('rpc_start_insurance_report', {
+      p_claim_id:      _insClaim.id,
+      p_insurer_name:  insurer,
+      p_insurer_contact: document.getElementById('ins1-contact').value || null,
+      p_cause_type:    document.getElementById('ins1-cause').value,
+      p_investigator:  document.getElementById('ins1-investigator').value,
+      p_submit_date:   document.getElementById('ins1-date').value,
+    });
+    if (error) throw error;
+    _insClaim = { ..._insClaim, report_no: data?.report_no, insurer_name: insurer,
+      insurance_tab_status: 'docs_pending' };
+    toast('저장 완료!', 's');
+    _insStep = 2; insRender();
+  } catch(e) {
+    toast('저장 실패: ' + e.message, 'e');
+  }
+}
+
+// ─────────────────────────────────────────────
+// STEP 2: 서류 업로드 (드래그앤드롭)
+// ─────────────────────────────────────────────
+function insStep2HTML() {
+  const fd = _insField;
+  const doneCount = Object.keys(_insUploaded).length;
+  const reqDone   = INS_DOCS.filter(d => d.required && _insUploaded[d.code]).length;
+  const reqTotal  = INS_DOCS.filter(d => d.required).length;
+
+  const docsHTML = INS_DOCS.map(doc => {
+    const up   = _insUploaded[doc.code];
+    const done = !!up;
+    return `
+    <div class="ins-doc-zone ${done ? 'ins-doc-done' : ''}" id="ins-dz-${doc.code}"
+         ondragover="event.preventDefault();this.classList.add('ins-doc-dragover')"
+         ondragleave="this.classList.remove('ins-doc-dragover')"
+         ondrop="insHandleDrop(event,'${doc.code}','${doc.name}')"
+         onclick="insTriggerUpload('${doc.code}','${doc.name}')">
+      <div class="ins-doc-progress" id="ins-dp-${doc.code}"></div>
+      <div style="font-size:22px;margin-bottom:4px">${done ? '✅' : (doc.type==='pdf'?'📄':'🖼')}</div>
+      <div style="font-size:13px;font-weight:700;margin-bottom:2px">${doc.name}</div>
+      <div style="font-size:11px;color:${done?'var(--green)':'var(--muted)'}">
+        ${done ? (up.doc_name || '업로드 완료') : (doc.required ? '필수 · 클릭하거나 파일을 끌어다 놓으세요' : '선택 · 클릭하거나 드래그')}
+      </div>
+      ${done ? `<div style="font-size:10px;color:var(--muted);margin-top:2px">${(up.uploaded_at||'').slice(0,10)}</div>` : ''}
+      ${!done ? `<div style="margin-top:6px;padding:3px 8px;border-radius:6px;font-size:10px;font-weight:700;background:${doc.required?'#dbeafe':'#f1f5f9'};color:${doc.required?'#1d4ed8':'#64748b'}">${doc.required?'필수':'선택'}</div>` : ''}
+    </div>`;
+  }).join('');
+
+  const fieldCard = fd
+    ? `<div class="detail-grid" style="margin-bottom:0">
+        <div class="detail-item"><label>수리 금액</label><span>${fd.repair_cost ? Number(fd.repair_cost).toLocaleString()+'원' : '—'}</span></div>
+        <div class="detail-item"><label>수리 완료일</label><span>${(fd.work_done_at||'').slice(0,10)||'—'}</span></div>
+        <div class="detail-item full"><label>누수 소견</label><span>${fd.repair_opinion||'—'}</span></div>
+      </div>`
+    : `<div class="empty"><div class="empty-text">파트너가 아직 수리완료 보고서를 제출하지 않았습니다.</div></div>`;
+
+  const allReqDone = reqDone >= reqTotal;
+
+  return `
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div style="font-size:14px;font-weight:900">📎 보험 관련 서류 업로드</div>
+      <div style="font-size:12px;color:var(--muted)">${doneCount}/${INS_DOCS.length}종 완료 · 필수 ${reqDone}/${reqTotal}</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px" id="ins-doc-grid">
+      ${docsHTML}
+    </div>
+    ${!allReqDone ? `<div class="ins-banner ins-banner-warn" style="margin-top:12px">⚠ 필수 서류 ${reqTotal-reqDone}건 미업로드</div>` : `<div class="ins-banner ins-banner-success" style="margin-top:12px">✓ 모든 필수 서류 업로드 완료</div>`}
+  </div>
+
+  <div class="card">
+    <div style="font-size:14px;font-weight:900;margin-bottom:14px">🔧 파트너 수리 정보 (자동 연동)</div>
+    ${fieldCard}
+  </div>
+
+  <div class="ins-action-bar">
+    <button class="btn btn-ghost" onclick="insGoStep(1)">이전</button>
+    <button class="btn btn-primary" ${allReqDone ? '' : 'disabled'} onclick="insGoStep(3)">
+      정보 추출 →
+    </button>
+  </div>`;
+}
+
+function insInitDropzones() {
+  // 드롭존은 onclick/ondragover가 HTML에 이미 있으므로 추가 초기화 불필요
+}
+
+function insTriggerUpload(docCode, docName) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.pdf,.jpg,.jpeg,.png,.heic,.webp';
+  input.onchange = e => {
+    if (e.target.files[0]) insUploadFile(e.target.files[0], docCode, docName);
+  };
+  input.click();
+}
+
+function insHandleDrop(e, docCode, docName) {
+  e.preventDefault();
+  document.getElementById(`ins-dz-${docCode}`)?.classList.remove('ins-doc-dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) insUploadFile(file, docCode, docName);
+}
+
+async function insUploadFile(file, docCode, docName) {
   const allowedTypes = ['application/pdf','image/jpeg','image/jpg','image/png','image/webp','image/heic'];
-  if (!allowedTypes.includes(file.type)) throw new Error('허용되지 않는 파일 형식입니다: ' + file.type);
-  if (file.size > 20 * 1024 * 1024) throw new Error('파일이 20MB를 초과합니다.');
+  if (!allowedTypes.includes(file.type)) { toast('PDF 또는 이미지 파일만 업로드 가능합니다.', 'e'); return; }
+  if (file.size > 20 * 1024 * 1024) { toast('파일이 20MB를 초과합니다.', 'e'); return; }
 
-  await sb.from('insurance_doc_uploads')
-    .update({ is_latest: false })
-    .eq('claim_id', _insClaim.id)
-    .eq('doc_code', docCode)
-    .eq('is_latest', true);
+  const zone     = document.getElementById(`ins-dz-${docCode}`);
+  const progress = document.getElementById(`ins-dp-${docCode}`);
+  if (zone) zone.style.opacity = '0.6';
 
-  const ext = file.name.split('.').pop().toLowerCase() || 'pdf';
-  const safeExt = ['pdf','jpg','jpeg','png','webp','heic'].includes(ext) ? ext : 'pdf';
-  const filePath = `${_insClaim.id}/${docCode}/${Date.now()}.${safeExt}`;
+  // 진행 애니메이션
+  let pct = 0;
+  if (progress) { progress.style.display = 'block'; progress.style.width = '0%'; }
+  const timer = setInterval(() => {
+    pct = Math.min(pct + 10, 85);
+    if (progress) progress.style.width = pct + '%';
+  }, 100);
 
-  const { error: upErr } = await sb.storage
-    .from('insurance-docs')
-    .upload(filePath, file, { cacheControl: '3600', upsert: true });
-  if (upErr) throw new Error('Storage 업로드 실패: ' + upErr.message);
+  try {
+    // 기존 is_latest 해제
+    await sb.from('insurance_doc_uploads')
+      .update({ is_latest: false })
+      .eq('claim_id', _insClaim.id)
+      .eq('doc_code', docCode)
+      .eq('is_latest', true);
 
-  const { error: dbErr } = await sb.from('insurance_doc_uploads').insert({
-    claim_id:     _insClaim.id,
-    doc_code:     docCode,
-    doc_name:     docName,
-    doc_category: 'insured',
-    file_path:    filePath,
-    file_kind:    'original',
-    source_type:  'admin',
-    is_latest:    true,
-  });
-  if (dbErr) throw new Error('서류 DB 저장 실패: ' + dbErr.message);
+    const ext      = file.name.split('.').pop().toLowerCase();
+    const safeExt  = ['pdf','jpg','jpeg','png','webp','heic'].includes(ext) ? ext : 'pdf';
+    const filePath = `${_insClaim.id}/${docCode}/${Date.now()}.${safeExt}`;
 
-  _insUploaded = await insFetchUploadedDocs(_insClaim.id);
-}
+    const { error: upErr } = await sb.storage
+      .from('insurance-docs')
+      .upload(filePath, file, { cacheControl: '3600', upsert: true });
+    if (upErr) throw new Error('Storage 오류: ' + upErr.message);
 
-async function insValidateReady() {
-  const [uploadsRes, assignmentRes, requiredRes] = await Promise.all([
-    sb.from('insurance_doc_uploads').select('doc_code').eq('claim_id', _insClaim.id).eq('is_latest', true),
-    sb.from('partner_assignments').select('repair_cost, repair_opinion, work_done_at')
-      .eq('case_id', _insCaseId).eq('work_status', 'repair_done').limit(1).maybeSingle(),
-    _insClaim.insurance_type
-      ? sb.from('insurance_required_docs').select('doc_code, doc_name')
-          .eq('insurance_type', _insClaim.insurance_type).eq('is_required', true)
-      : Promise.resolve({ data: [] }),
-  ]);
+    const { data: dbRow, error: dbErr } = await sb.from('insurance_doc_uploads').insert({
+      claim_id:     _insClaim.id,
+      doc_code:     docCode,
+      doc_name:     file.name,
+      doc_category: 'insured',
+      file_path:    filePath,
+      file_kind:    'original',
+      source_type:  'admin',
+      is_latest:    true,
+    }).select('id, doc_code, doc_name, file_path, uploaded_at').single();
+    if (dbErr) throw new Error('DB 오류: ' + dbErr.message);
 
-  const uploadedCodes = new Set((uploadsRes.data || []).map(u => u.doc_code));
-  const missing = (requiredRes.data || []).filter(d => !uploadedCodes.has(d.doc_code)).map(d => d.doc_name);
-  const pa = assignmentRes.data;
+    _insUploaded[docCode] = dbRow;
 
-  return [
-    { key: 'insurance_type', label: '보험종목 선택 완료',
-      pass: !!_insClaim.insurance_type, reason: '보험종목을 선택해 주세요.' },
-    { key: 'accident_date',  label: '사고일자 입력 완료',
-      pass: !!_insClaim.accident_date, reason: '사고일자를 입력해 주세요.' },
-    { key: 'required_docs',  label: '필수서류 전체 업로드 완료',
-      pass: missing.length === 0, reason: missing.length ? '미업로드: ' + missing.join(', ') : null },
-    { key: 'field_data',     label: '현장 자료 확인 완료 (수리비·소견)',
-      pass: !!(pa?.repair_cost && pa?.repair_opinion),
-      reason: '기사가 수리완료 보고서를 제출해야 합니다. (수리금액·소견 필수)' },
-    { key: 'sanitized_vars', label: '비식별화 처리 완료 (Phase 2: 수동 입력)', pass: true },
-  ];
-}
+    clearInterval(timer);
+    if (progress) { progress.style.width = '100%'; setTimeout(() => { progress.style.display='none'; progress.style.width='0%'; }, 400); }
+    if (zone) zone.style.opacity = '1';
+    toast(docName + ' 업로드 완료', 's');
 
-async function insMarkReady() {
-  const { error } = await sb.from('insurance_claims')
-    .update({ insurance_tab_status: 'ready_for_draft' })
-    .eq('id', _insClaim.id);
-  if (error) throw new Error('상태 전환 실패: ' + error.message);
-  _insClaim = { ..._insClaim, insurance_tab_status: 'ready_for_draft' };
+    // 2단계 재렌더 (완료 상태 반영)
+    _insStep = 2; insRender();
+  } catch(err) {
+    clearInterval(timer);
+    if (progress) { progress.style.display='none'; progress.style.width='0%'; }
+    if (zone) zone.style.opacity = '1';
+    toast('업로드 실패: ' + err.message, 'e');
+  }
 }
 
 // ─────────────────────────────────────────────
-// Phase 3 API 함수
+// STEP 3: 정보 추출
 // ─────────────────────────────────────────────
+function insStep3HTML() {
+  const cl = _insClaim || {};
 
-async function insRunClaude(vars, onProgress) {
-  const stages = INS_DRAFT_SECTIONS.map(s => s.label);
+  const addrMatch = cl.address_match || 'ok';
+  const addrColor = addrMatch === 'ok' ? 'var(--green)' : addrMatch === 'warn' ? 'var(--amber)' : 'var(--red)';
+  const addrBg    = addrMatch === 'ok' ? 'var(--green-soft)' : addrMatch === 'warn' ? 'var(--amber-soft)' : 'var(--red-soft)';
 
-  const systemPrompt = `당신은 대한민국 독립손해사정사입니다.
-누수사고 자료를 기반으로 손해사정서 초안을 작성합니다.
+  return `
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div style="font-size:14px;font-weight:900">🔍 서류 자동 추출 결과</div>
+      <div style="font-size:11px;color:var(--muted)">틀린 값은 직접 수정 가능</div>
+    </div>
+
+    <div id="ins3-extract-loading" style="display:none;padding:12px;background:var(--primary-soft);border-radius:8px;margin-bottom:12px">
+      <span class="spinner"></span> Claude가 서류를 분석 중입니다… (10~30초 소요)
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+
+      <div class="form-group">
+        <label class="form-label">보험종목</label>
+        <input class="form-control" id="ex-product" value="${cl.policy_product||''}" placeholder="보험증권에서 추출"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">증권번호</label>
+        <input class="form-control" id="ex-policy-no" value="${cl.policy_no||''}" placeholder="보험증권에서 추출"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">약관 구분</label>
+        <select class="form-control" id="ex-policy-type">
+          <option value="daily_liability_old" ${(cl.insurance_type||'')==='daily_liability_old'?'selected':''}>일상생활배상책임 (구형)</option>
+          <option value="daily_liability_new" ${(cl.insurance_type||'')==='daily_liability_new'?'selected':''}>일상생활배상책임 (신형)</option>
+          <option value="facility_liability"  ${(cl.insurance_type||'')==='facility_liability' ?'selected':''}>시설소유(관리)자배상책임</option>
+          <option value="water_damage"        ${(cl.insurance_type||'')==='water_damage'       ?'selected':''}>급배수누출손해</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">보험기간</label>
+        <input class="form-control" id="ex-period"
+          value="${cl.policy_start && cl.policy_end ? cl.policy_start+' ~ '+cl.policy_end : ''}"
+          placeholder="예: 2009.05.28 ~ 2090.05.28"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">피보험자</label>
+        <input class="form-control" id="ex-insured-name" value="${cl.insured_name||''}" placeholder="비식별 처리 (홍○○)"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">피보험자 지위</label>
+        <select class="form-control" id="ex-insured-status">
+          <option value="임차인 겸 점유자" ${(cl.insured_status||'')==='임차인 겸 점유자'?'selected':''}>임차인 겸 점유자</option>
+          <option value="소유자 겸 점유자" ${(cl.insured_status||'')==='소유자 겸 점유자'?'selected':''}>소유자 겸 점유자</option>
+          <option value="임대인"            ${(cl.insured_status||'')==='임대인'?'selected':''}>임대인</option>
+          <option value="확인불가"          ${(cl.insured_status||'')==='확인불가'?'selected':''}>확인불가</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">보상한도액 (원)</label>
+        <input class="form-control" id="ex-coverage" value="${cl.coverage_limit||''}" type="number" placeholder="100000000"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">자기부담금 (원)</label>
+        <input class="form-control" id="ex-deductible" value="${cl.deductible||''}" type="number" placeholder="200000"/>
+      </div>
+      <div class="form-group" style="grid-column:1/-1">
+        <label class="form-label">피해자 소재지 (동호수)</label>
+        <input class="form-control" id="ex-victim-addr" value="${cl.victim_address||''}" placeholder="예: 101동 1204호"/>
+      </div>
+
+    </div>
+
+    <!-- 주소 일치 여부 -->
+    <div style="margin-top:12px;padding:12px;background:${addrBg};border-radius:8px;border-left:3px solid ${addrColor}">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <strong style="font-size:13px;color:${addrColor}">주소 일치 여부</strong>
+        <select class="form-control" id="ex-addr-match" style="width:auto;font-size:12px" onchange="ins3UpdateAddrStyle()">
+          <option value="ok"    ${addrMatch==='ok'   ?'selected':''}>✓ 일치</option>
+          <option value="warn"  ${addrMatch==='warn' ?'selected':''}>⚠ 추정 일치 (확인 필요)</option>
+          <option value="error" ${addrMatch==='error'?'selected':''}>✕ 불일치</option>
+        </select>
+      </div>
+      <div id="ex-addr-note-wrap" style="display:${addrMatch!=='ok'?'block':'none'}">
+        <input class="form-control" id="ex-addr-note" value="${cl.address_match_note||''}"
+          placeholder="예: 보험증권은 도로명, 건축물대장은 지번 — 동일 건물로 추정" style="font-size:12px"/>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">
+          동일 건물 도로명/지번 표기 차이는 추정 일치, 동·호수가 다르면 불일치
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ins-action-bar">
+    <button class="btn btn-ghost" onclick="insGoStep(2)">이전</button>
+    <button class="btn btn-primary" onclick="insStep3Save()">저장 후 책임 판단 →</button>
+  </div>`;
+}
+
+function ins3UpdateAddrStyle() {
+  const val  = document.getElementById('ex-addr-match')?.value;
+  const wrap = document.getElementById('ex-addr-note-wrap');
+  if (wrap) wrap.style.display = val !== 'ok' ? 'block' : 'none';
+}
+
+async function insStep3Save() {
+  const period = (document.getElementById('ex-period')?.value || '').split('~').map(s => s.trim());
+  try {
+    const { error } = await sb.rpc('rpc_save_extraction', {
+      p_claim_id:           _insClaim.id,
+      p_policy_no:          document.getElementById('ex-policy-no')?.value || null,
+      p_policy_product:     document.getElementById('ex-product')?.value || null,
+      p_policy_type:        document.getElementById('ex-policy-type')?.value || null,
+      p_policy_start:       period[0] || null,
+      p_policy_end:         period[1] || null,
+      p_insured_name:       document.getElementById('ex-insured-name')?.value || null,
+      p_insured_status:     document.getElementById('ex-insured-status')?.value,
+      p_address_match:      document.getElementById('ex-addr-match')?.value || 'ok',
+      p_address_match_note: document.getElementById('ex-addr-note')?.value || null,
+      p_victim_address:     document.getElementById('ex-victim-addr')?.value || null,
+      p_coverage_limit:     parseInt(document.getElementById('ex-coverage')?.value) || null,
+      p_deductible:         parseInt(document.getElementById('ex-deductible')?.value) || null,
+    });
+    if (error) throw error;
+
+    // 로컬 상태 업데이트
+    _insClaim = {
+      ..._insClaim,
+      policy_product:    document.getElementById('ex-product')?.value,
+      policy_no:         document.getElementById('ex-policy-no')?.value,
+      insurance_type:    document.getElementById('ex-policy-type')?.value,
+      insured_name:      document.getElementById('ex-insured-name')?.value,
+      insured_status:    document.getElementById('ex-insured-status')?.value,
+      coverage_limit:    parseInt(document.getElementById('ex-coverage')?.value) || null,
+      deductible:        parseInt(document.getElementById('ex-deductible')?.value) || null,
+      victim_address:    document.getElementById('ex-victim-addr')?.value,
+      address_match:     document.getElementById('ex-addr-match')?.value,
+      address_match_note:document.getElementById('ex-addr-note')?.value,
+      insurance_tab_status: 'info_in_progress',
+    };
+    toast('정보 저장 완료!', 's');
+    _insStep = 4; insRender();
+  } catch(e) {
+    toast('저장 실패: ' + e.message, 'e');
+  }
+}
+
+// ─────────────────────────────────────────────
+// STEP 4: 책임 판단
+// ─────────────────────────────────────────────
+function insStep4HTML() {
+  const cl  = _insClaim || {};
+  const fd  = _insField;
+  const rc  = fd?.repair_cost || 0;
+  const ded = cl.deductible || 200000;
+  const pay = Math.max(0, rc - ded);
+
+  const established = cl.liability_established || 'yes';
+  const payFlag     = cl.liability_pay         || 'pay';
+  const fault       = cl.fault_ratio           || '피보험자 100%';
+
+  const estStyle = established === 'yes'
+    ? 'background:#dcfce7;color:#15803d;border-color:#15803d'
+    : 'background:#fee2e2;color:#dc2626;border-color:#dc2626';
+  const payStyle = payFlag === 'pay'
+    ? 'background:#dcfce7;color:#15803d;border-color:#15803d'
+    : 'background:#fee2e2;color:#dc2626;border-color:#dc2626';
+
+  return `
+  <div class="card">
+    <div style="font-size:14px;font-weight:900;margin-bottom:14px">⚖️ 법률상 손해배상책임 검토</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:14px">
+      Claude 자동 판단 결과 — 드롭다운으로 직접 수정 가능합니다.
+    </div>
+
+    <!-- 가. 성립 여부 -->
+    <div class="ins-judge-box">
+      <div class="ins-judge-head">
+        <div class="ins-judge-label">가. 피보험자 손해배상책임 성립 여부</div>
+        <select class="ins-judge-sel" id="j-established" style="${estStyle}" onchange="ins4UpdateStyle(this)">
+          <option value="yes" ${established==='yes'?'selected':''}>성립</option>
+          <option value="no"  ${established==='no' ?'selected':''}>불성립</option>
+        </select>
+      </div>
+      <div class="ins-judge-body" id="j-established-body">
+        ${insJudgeBody_established(established, cl)}
+      </div>
+    </div>
+
+    <!-- 나. 면·부책 -->
+    <div class="ins-judge-box">
+      <div class="ins-judge-head">
+        <div class="ins-judge-label">나. 보험금 지급 책임 (면·부책)</div>
+        <select class="ins-judge-sel" id="j-pay" style="${payStyle}" onchange="ins4UpdateStyle(this)">
+          <option value="pay"    ${payFlag==='pay'   ?'selected':''}>부책</option>
+          <option value="exempt" ${payFlag==='exempt'?'selected':''}>면책</option>
+        </select>
+      </div>
+      <div class="ins-judge-body">
+        ${payFlag === 'pay'
+          ? `보험기간 이내, 소재지 일치, 면책 조항 해당 없음.<br>
+             <span class="badge badge-blue" style="margin-top:6px;display:inline-block">보험기간 일치</span>
+             <span class="badge badge-blue" style="margin-top:6px">소재지 일치</span>
+             <span class="badge badge-blue" style="margin-top:6px">면책 해당 없음</span>`
+          : `피보험자에게 법률상 배상책임이 성립하지 않거나, 면책 조항에 해당합니다.
+             <span class="badge badge-red" style="margin-top:6px;display:inline-block">면책</span>`
+        }
+      </div>
+    </div>
+
+    <!-- 다. 과실 비율 -->
+    <div class="ins-judge-box">
+      <div class="ins-judge-head">
+        <div class="ins-judge-label">다. 과실 비율</div>
+        <select class="ins-judge-sel" id="j-fault" style="background:#dcfce7;color:#15803d;border-color:#15803d">
+          <option value="피보험자 100%"                ${fault==='피보험자 100%'?'selected':''}>피보험자 100%</option>
+          <option value="피보험자 70% / 피해자 30%"   ${fault==='피보험자 70% / 피해자 30%'?'selected':''}>피보험자 70% / 피해자 30%</option>
+          <option value="피보험자 50% / 피해자 50%"   ${fault==='피보험자 50% / 피해자 50%'?'selected':''}>피보험자 50% / 피해자 50%</option>
+        </select>
+      </div>
+      <div class="ins-judge-body">피보험자 측 관리 책임 범위 내. 피해자 과실 없음.</div>
+    </div>
+
+    <!-- 라. 지급보험금 산정 -->
+    <div class="ins-judge-box">
+      <div class="ins-judge-head">
+        <div class="ins-judge-label">라. 지급보험금 산정</div>
+        <div style="font-size:15px;font-weight:900;color:var(--green);padding:3px 10px;background:var(--green-soft);border-radius:6px">
+          ${pay.toLocaleString()}원
+        </div>
+      </div>
+      <div class="ins-judge-body">
+        수리금액 <strong>${rc.toLocaleString()}원</strong> −
+        자기부담금 <strong>${ded.toLocaleString()}원</strong> =
+        지급보험금 <strong style="color:var(--green)">${pay.toLocaleString()}원</strong><br>
+        <span class="badge badge-blue" style="margin-top:6px;display:inline-block">상법 제680조</span>
+      </div>
+    </div>
+
+    <!-- 메모 -->
+    <div class="form-group" style="margin-top:14px">
+      <label class="form-label">판단 메모 (보고서 반영)</label>
+      <textarea class="form-control" id="j-memo" rows="2"
+        placeholder="판단 근거 추가 메모 (선택사항)">${cl.liability_memo||''}</textarea>
+    </div>
+  </div>
+
+  <div class="ins-action-bar">
+    <button class="btn btn-ghost" onclick="insGoStep(3)">이전</button>
+    <button class="btn btn-primary" onclick="insStep4Save()">저장 후 보고서 초안 생성 →</button>
+  </div>`;
+}
+
+function insJudgeBody_established(established, cl) {
+  if (established === 'yes') {
+    return `${cl.accident_cause_type || '사고원인'}은 피보험자 점유·관리 하의 시설/기기 하자에 해당합니다.
+    민법 제758조에 의거 점유자에게 1차 배상책임이 귀속됩니다.<br>
+    <span class="badge badge-blue" style="margin-top:6px;display:inline-block">민법 제750조</span>
+    <span class="badge badge-blue" style="margin-top:6px">민법 제758조</span>`;
+  } else {
+    return `사고원인은 피보험자 책임 범위 밖(공용부분 하자 등)으로, 피보험자에게 법률상 손해배상책임이 성립하지 않습니다.
+    <span class="badge badge-red" style="margin-top:6px;display:inline-block">민법 제758조 — 소유자 책임</span>`;
+  }
+}
+
+function ins4UpdateStyle(sel) {
+  const isPositive = sel.value === 'yes' || sel.value === 'pay';
+  sel.style.cssText = isPositive
+    ? 'background:#dcfce7;color:#15803d;border-color:#15803d'
+    : 'background:#fee2e2;color:#dc2626;border-color:#dc2626';
+}
+
+async function insStep4Save() {
+  const fd  = _insField;
+  const rc  = fd?.repair_cost || 0;
+  const ded = _insClaim.deductible || 200000;
+  const pay = Math.max(0, rc - ded);
+
+  try {
+    const { error } = await sb.rpc('rpc_save_judgment', {
+      p_claim_id:              _insClaim.id,
+      p_liability_established: document.getElementById('j-established')?.value || 'yes',
+      p_liability_pay:         document.getElementById('j-pay')?.value || 'pay',
+      p_fault_ratio:           document.getElementById('j-fault')?.value || '피보험자 100%',
+      p_liability_memo:        document.getElementById('j-memo')?.value || null,
+      p_damage_amount:         rc || null,
+      p_payout_amount:         pay || null,
+    });
+    if (error) throw error;
+
+    _insClaim = {
+      ..._insClaim,
+      liability_established: document.getElementById('j-established')?.value,
+      liability_pay:         document.getElementById('j-pay')?.value,
+      fault_ratio:           document.getElementById('j-fault')?.value,
+      liability_memo:        document.getElementById('j-memo')?.value,
+      insurance_tab_status:  'ready_for_draft',
+    };
+    toast('저장 완료! 보고서 초안을 생성합니다.', 's');
+    _insStep = 5; insRender();
+  } catch(e) {
+    toast('저장 실패: ' + e.message, 'e');
+  }
+}
+
+// ─────────────────────────────────────────────
+// STEP 5: 보고서 초안
+// ─────────────────────────────────────────────
+function insStep5HTML() {
+  const cl  = _insClaim || {};
+  const co  = _insCompany || {};
+  const fd  = _insField;
+  const rc  = fd?.repair_cost || 0;
+  const ded = cl.deductible || 200000;
+  const pay = Math.max(0, rc - ded);
+
+  const existingSections = _insSections || {};
+  const draftBanner = _insDraft
+    ? `<div class="ins-banner ins-banner-success" style="margin-bottom:12px">
+         ✓ 초안 v${_insDraft.draft_version} · ${_insDraft.model_name || INS_MODEL} · ${(_insDraft.created_at||'').slice(0,10)}
+         <span id="ins5-saving" style="display:none;margin-left:8px;opacity:.7">저장 중…</span>
+       </div>`
+    : '';
+
+  const established = cl.liability_established === 'yes' ? '성립 · 부책' : '불성립 · 면책';
+
+  return `
+  ${draftBanner}
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0">
+      <div style="font-size:14px;font-weight:900">📄 손해사정서 초안</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost btn-sm" onclick="insStep5Generate()">
+          ${_insDraft ? '초안 재생성' : '▶ Claude 초안 생성'}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 보고서 미리보기 (수정 가능 필드) -->
+  <div style="border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:var(--shadow)">
+
+    <!-- 헤더 -->
+    <div style="background:#0f172a;color:#fff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center">
+      <div style="font-size:14px;font-weight:700">${co.company_name || '누수패스손해사정'} · 손해사정서</div>
+      <div style="font-size:12px;opacity:.75">${cl.report_no || 'NP-2026-XXXX'}</div>
+    </div>
+
+    <!-- 1. 총괄표 -->
+    <div style="padding:14px 20px;border-bottom:1px solid var(--line)">
+      <div style="font-size:11px;font-weight:700;color:#2563eb;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">1. 총괄표</div>
+      <div style="display:grid;grid-template-columns:90px 1fr;gap:6px 12px;font-size:13px">
+        <div style="color:var(--muted)">손해액</div>
+        <div><input class="form-control" id="ins5-damage" value="${rc ? rc.toLocaleString()+'원' : ''}" style="padding:5px 8px;font-size:13px"/></div>
+        <div style="color:var(--muted)">자기부담금</div>
+        <div style="color:var(--text)">${ded.toLocaleString()}원 (자동)</div>
+        <div style="color:var(--muted)">지급보험금</div>
+        <div><input class="form-control" id="ins5-payout" value="${pay ? pay.toLocaleString()+'원' : ''}" style="padding:5px 8px;font-size:13px;color:var(--green);font-weight:700"/></div>
+      </div>
+    </div>
+
+    <!-- 2. 보험계약사항 -->
+    <div style="padding:14px 20px;border-bottom:1px solid var(--line)">
+      <div style="font-size:11px;font-weight:700;color:#2563eb;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">2. 보험계약사항</div>
+      <div style="display:grid;grid-template-columns:90px 1fr;gap:5px 12px;font-size:13px;color:var(--text)">
+        <div style="color:var(--muted)">보험종목</div><div>${cl.policy_product || '—'}</div>
+        <div style="color:var(--muted)">증권번호</div><div>${cl.policy_no || '—'}</div>
+        <div style="color:var(--muted)">피보험자</div><div>${cl.insured_name || '—'}</div>
+        <div style="color:var(--muted)">보험기간</div><div>${cl.policy_start && cl.policy_end ? cl.policy_start+' ~ '+cl.policy_end : '—'}</div>
+        <div style="color:var(--muted)">특약조건</div><div>가족일상생활배상책임</div>
+      </div>
+    </div>
+
+    <!-- 4. 조사자의견 -->
+    <div style="padding:14px 20px;border-bottom:1px solid var(--line)">
+      <div style="font-size:11px;font-weight:700;color:#2563eb;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">4. 사고사항 — 조사자의견</div>
+      <textarea class="form-control" id="ins5-opinion" rows="3" style="font-size:13px"
+        >${existingSections.investigator_opinion || fd?.repair_opinion || ''}</textarea>
+    </div>
+
+    <!-- 5. 법률상손해배상책임 -->
+    <div style="padding:14px 20px;border-bottom:1px solid var(--line)">
+      <div style="font-size:11px;font-weight:700;color:#2563eb;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">5. 법률상 손해배상책임</div>
+      <div style="display:grid;grid-template-columns:90px 1fr;gap:6px 12px;font-size:13px">
+        <div style="color:var(--muted)">성립/불성립</div>
+        <div style="font-weight:700;color:${cl.liability_established==='yes'?'var(--green)':'var(--red)'}">
+          ${established}
+        </div>
+        <div style="color:var(--muted)">관련법규</div>
+        <div style="color:var(--text)">민법 제750조, 제758조 / 상법 제680조</div>
+        <div style="color:var(--muted)">판단근거</div>
+        <div><textarea class="form-control" id="ins5-judgment" rows="2" style="font-size:13px"
+          >${existingSections.accident_cause || cl.liability_memo || ''}</textarea></div>
+      </div>
+    </div>
+
+    <div style="padding:12px 20px;text-align:center;font-size:12px;color:var(--muted)">
+      나머지 섹션 자동 완성 · 수리 전/중/후 사진 포함 · 총 4~5페이지
+    </div>
+  </div>
+
+  <!-- 진행 바 -->
+  <div id="ins5-progress" style="display:none;margin-top:12px;padding:12px;background:var(--primary-soft);border-radius:8px">
+    <div style="height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin-bottom:6px">
+      <div id="ins5-fill" style="height:100%;background:var(--primary);border-radius:3px;transition:width .4s;width:0%"></div>
+    </div>
+    <div id="ins5-label" style="font-size:12px;color:var(--primary)">준비 중…</div>
+  </div>
+
+  <div class="ins-action-bar">
+    <button class="btn btn-ghost" onclick="insGoStep(4)">이전</button>
+    <button class="btn btn-ghost" onclick="insStep5SaveDraft()">초안 저장</button>
+    <button class="btn btn-primary" onclick="insGoStep(6)">검토 완료 → 최종 출력</button>
+  </div>`;
+}
+
+async function insStep5Generate() {
+  if (_insGenerating || !_insField) { toast('파트너 수리 자료가 필요합니다.', 'e'); return; }
+  _insGenerating = true;
+
+  const btn   = document.querySelector('#insStepContent .btn-ghost');
+  const prog  = document.getElementById('ins5-progress');
+  const fill  = document.getElementById('ins5-fill');
+  const label = document.getElementById('ins5-label');
+  if (prog) prog.style.display = 'block';
+
+  const stages = ['피보험자 지위 확인', '사고원인 분석', '사고내용 작성',
+                  '보험기간 검토', '사고장소 검토', '피해사항 정리', '조사자의견 작성'];
+
+  try {
+    const cl  = _insClaim;
+    const fd  = _insField;
+    const inputVars = {
+      insurance_type_label:     INS_TYPE_LABELS[cl.insurance_type] || cl.insurance_type || '미확인',
+      accident_date:            cl.accident_date || '미확인',
+      insurer_name:             cl.insurer_name || '미확인',
+      coverage_limit:           cl.coverage_limit,
+      deductible:               cl.deductible,
+      insured_name_masked:      cl.insured_name || '홍○○',
+      insured_status:           cl.insured_status || '확인불가',
+      accident_location_masked: '용인시 수지구',
+      repair_cost:              fd.repair_cost,
+      repair_opinion:           fd.repair_opinion,
+      work_done_at:             (fd.work_done_at || '').slice(0, 10),
+    };
+
+    // 진행 시각화
+    for (let i = 0; i < stages.length; i++) {
+      if (fill) fill.style.width = ((i+1)/stages.length * 80) + '%';
+      if (label) label.textContent = stages[i] + ' 분석 중…';
+      await new Promise(r => setTimeout(r, 150));
+    }
+
+    const response = await fetch('/api/claude', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model:      INS_MODEL,
+        max_tokens: 2000,
+        system: `당신은 대한민국 독립손해사정사입니다. 누수사고 자료를 기반으로 손해사정서 초안을 작성합니다.
 반드시 JSON 형식으로만 응답하세요. 마크다운 코드블록 없이 순수 JSON만 반환합니다.
 개인정보(실명, 주민번호, 전체 주소)는 절대 포함하지 마세요.
 
 적용 법령:
-${INS_LEGAL_BUNDLE}`;
-
-  const userPrompt = `아래 7개 필드를 포함한 JSON 객체를 반환하세요.
+${INS_LEGAL_BUNDLE}`,
+        messages: [{ role: 'user', content: `아래 7개 필드를 포함한 JSON 객체를 반환하세요.
 
 {
   "insured_status": "소유자겸점유자 | 임대인 | 임차인 | 확인불가",
@@ -321,552 +939,237 @@ ${INS_LEGAL_BUNDLE}`;
 }
 
 === 입력 변수 (비식별화 완료) ===
-보험종목: ${vars.insurance_type_label}
-사고일자: ${vars.accident_date}
-보험사: ${vars.insurer_name || '미확인'}
-보상한도액: ${vars.coverage_limit ? Number(vars.coverage_limit).toLocaleString() + '원' : '미확인'}
-자기부담금: ${vars.deductible ? Number(vars.deductible).toLocaleString() + '원' : '미확인'}
-피보험자: ${vars.insured_name_masked}
-사고장소: ${vars.accident_location_masked}
-수리금액: ${vars.repair_cost ? Number(vars.repair_cost).toLocaleString() + '원' : '미확인'}
-수리 소견: ${vars.repair_opinion || '없음'}
-방문일: ${vars.work_done_at || '미확인'}
-`;
-
-  for (let i = 0; i < stages.length; i++) {
-    onProgress(i + 1, stages[i], stages.length);
-    await new Promise(r => setTimeout(r, 100));
-  }
-
-  const response = await fetch('/api/claude', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model:      INS_MODEL_NAME,
-      max_tokens: 2000,
-      system:     systemPrompt,
-      messages:   [{ role: 'user', content: userPrompt }],
-    }),
-  });
-
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error('Claude API 오류: ' + (err?.error?.message || response.status));
-  }
-
-  const result = await response.json();
-  const raw    = result.content?.[0]?.text || '';
-
-  try {
-    return JSON.parse(raw.replace(/```json|```/g, '').trim());
-  } catch {
-    throw new Error('Claude 응답 파싱 실패: ' + raw.slice(0, 120));
-  }
-}
-
-async function insSaveDraft(inputVars, sections) {
-  const { data, error } = await sb.rpc('rpc_create_insurance_draft', {
-    p_claim_id:             _insClaim.id,
-    p_prompt_version:       INS_PROMPT_VERSION,
-    p_model_name:           INS_MODEL_NAME,
-    p_legal_bundle_version: INS_LEGAL_BUNDLE_VERSION,
-    p_input_vars_jsonb:     inputVars,
-    p_sections_jsonb:       sections,
-  });
-  if (error) throw new Error('초안 저장 실패: ' + error.message);
-  return data?.[0];
-}
-
-async function insFetchCurrentDraft(claimId) {
-  const { data, error } = await sb
-    .from('insurance_claim_drafts')
-    .select('id, draft_version, sections_jsonb, model_name, created_at, status')
-    .eq('claim_id', claimId)
-    .eq('is_current', true)
-    .maybeSingle();
-  if (error) throw new Error('초안 조회 실패: ' + error.message);
-  return data;
-}
-
-async function insUpdateDraftSections(sections) {
-  if (!_insDraft) return;
-  const { error } = await sb
-    .from('insurance_claim_drafts')
-    .update({ sections_jsonb: sections, status: 'reviewed' })
-    .eq('id', _insDraft.id);
-  if (error) throw new Error('초안 수정 실패: ' + error.message);
-}
-
-async function insSubmitToInsurer(contact, memo) {
-  const { error } = await sb
-    .from('insurance_claims')
-    .update({
-      insurance_tab_status: 'pdf_submitted',
-      pdf_submitted_at:     new Date().toISOString(),
-      insurer_contact:      contact || null,
-      submission_memo:      memo    || null,
-    })
-    .eq('id', _insClaim.id)
-    .neq('insurance_tab_status', 'pdf_submitted');
-  if (error) throw new Error('제출 처리 실패: ' + error.message);
-  _insClaim = { ..._insClaim, insurance_tab_status: 'pdf_submitted' };
-}
-
-// ─────────────────────────────────────────────
-// 렌더링
-// ─────────────────────────────────────────────
-
-function insRender() {
-  const body = document.getElementById('insuranceTabBody');
-  if (!body) return;
-  body.innerHTML = `${insRenderStepBar()}<div id="insStepContent"></div>`;
-  const content = document.getElementById('insStepContent');
-  if      (_insStep === 1) content.innerHTML = insStep1HTML();
-  else if (_insStep === 2) content.innerHTML = insStep2HTML();
-  else if (_insStep === 3) content.innerHTML = insStep3HTML();
-  else if (_insStep === 4) content.innerHTML = insStep4HTML();
-  else if (_insStep === 5) content.innerHTML = insStep5HTML();
-}
-
-function insRenderStepBar() {
-  const steps = ['현장제출 자료', '보험정보 입력', '생성 준비 확인', '초안 검토', 'PDF 제출관리'];
-  return `<div class="ins-step-bar">${steps.map((label, i) => {
-    const n   = i + 1;
-    const cls = n < _insStep ? 'ins-step-done' : n === _insStep ? 'ins-step-active' : 'ins-step-locked';
-    return `<div class="ins-step ${cls}"><div class="ins-step-dot"></div><div class="ins-step-num">${n}단계</div><div class="ins-step-label">${label}</div></div>`;
-  }).join('')}</div>`;
-}
-
-// ── 1단계 ──
-function insStep1HTML() {
-  const fd = _insField;
-  const fieldCard = fd
-    ? `<div class="detail-grid" style="margin-bottom:0">
-        <div class="detail-item"><label>수리 금액</label><span>${fd.repair_cost ? Number(fd.repair_cost).toLocaleString() + '원' : '—'}</span></div>
-        <div class="detail-item"><label>수리 완료일</label><span>${fd.work_done_at ? fd.work_done_at.slice(0,10) : '—'}</span></div>
-        <div class="detail-item full"><label>누수 소견</label><span>${fd.repair_opinion || '—'}</span></div>
-      </div>`
-    : '<div class="empty"><div class="empty-text">기사가 아직 수리완료 보고서를 제출하지 않았습니다</div></div>';
-
-  return `
-    <div class="card">
-      <div style="font-size:14px;font-weight:900;margin-bottom:14px">기사 제출 자료</div>
-      ${fieldCard}
-    </div>
-    <div class="ins-action-bar">
-      <span></span>
-      <button class="btn btn-primary" ${!fd ? 'disabled' : ''} onclick="insGoStep(2)">
-        다음 — 보험정보 입력
-      </button>
-    </div>`;
-}
-
-// ── 2단계 ──
-function insStep2HTML() {
-  const cl = _insClaim || {};
-  const uploadedSet = new Set(_insUploaded.map(d => d.doc_code));
-
-  const docListHTML = !cl.insurance_type
-    ? `<div class="ins-banner ins-banner-info">보험종목을 선택하면 필수서류 목록이 표시됩니다.</div>`
-    : _insRequired.map(doc => {
-        const done       = uploadedSet.has(doc.doc_code);
-        const uploadedAt = done
-          ? (_insUploaded.find(u => u.doc_code === doc.doc_code)?.uploaded_at?.slice(0,10) || '')
-          : null;
-        return `
-          <div class="ins-doc-item ${done ? 'ins-doc-done' : 'ins-doc-missing'}">
-            <div class="ins-doc-left">
-              <span class="ins-doc-icon ${done ? 'ins-icon-ok' : 'ins-icon-no'}">${done ? '✓' : '!'}</span>
-              <div>
-                <div class="ins-doc-name">${doc.doc_name}</div>
-                <div class="ins-doc-sub">${done ? '업로드 완료 · ' + uploadedAt : (doc.is_required ? '필수 서류' : '선택 서류')}</div>
-              </div>
-            </div>
-            <label class="btn btn-ghost btn-sm" style="cursor:pointer">
-              ${done ? '재업로드' : '업로드'}
-              <input type="file" accept=".pdf,.jpg,.jpeg,.png" style="display:none"
-                onchange="insHandleFileUpload(event, '${doc.doc_code}', '${doc.doc_name}')"/>
-            </label>
-          </div>`;
-      }).join('');
-
-  const allRequired = _insRequired.filter(d => d.is_required).every(d => uploadedSet.has(d.doc_code));
-  const canNext     = !!cl.insurance_type && !!cl.accident_date && allRequired;
-
-  return `
-    <div class="card">
-      <div style="font-size:14px;font-weight:900;margin-bottom:14px">보험 기본 정보</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div class="form-group">
-          <label class="form-label">보험종목 *</label>
-          <select class="form-control" id="insTypeSelect" onchange="insOnTypeChange(this.value)">
-            <option value="">— 선택 —</option>
-            ${Object.entries(INS_TYPE_LABELS).map(([v,l]) =>
-              `<option value="${v}" ${cl.insurance_type===v?'selected':''}>${l}</option>`
-            ).join('')}
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">사고일자 *</label>
-          <input class="form-control" type="date" id="insDateInput" value="${cl.accident_date||''}"/>
-        </div>
-        <div class="form-group">
-          <label class="form-label">보험사</label>
-          <input class="form-control" type="text" id="insInsurerInput" placeholder="예: 삼성화재" value="${cl.insurer_name||''}"/>
-        </div>
-        <div class="form-group">
-          <label class="form-label">보상한도액 (원)</label>
-          <input class="form-control" type="number" id="insCovInput" placeholder="예: 100000000" value="${cl.coverage_limit||''}"/>
-        </div>
-        <div class="form-group">
-          <label class="form-label">자기부담금 (원)</label>
-          <input class="form-control" type="number" id="insDedInput" placeholder="예: 200000" value="${cl.deductible||''}"/>
-        </div>
-      </div>
-      <div style="display:flex;justify-content:flex-end;margin-top:4px">
-        <button class="btn btn-ghost btn-sm" onclick="insSaveInfoClick()">임시 저장</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <div style="font-size:14px;font-weight:900;margin-bottom:14px">필수서류 업로드</div>
-      <div>${docListHTML}</div>
-    </div>
-
-    <div class="ins-action-bar">
-      <button class="btn btn-ghost" onclick="insGoStep(1)">이전</button>
-      <button class="btn btn-primary" ${canNext ? '' : 'disabled'} onclick="insGoStep3Click()">
-        다음 — 생성 준비 확인
-      </button>
-    </div>`;
-}
-
-// ── 3단계 ──
-function insStep3HTML() {
-  const cl = _insClaim || {};
-  return `
-    <div id="insChecklist" class="card">
-      <div style="font-size:14px;font-weight:900;margin-bottom:14px">생성 준비 체크리스트</div>
-      <div class="loading"><span class="spinner"></span> 검증 중…</div>
-    </div>
-
-    <div class="card">
-      <div style="font-size:14px;font-weight:900;margin-bottom:14px">Claude 전송 변수 미리보기 (비식별화 완료)</div>
-      <div class="detail-grid">
-        <div class="detail-item"><label>보험종목</label><span>${INS_TYPE_LABELS[cl.insurance_type]||'—'}</span></div>
-        <div class="detail-item"><label>사고일자</label><span>${cl.accident_date||'—'}</span></div>
-        <div class="detail-item"><label>보험사</label><span>${cl.insurer_name||'—'}</span></div>
-        <div class="detail-item"><label>수리금액</label><span>${_insField?.repair_cost ? Number(_insField.repair_cost).toLocaleString()+'원' : '—'}</span></div>
-        <div class="detail-item"><label>피보험자</label><span>홍○○ (비식별화)</span></div>
-        <div class="detail-item"><label>사고장소</label><span>용인시 수지구 (비식별화)</span></div>
-        <div class="detail-item full"><label>수리 소견</label><span>${_insField?.repair_opinion||'—'}</span></div>
-      </div>
-      <div style="font-size:11px;color:var(--muted);margin-top:8px">※ 실명·전체 주소·주민번호는 Claude API에 전송되지 않습니다.</div>
-    </div>
-
-    <div class="ins-action-bar">
-      <button class="btn btn-ghost" onclick="insGoStep(2)">이전</button>
-      <button class="btn btn-primary" id="insGenerateBtn" disabled onclick="insGenerateClick()">
-        Claude 초안 생성
-      </button>
-    </div>
-
-    <div id="insProgressBar" style="display:none;margin-top:12px;padding:12px;background:var(--primary-soft);border-radius:8px">
-      <div style="height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin-bottom:6px">
-        <div id="insProgressFill" style="height:100%;background:var(--primary);border-radius:3px;transition:width .3s;width:0%"></div>
-      </div>
-      <div id="insProgressLabel" style="font-size:12px;color:var(--primary)">준비 중…</div>
-    </div>`;
-}
-
-// ── 4단계 ──
-function insStep4HTML() {
-  const draftInfo = _insDraft
-    ? `✓ 초안 v${_insDraft.draft_version} · ${_insDraft.model_name || INS_MODEL_NAME} · ${(_insDraft.created_at||'').slice(0,10)}`
-    : '초안 정보 없음';
-
-  const sectionsHTML = INS_DRAFT_SECTIONS.map(sec => {
-    const val = _insSections[sec.key];
-    let displayVal = '(생성된 내용 없음 — 클릭하여 직접 입력)';
-    if (val !== undefined && val !== null) {
-      if (sec.key === 'victim_damages' && Array.isArray(val)) {
-        displayVal = val.map(v =>
-          `<div>${v.victim_id} · ${v.damage_type}${v.amount ? ' · '+Number(v.amount).toLocaleString()+'원':''} — ${v.description||''}</div>`
-        ).join('');
-      } else {
-        displayVal = String(val);
-      }
-    }
-    return `
-      <div class="ins-draft-section" style="margin-bottom:16px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-          <div>
-            <strong style="font-size:13px">${sec.label}</strong>
-            <span style="font-size:11px;color:var(--muted);margin-left:6px">${sec.desc}</span>
-          </div>
-          <button class="btn btn-ghost btn-sm" onclick="insStartEdit('${sec.key}')">수정</button>
-        </div>
-        <div id="insSecDisplay_${sec.key}" class="ins-draft-content" onclick="insStartEdit('${sec.key}')" style="cursor:pointer">
-          ${displayVal}
-        </div>
-        <div id="insSecEdit_${sec.key}" style="display:none">
-          <textarea class="form-control" id="insSecTA_${sec.key}" rows="3" style="font-size:13px"
-            >${sec.key === 'victim_damages' && Array.isArray(val) ? JSON.stringify(val, null, 2) : (val||'')}</textarea>
-          <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:6px">
-            <button class="btn btn-ghost btn-sm" onclick="insCancelEdit('${sec.key}')">취소</button>
-            <button class="btn btn-primary btn-sm" onclick="insConfirmEdit('${sec.key}')">확인</button>
-          </div>
-        </div>
-      </div>`;
-  }).join('');
-
-  return `
-    <div class="ins-banner ins-banner-success">${draftInfo} <span id="insDraftSaving" style="margin-left:8px;opacity:.6;display:none">저장 중…</span></div>
-    <div class="card">
-      <div style="font-size:14px;font-weight:900;margin-bottom:14px">손해사정서 초안 — 섹션별 검토·수정</div>
-      ${sectionsHTML}
-    </div>
-    <div class="ins-action-bar">
-      <button class="btn btn-ghost" onclick="insGoStep(3)">이전</button>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-ghost" onclick="insRegenerate()" ${_insGenerating?'disabled':''}>
-          ${_insGenerating ? '재생성 중…' : '초안 재생성'}
-        </button>
-        <button class="btn btn-primary" onclick="insGoStep(5)">검토 완료 — PDF 제출관리</button>
-      </div>
-    </div>`;
-}
-
-// ── 5단계 ──
-function insStep5HTML() {
-  const submitted = _insClaim?.insurance_tab_status === 'pdf_submitted';
-  const banner    = submitted
-    ? `<div class="ins-banner ins-banner-success">✓ 보험사 제출 완료 처리됨 — 사건 종결 대기</div>`
-    : '';
-  return `
-    ${banner}
-    <div class="card">
-      <div style="font-size:14px;font-weight:900;margin-bottom:14px">보험사 제출</div>
-      <div class="form-group">
-        <label class="form-label">보험사 담당자</label>
-        <input class="form-control" id="insContactInput" placeholder="예: 삼성화재 홍○○ 팀장 010-0000-0000"
-          value="${_insClaim?.insurer_contact||''}" ${submitted?'disabled':''}/>
-      </div>
-      <div class="form-group">
-        <label class="form-label">제출 메모</label>
-        <input class="form-control" id="insMemoInput" placeholder="예: 이메일 접수 / 팩스 발송" ${submitted?'disabled':''}/>
-      </div>
-      ${!submitted ? `
-        <button class="btn btn-success" style="width:100%;justify-content:center" onclick="insSubmitClick()">
-          보험사 제출 완료 처리
-        </button>` : `
-        <div class="detail-grid" style="margin-top:12px">
-          <div class="detail-item"><label>제출일시</label><span>${(_insClaim?.pdf_submitted_at||'').slice(0,10)||'—'}</span></div>
-          <div class="detail-item"><label>담당자</label><span>${_insClaim?.insurer_contact||'—'}</span></div>
-        </div>`}
-    </div>
-    <div class="ins-action-bar">
-      <button class="btn btn-ghost" onclick="insGoStep(4)">이전</button>
-      <span class="badge ${submitted?'badge-green':'badge-blue'}">${submitted?'PDF 제출 완료':'제출 대기'}</span>
-    </div>`;
-}
-
-// ─────────────────────────────────────────────
-// 이벤트 핸들러 (HTML onclick에서 호출)
-// ─────────────────────────────────────────────
-
-function insGoStep(n) {
-  _insStep = n;
-  insRender();
-  if (n === 3) insLoadChecklist();
-}
-
-async function insGoStep3Click() {
-  try {
-    await insSaveInfoClick();
-    insGoStep(3);
-  } catch(e) {
-    toast('저장 실패: ' + e.message, 'e');
-  }
-}
-
-// ✅ 수정됨: 깨진 함수 복원
-async function insSaveInfoClick() {
-  const payload = {
-    insurance_type: document.getElementById('insTypeSelect')?.value || _insClaim?.insurance_type,
-    accident_date:  document.getElementById('insDateInput')?.value  || _insClaim?.accident_date,
-    insurer_name:   document.getElementById('insInsurerInput')?.value,
-    coverage_limit: document.getElementById('insCovInput')?.value,
-    deductible:     document.getElementById('insDedInput')?.value,
-  };
-  await insSaveInfo(payload);
-  toast('임시 저장 완료', 's');
-}
-
-// ✅ 수정됨: 깨진 함수 복원
-async function insOnTypeChange(val) {
-  _insClaim    = { ..._insClaim, insurance_type: val };
-  _insRequired = await insFetchRequiredDocs(val);
-  _insStep     = 2;
-  insRender();
-}
-
-async function insHandleFileUpload(e, docCode, docName) {
-  const file = e.target.files?.[0];
-  if (!file) return;
-  try {
-    await insUploadDoc(file, docCode, docName);
-    toast(docName + ' 업로드 완료', 's');
-    _insUploaded = await insFetchUploadedDocs(_insClaim.id);
-    insRender();
-  } catch(err) {
-    console.error('업로드 에러 상세:', err);
-    toast('업로드 실패: ' + err.message, 'e');
-  }
-  e.target.value = '';
-}
-
-async function insLoadChecklist() {
-  try {
-    const checks  = await insValidateReady();
-    const allPass = checks.every(c => c.pass);
-    const html    = checks.map(c => `
-      <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;color:${c.pass?'var(--green)':'var(--red)'}">
-        <span style="width:18px;height:18px;border-radius:50%;background:${c.pass?'var(--green)':'var(--red)'};color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0">${c.pass?'✓':'!'}</span>
-        <div>
-          <span style="font-size:13px">${c.label}</span>
-          ${!c.pass && c.reason ? `<div style="font-size:11px;margin-top:2px">${c.reason}</div>` : ''}
-        </div>
-      </div>`).join('');
-
-    const box = document.getElementById('insChecklist');
-    if (box) {
-      box.style.background  = allPass ? 'var(--green-soft)' : 'var(--red-soft)';
-      box.style.borderLeft  = `3px solid ${allPass ? 'var(--green)' : 'var(--red)'}`;
-      box.innerHTML = `<div style="font-size:14px;font-weight:900;margin-bottom:12px">생성 준비 체크리스트</div>${html}`;
-    }
-    const btn = document.getElementById('insGenerateBtn');
-    if (btn) btn.disabled = !allPass;
-    if (allPass) await insMarkReady();
-  } catch(e) {
-    toast('검증 오류: ' + e.message, 'e');
-  }
-}
-
-async function insGenerateClick() {
-  if (_insGenerating || !_insField) return;
-  _insGenerating = true;
-
-  const btn   = document.getElementById('insGenerateBtn');
-  const bar   = document.getElementById('insProgressBar');
-  const fill  = document.getElementById('insProgressFill');
-  const label = document.getElementById('insProgressLabel');
-  if (btn) btn.disabled = true;
-  if (bar) bar.style.display = 'block';
-
-  try {
-    const inputVars = {
-      insurance_type_label:     INS_TYPE_LABELS[_insClaim.insurance_type] || _insClaim.insurance_type,
-      accident_date:            _insClaim.accident_date,
-      insurer_name:             _insClaim.insurer_name,
-      coverage_limit:           _insClaim.coverage_limit,
-      deductible:               _insClaim.deductible,
-      insured_name_masked:      '홍○○',
-      accident_location_masked: '용인시 수지구',
-      repair_cost:              _insField.repair_cost,
-      repair_opinion:           _insField.repair_opinion,
-      work_done_at:             (_insField.work_done_at||'').slice(0,10),
-    };
-
-    const generated = await insRunClaude(inputVars, (stage, stageName, total) => {
-      if (btn)   btn.textContent     = `${stage}/${total} — ${stageName}`;
-      if (fill)  fill.style.width    = `${(stage/total)*100}%`;
-      if (label) label.textContent   = stageName + ' 분석 중…';
+보험종목: ${inputVars.insurance_type_label}
+피보험자 지위: ${inputVars.insured_status}
+사고일자: ${inputVars.accident_date}
+보험사: ${inputVars.insurer_name}
+보상한도액: ${inputVars.coverage_limit ? Number(inputVars.coverage_limit).toLocaleString()+'원' : '미확인'}
+자기부담금: ${inputVars.deductible ? Number(inputVars.deductible).toLocaleString()+'원' : '미확인'}
+피보험자: ${inputVars.insured_name_masked}
+사고장소: ${inputVars.accident_location_masked}
+수리금액: ${inputVars.repair_cost ? Number(inputVars.repair_cost).toLocaleString()+'원' : '미확인'}
+수리 소견: ${inputVars.repair_opinion || '없음'}
+방문일: ${inputVars.work_done_at || '미확인'}
+` }],
+      }),
     });
 
-    const saved = await insSaveDraft(inputVars, generated);
-    _insSections = generated;
-    _insDraft    = {
-      id:            saved.draft_id,
-      draft_version: saved.draft_version,
-      model_name:    INS_MODEL_NAME,
-      created_at:    new Date().toISOString(),
-    };
-    _insClaim = { ..._insClaim, insurance_tab_status: 'draft_generated', current_draft_id: saved.draft_id };
-    _insStep  = 4;
-    insRender();
+    if (!response.ok) throw new Error('Claude API 오류: ' + response.status);
+    const result = await response.json();
+    const raw    = result.content?.[0]?.text || '';
+    const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
+
+    if (fill) fill.style.width = '100%';
+    if (label) label.textContent = '초안 생성 완료!';
+
+    // 저장
+    const { data: saved, error } = await sb.rpc('rpc_create_insurance_draft', {
+      p_claim_id:             _insClaim.id,
+      p_prompt_version:       INS_PROMPT_VER,
+      p_model_name:           INS_MODEL,
+      p_legal_bundle_version: INS_LEGAL_VER,
+      p_input_vars_jsonb:     inputVars,
+      p_sections_jsonb:       parsed,
+    });
+    if (error) throw error;
+
+    _insSections = parsed;
+    _insDraft = { id: saved?.[0]?.draft_id, draft_version: saved?.[0]?.draft_version,
+      model_name: INS_MODEL, created_at: new Date().toISOString() };
+    _insClaim = { ..._insClaim, insurance_tab_status: 'draft_generated' };
+
+    // 초안 내용 화면 반영
+    const opEl = document.getElementById('ins5-opinion');
+    const jdEl = document.getElementById('ins5-judgment');
+    if (opEl) opEl.value = parsed.investigator_opinion || '';
+    if (jdEl) jdEl.value = parsed.accident_cause || '';
+
+    setTimeout(() => { if (prog) prog.style.display='none'; }, 1000);
     toast('초안 생성 완료!', 's');
   } catch(e) {
     toast('생성 실패: ' + e.message, 'e');
-    if (btn) { btn.disabled = false; btn.textContent = 'Claude 초안 생성'; }
-    if (bar) bar.style.display = 'none';
+    if (prog) prog.style.display = 'none';
   } finally {
     _insGenerating = false;
   }
 }
 
-async function insRegenerate() {
-  if (!confirm('현재 초안을 버리고 새로 생성합니다. 계속하시겠습니까?')) return;
-  _insStep = 3;
-  insRender();
-  await insLoadChecklist();
-  const checks = await insValidateReady();
-  if (checks.every(c => c.pass)) await insGenerateClick();
-}
+async function insStep5SaveDraft() {
+  try {
+    const sections = {
+      ..._insSections,
+      investigator_opinion: document.getElementById('ins5-opinion')?.value,
+      accident_cause:       document.getElementById('ins5-judgment')?.value,
+    };
 
-function insStartEdit(key) {
-  const display = document.getElementById(`insSecDisplay_${key}`);
-  const editDiv = document.getElementById(`insSecEdit_${key}`);
-  if (display) display.style.display = 'none';
-  if (editDiv) editDiv.style.display = 'block';
-  const ta = document.getElementById(`insSecTA_${key}`);
-  if (ta) { ta.focus(); ta.select(); }
-}
-
-function insCancelEdit(key) {
-  const display = document.getElementById(`insSecDisplay_${key}`);
-  const editDiv = document.getElementById(`insSecEdit_${key}`);
-  if (display) display.style.display = 'block';
-  if (editDiv) editDiv.style.display = 'none';
-}
-
-async function insConfirmEdit(key) {
-  const ta = document.getElementById(`insSecTA_${key}`);
-  if (!ta) return;
-  let val = ta.value;
-  try { val = JSON.parse(val); } catch { /* 문자열 유지 */ }
-
-  _insSections = { ..._insSections, [key]: val };
-
-  const display = document.getElementById(`insSecDisplay_${key}`);
-  const editDiv = document.getElementById(`insSecEdit_${key}`);
-  if (display) {
-    if (key === 'victim_damages' && Array.isArray(val)) {
-      display.innerHTML = val.map(v =>
-        `<div>${v.victim_id} · ${v.damage_type}${v.amount?' · '+Number(v.amount).toLocaleString()+'원':''} — ${v.description||''}</div>`
-      ).join('');
+    if (_insDraft?.id) {
+      await sb.from('insurance_claim_drafts')
+        .update({ sections_jsonb: sections, status: 'reviewed' })
+        .eq('id', _insDraft.id);
     } else {
-      display.textContent = String(val);
+      // 새로 저장
+      await sb.from('insurance_claim_drafts').insert({
+        claim_id: _insClaim.id, sections_jsonb: sections, status: 'reviewed', is_current: true,
+        prompt_version: INS_PROMPT_VER, model_name: INS_MODEL,
+      });
     }
-    display.style.display = 'block';
-  }
-  if (editDiv) editDiv.style.display = 'none';
 
-  const savingEl = document.getElementById('insDraftSaving');
-  if (savingEl) savingEl.style.display = 'inline';
-  try { await insUpdateDraftSections(_insSections); }
-  catch(e) { toast('수정 저장 실패: ' + e.message, 'e'); }
-  finally { if (savingEl) savingEl.style.display = 'none'; }
+    // insurance_claims 상태 업데이트
+    await sb.from('insurance_claims')
+      .update({ insurance_tab_status: 'draft_generated', updated_at: new Date().toISOString() })
+      .eq('id', _insClaim.id);
+    _insClaim = { ..._insClaim, insurance_tab_status: 'draft_generated' };
+    _insSections = sections;
+    toast('초안 저장 완료!', 's');
+  } catch(e) {
+    toast('저장 실패: ' + e.message, 'e');
+  }
+}
+
+// ─────────────────────────────────────────────
+// STEP 6: 최종 출력
+// ─────────────────────────────────────────────
+function insStep6HTML() {
+  const cl        = _insClaim || {};
+  const submitted = cl.insurance_tab_status === 'pdf_submitted';
+  const co        = _insCompany || {};
+
+  return `
+  ${submitted
+    ? `<div class="ins-banner ins-banner-success">✓ 보험사 제출 완료 처리됨 — ${(cl.pdf_submitted_at||'').slice(0,10)}</div>`
+    : ''}
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+    <div class="card" style="text-align:center">
+      <div style="font-size:32px;margin-bottom:10px">📄</div>
+      <div style="font-size:15px;font-weight:700;margin-bottom:6px">PDF 다운로드</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:16px">A4 · 4~5페이지 · 직인 포함</div>
+      <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="insDownloadPDF()">
+        PDF 다운로드
+      </button>
+    </div>
+    <div class="card" style="text-align:center">
+      <div style="font-size:32px;margin-bottom:10px">✅</div>
+      <div style="font-size:15px;font-weight:700;margin-bottom:6px">제출 완료 처리</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:16px">
+        지급보험금 ${Number(cl.payout_amount||0).toLocaleString()}원 DB 기록
+      </div>
+      <button class="btn btn-success" style="width:100%;justify-content:center"
+        ${submitted ? 'disabled' : ''} onclick="insSubmitClick()">
+        ${submitted ? '제출 완료' : '보험사 제출 완료 처리'}
+      </button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="font-size:14px;font-weight:900;margin-bottom:14px">제출 정보</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-group">
+        <label class="form-label">보험사 담당자</label>
+        <input class="form-control" id="ins6-contact" value="${cl.insurer_contact||''}"
+          placeholder="예: 삼성화재 홍○○ 팀장 010-0000-0000" ${submitted?'disabled':''}/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">제출 메모</label>
+        <input class="form-control" id="ins6-memo" placeholder="예: 이메일 접수 / 팩스 발송"
+          ${submitted?'disabled':''}/>
+      </div>
+    </div>
+    <div style="padding:12px;background:var(--primary-soft);border-radius:8px;font-size:13px">
+      제출 완료 시 접수건 상태가 <strong>손해사정 완료</strong>로 변경되고,
+      지급보험금이 DB에 기록됩니다.
+    </div>
+  </div>
+
+  <div class="ins-action-bar">
+    <button class="btn btn-ghost" onclick="insGoStep(5)">이전</button>
+    <span class="badge ${submitted?'badge-green':'badge-blue'}">${submitted?'PDF 제출 완료':'제출 대기'}</span>
+  </div>`;
+}
+
+function insDownloadPDF() {
+  // TODO: PDF 생성 기능 (다음 배포에서 활성화)
+  toast('PDF 생성 기능은 다음 업데이트에서 활성화됩니다.', 'i');
 }
 
 async function insSubmitClick() {
-  const contact = document.getElementById('insContactInput')?.value || '';
-  const memo    = document.getElementById('insMemoInput')?.value    || '';
+  const contact = document.getElementById('ins6-contact')?.value || '';
+  const memo    = document.getElementById('ins6-memo')?.value    || '';
   try {
-    await insSubmitToInsurer(contact, memo);
+    await sb.rpc('rpc_submit_insurance_claim', {
+      p_claim_id: _insClaim.id,
+      p_memo: memo || null,
+    });
+    // insurer_contact 별도 업데이트
+    if (contact) {
+      await sb.from('insurance_claims')
+        .update({ insurer_contact: contact })
+        .eq('id', _insClaim.id);
+    }
+    _insClaim = { ..._insClaim, insurance_tab_status: 'pdf_submitted', pdf_submitted_at: new Date().toISOString() };
     insRender();
     toast('보험사 제출 완료 처리됐습니다.', 's');
   } catch(e) {
     toast('제출 실패: ' + e.message, 'e');
   }
 }
+
+// ─────────────────────────────────────────────
+// 공통 네비게이션
+// ─────────────────────────────────────────────
+function insGoStep(n) {
+  _insStep = n;
+  insRender();
+}
+
+// ─────────────────────────────────────────────
+// CSS (index.html에 없는 보험탭 전용 스타일)
+// ─────────────────────────────────────────────
+(function injectInsCSS() {
+  if (document.getElementById('ins-tab-css')) return;
+  const style = document.createElement('style');
+  style.id = 'ins-tab-css';
+  style.textContent = `
+/* ── 스텝 바 ── */
+.ins-step-bar{display:flex;gap:0;margin-bottom:16px;background:#fff;border-radius:12px;padding:6px;box-shadow:0 1px 3px rgba(0,0,0,.06),0 8px 24px rgba(0,0,0,.08)}
+.ins-step{flex:1;text-align:center;padding:8px 4px;border-radius:8px;cursor:default;transition:all .15s}
+.ins-step-active{background:#2563eb;cursor:pointer}
+.ins-step-done{cursor:pointer}
+.ins-step-done:hover{background:#f0fdf4}
+.ins-step-locked{opacity:.45}
+.ins-step-dot{width:8px;height:8px;border-radius:50%;margin:0 auto 4px;background:#e2e8f0}
+.ins-step-active .ins-step-dot{background:#fff}
+.ins-step-done .ins-step-dot{background:#15803d}
+.ins-step-num{font-size:10px;font-weight:700;color:#94a3b8;margin-bottom:2px}
+.ins-step-active .ins-step-num{color:rgba(255,255,255,.8)}
+.ins-step-done .ins-step-num{color:#15803d}
+.ins-step-label{font-size:12px;font-weight:700;color:#64748b}
+.ins-step-active .ins-step-label{color:#fff}
+.ins-step-done .ins-step-label{color:#111827}
+
+/* ── 서류 드롭존 ── */
+.ins-doc-zone{border:1.5px dashed #cbd5e1;border-radius:10px;padding:16px 12px;text-align:center;cursor:pointer;transition:all .18s;position:relative;overflow:hidden;background:#fff}
+.ins-doc-zone:hover{border-color:#2563eb;background:#eff6ff}
+.ins-doc-dragover{border-color:#2563eb;background:#eff6ff;transform:scale(1.02);box-shadow:0 0 0 3px rgba(37,99,235,.15)}
+.ins-doc-done{border-style:solid;border-color:#15803d;background:#f0fdf4}
+.ins-doc-progress{position:absolute;bottom:0;left:0;height:3px;background:#2563eb;width:0%;transition:width .1s linear;display:none}
+
+/* ── 판단 박스 ── */
+.ins-judge-box{border:1px solid #e4e7ef;border-radius:10px;overflow:hidden;margin-bottom:10px}
+.ins-judge-head{padding:11px 16px;background:#f8fafc;display:flex;align-items:center;gap:10px;border-bottom:1px solid #e4e7ef}
+.ins-judge-label{font-size:13px;font-weight:700;flex:1;color:#1e293b}
+.ins-judge-sel{padding:5px 10px;font-size:12px;font-weight:700;border:1.5px solid #e4e7ef;border-radius:8px;cursor:pointer;outline:none;font-family:inherit;transition:all .15s}
+.ins-judge-body{padding:12px 16px;font-size:12px;line-height:1.8;color:#6b7280}
+
+/* ── 배너 ── */
+.ins-banner{padding:10px 14px;border-radius:8px;font-size:13px;font-weight:500}
+.ins-banner-success{background:#f0fdf4;color:#15803d;border-left:3px solid #15803d}
+.ins-banner-warn{background:#fffbeb;color:#d97706;border-left:3px solid #d97706}
+.ins-banner-info{background:#eff6ff;color:#2563eb;border-left:3px solid #2563eb}
+.ins-banner-error{background:#fef2f2;color:#dc2626;border-left:3px solid #dc2626}
+
+/* ── 액션바 ── */
+.ins-action-bar{display:flex;align-items:center;justify-content:space-between;padding:14px 0;gap:10px;margin-top:8px}
+`;
+  document.head.appendChild(style);
+})();
