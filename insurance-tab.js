@@ -1,9 +1,15 @@
-// v2026-04-17-v5.2 — 룰북 15케이스 + 758조 본문/단서 + 등기부 우선 + 25개 추출 항목
+// v2026-04-17-v5.2.1 — JSON 파서 견고화 (중첩 괄호 카운팅)
 /**
- * insurance-tab.js  v5.2
+ * insurance-tab.js  v5.2.1
  * 누수패스 보험자료 탭
  *
  * 의존성: sb, toast(), curUser (index.html)
+ *
+ * ✨ v5.2.1 변경사항 (2026-04-17 오후)
+ *   🔴 BUGFIX: "Unexpected non-whitespace character after JSON at position N" 오류 수정
+ *      - 원인: Claude 응답이 JSON 뒤에 설명/개행을 덧붙일 때 JSON.parse 실패
+ *      - 해결: parseClaudeJson() 헬퍼 추가 (코드펜스 제거 + 중첩 괄호 카운팅으로 첫 JSON만 추출)
+ *      - 적용 지점: 2차(피보험자 지위) / 4차(Sabi 판단) / callClaudeDoc (1차·3차)
  *
  * ✨ v5.2 변경사항 (2026-04-17 저녁)
  *   1. 누수원인 룰북 신설: 5개 책임주체 × 대표 케이스 + 키워드 힌트
@@ -34,7 +40,7 @@
 // 상수
 // ─────────────────────────────────────────────
 const INS_MODEL      = 'claude-sonnet-4-6';
-const INS_PROMPT_VER = 'v5.2';
+const INS_PROMPT_VER = 'v5.2.1';
 const INS_LEGAL_VER  = 'v2.0';
 
 const INS_LEGAL = `[민법 제750조] 고의 또는 과실로 인한 위법행위로 타인에게 손해를 가한 자는 그 손해를 배상할 책임이 있다.
@@ -890,7 +896,7 @@ ${typeCtx}
       });
       if (!resp.ok) throw new Error('API 오류 ' + resp.status);
       const res = await resp.json();
-      const r2 = JSON.parse((res.content?.[0]?.text||'{}').replace(/```json|```/g,'').trim());
+      const r2 = parseClaudeJson(res.content?.[0]?.text, '피보험자 지위 분석');
       Object.assign(result, r2);
     }
 
@@ -942,7 +948,7 @@ ${typeCtx}
     });
     if (!judgeResp.ok) throw new Error('판단 API 오류 ' + judgeResp.status);
     const judgeRes = await judgeResp.json();
-    const r4 = JSON.parse((judgeRes.content?.[0]?.text||'{}').replace(/```json|```/g,'').trim());
+    const r4 = parseClaudeJson(judgeRes.content?.[0]?.text, 'Sabi 책임/면부책 판단');
     Object.assign(result, r4);
 
     progress(100, '✓ 분석 완료!');
@@ -1258,6 +1264,60 @@ STEP 9-D: 약관상 "보상하지 않는 손해" 해당?
 8. shared_liability = true면 coverage_reasoning에 "과실 비율에 따른 보험금 산정이 필요할 수 있음" 포함`;
 }
 
+// ─────────────────────────────────────────────
+// Claude 응답 JSON 견고 파서 (v5.2.1)
+// 원인: 모델이 JSON 뒤에 코멘트/개행/설명을 덧붙이면 JSON.parse 실패
+//       → 코드펜스 제거 + 중첩 괄호 카운팅으로 첫 JSON 객체만 추출
+// ─────────────────────────────────────────────
+function parseClaudeJson(rawText, label) {
+  const raw = (rawText || '').trim();
+  if (!raw) return {};
+
+  // 1) 코드펜스 제거 (```json ... ``` / ``` ... ```)
+  let text = raw
+    .replace(/```json\s*/gi, '')
+    .replace(/```/g, '')
+    .trim();
+
+  // 2) 첫 { 부터 매칭되는 } 까지만 추출 (중첩 대응, 문자열 내부 { } 무시)
+  const start = text.indexOf('{');
+  if (start === -1) {
+    console.warn(`[${label}] JSON 시작({) 없음. 원본:`, raw.slice(0, 200));
+    return {};
+  }
+
+  let depth = 0, end = -1, inStr = false, esc = false;
+  for (let i = start; i < text.length; i++) {
+    const c = text[i];
+    if (inStr) {
+      if (esc) { esc = false; continue; }
+      if (c === '\\') { esc = true; continue; }
+      if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') { inStr = true; continue; }
+    if (c === '{') depth++;
+    else if (c === '}') {
+      depth--;
+      if (depth === 0) { end = i; break; }
+    }
+  }
+
+  if (end === -1) {
+    console.warn(`[${label}] JSON 종료(}) 미발견 (응답 잘림 가능). 원본 앞부분:`, raw.slice(0, 300));
+    return {};
+  }
+
+  const jsonStr = text.slice(start, end + 1);
+  try {
+    return JSON.parse(jsonStr);
+  } catch (e) {
+    console.error(`[${label}] JSON.parse 실패:`, e.message);
+    console.error(`[${label}] 추출된 JSON:`, jsonStr.slice(0, 500));
+    throw new Error(`${label} 응답 파싱 실패: ${e.message}`);
+  }
+}
+
 async function callClaudeDoc(b64, mediaType, title, system, prompt) {
   const isPdf = mediaType === 'application/pdf';
   const resp = await fetch('/api/claude', {
@@ -1275,7 +1335,7 @@ async function callClaudeDoc(b64, mediaType, title, system, prompt) {
   if (!resp.ok) throw new Error(`${title} API 오류 ${resp.status}`);
   const res = await resp.json();
   const raw = res.content?.[0]?.text || '{}';
-  return JSON.parse(raw.replace(/```json|```/g,'').trim());
+  return parseClaudeJson(raw, title);
 }
 
 async function s2Save() {
