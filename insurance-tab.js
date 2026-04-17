@@ -1,18 +1,27 @@
-// v2026-04-16-v5 — 3약관 분기 (가족구형/가족신형/일배책) + Sabi v2.3 8·9단계 적용
+// v2026-04-17-v5.2 — 룰북 15케이스 + 758조 본문/단서 + 등기부 우선 + 25개 추출 항목
 /**
- * insurance-tab.js  v5
+ * insurance-tab.js  v5.2
  * 누수패스 보험자료 탭
  *
  * 의존성: sb, toast(), curUser (index.html)
  *
+ * ✨ v5.2 변경사항 (2026-04-17 저녁)
+ *   1. 누수원인 룰북 신설: 5개 책임주체 × 대표 케이스 + 키워드 힌트
+ *   2. 민법 제758조 본문/단서 프롬프트 명시 구분
+ *   3. 서류 체계 재정비: building_reg_* → ownership_* (등기부 OR 건축물대장 통합)
+ *      (ownership_insured / ownership_victim)
+ *   4. 추출 항목 확장 (20개 → 25개): 소유자명, 소유권이전일, 동거인, 사고일시, 피해사항 등
+ *   5. Reasoning 스타일 가이드: "피보험자의 손해배상책임은 [성립/불성립]함" 명시 필수
+ *   6. 등기부등본 1순위 / 건축물대장 보조 판단 규칙
+ *
+ * ✨ v5.1 변경사항 (2026-04-17 아침)
+ *   🔴 CRITICAL BUGFIX: 8단계 STEP A가 "주택관리는 무조건 성립"으로 잘못 판정하던 문제 수정
+ *      → Sabi 레퍼런스 v5.1 대로 피보험자 지위별 분기 적용
+ *
  * ✨ v5 변경사항
  *   1. 약관 체계 재정의: 가족일상생활(구형) / 가족일상생활(신형) / 일상생활(일배책) 3종
- *      (기존 facility_liability, water_damage는 "추후 지원" 비활성화)
- *   2. INS_TYPE_CONTEXT: Sabi v2.3 원칙(임대인+주택관리 한 점에서만 면·부책 갈림) 반영
- *   3. Sabi 8단계 프롬프트 삽입: accident_type + shared_liability 판단
- *   4. Sabi 9단계 프롬프트: 3약관 분기 로직 정확히 구현
- *   5. 면·부책 값 3-value (부책 / 면책 / 판단유보) — "면책(판단유보)" 모순 제거
- *   6. insured_status 4-value 표기 통일
+ *   2. INS_TYPE_CONTEXT: Sabi v2.3 원칙 반영
+ *   3. Sabi 8·9단계 프롬프트 + 3-value coverage_result
  *
  * 3단계:
  *   STEP 1. 준비      — 보고서 기본정보 + 약관구분 선택 + 서류 업로드
@@ -25,7 +34,7 @@
 // 상수
 // ─────────────────────────────────────────────
 const INS_MODEL      = 'claude-sonnet-4-6';
-const INS_PROMPT_VER = 'v5.0';
+const INS_PROMPT_VER = 'v5.2';
 const INS_LEGAL_VER  = 'v2.0';
 
 const INS_LEGAL = `[민법 제750조] 고의 또는 과실로 인한 위법행위로 타인에게 손해를 가한 자는 그 손해를 배상할 책임이 있다.
@@ -79,12 +88,12 @@ const INS_CAUSES = [
 ];
 
 const INS_DOCS = [
-  { code:'insurance_policy',    name:'보험증권',           type:'pdf', required:true },
-  { code:'resident_reg',        name:'주민등록등본',        type:'pdf', required:true },
-  { code:'building_reg_insured',name:'건축물대장 (가해자)', type:'pdf', required:true },
-  { code:'building_reg_victim', name:'건축물대장 (피해자)', type:'pdf', required:true },
-  { code:'family_cert',         name:'가족관계증명서',      type:'pdf', required:false },
-  { code:'claim_form',          name:'보험청구서',          type:'pdf', required:false },
+  { code:'insurance_policy',  name:'보험증권',                                           type:'pdf', required:true  },
+  { code:'resident_reg',      name:'주민등록등본',                                       type:'pdf', required:true  },
+  { code:'ownership_insured', name:'피보험자 소유자료 (등기부등본 또는 건축물대장)',     type:'pdf', required:true  },
+  { code:'ownership_victim',  name:'피해자 소유자료 (등기부등본 또는 건축물대장)',       type:'pdf', required:true  },
+  { code:'family_cert',       name:'가족관계증명서',                                     type:'pdf', required:false },
+  { code:'claim_form',        name:'보험청구서',                                         type:'pdf', required:false },
 ];
 
 // 피보험자 지위 4-value (표기 통일 — 백엔드 enum과 매칭)
@@ -495,8 +504,8 @@ async function insUpload(file, code, name) {
       .upload(path, file, {cacheControl:'3600',upsert:true});
     if (upErr) throw new Error('Storage: '+upErr.message);
 
-    // v5 수정: 피해자 서류는 doc_category='victim'
-    const docCategory = code === 'building_reg_victim' ? 'victim' : 'insured';
+    // v5.2 수정: 피해자 서류는 doc_category='victim' (ownership_victim 반영)
+    const docCategory = code === 'ownership_victim' ? 'victim' : 'insured';
 
     const { data: row, error: dbErr } = await sb.from('insurance_doc_uploads').insert({
       claim_id: _insClaim.id, doc_code: code, doc_name: file.name,
@@ -817,10 +826,10 @@ ${typeCtx}
       }
     }
 
-    // ── 2차: 건축물대장(가해자) + 주민등록등본 교차 분석 ──
+    // ── 2차: 피보험자 소유자료 + 주민등록등본 교차 분석 ──
     progress(35, '피보험자 지위 판단 중…');
     const contentArr = [];
-    for (const code of ['building_reg_insured','resident_reg']) {
+    for (const code of ['ownership_insured','resident_reg']) {
       const up = _insUploaded[code];
       if (!up) continue;
       const b64 = await fetchBase64(up.file_path);
@@ -830,19 +839,25 @@ ${typeCtx}
       contentArr.push({
         type: isPdf ? 'document' : 'image',
         source: { type:'base64', media_type: mt, data: b64 },
-        ...(isPdf ? { title: code==='building_reg_insured'?'피보험자 건축물대장':'주민등록등본' } : {}),
+        ...(isPdf ? { title: code==='ownership_insured'?'피보험자 소유자료(등기부 또는 건축물대장)':'주민등록등본' } : {}),
       });
     }
     if (contentArr.length > 0) {
       const policyAddr = result.policy_address_raw || '(보험증권 주소 미추출)';
       contentArr.push({ type:'text', text:
-`위 서류(건축물대장, 주민등록등본)를 교차 분석하여 아래 JSON을 반환하세요.
+`위 서류(피보험자 소유자료 + 주민등록등본)를 교차 분석하여 아래 JSON을 반환하세요.
+
+★ 자료 판독 우선순위:
+   - 피보험자 소유자료가 "등기부등본"이면: 최우선 (소유권 공시의 법적 근거)
+   - 피보험자 소유자료가 "건축물대장"이면: 보조 (소유자 란 참고 가능)
+   - 둘 다 있으면 등기부등본 기준으로 판단, 건축물대장과 불일치 시 등기부 우선
 
 판단 기준:
-1. 피보험자 지위 (4-value):
-   - 건축물대장 소유자 = 주민등록 세대주(동일인) → "소유자겸점유자"
-   - 주민등록상 거주 중이나 건축물대장 소유자 ≠ 세대주 → "임차인겸점유자"
-   - 건축물대장 소유자이지만 주민등록상 다른 주소 → "임대인"
+
+1. 피보험자 지위 (insured_status, 4-value):
+   - 소유자(등기부/건축물대장) = 주민등록 세대주 (동일인) → "소유자겸점유자"
+   - 주민등록상 해당 주소에 거주 중이나 소유자 ≠ 세대주 → "임차인겸점유자"
+   - 소유자이지만 주민등록상 다른 주소에 거주 → "임대인"
    - 판단 근거 부족 → "확인불가"
 
 2. 주소 일치 (보험증권 소재지 "${policyAddr}" 기준):
@@ -850,16 +865,27 @@ ${typeCtx}
    - 동일 건물 추정되나 표기 차이 큼 → "warn"
    - 구/동/호수 불일치 → "error"
 
+3. 세대 소유자 정보 추출 (등기부등본 우선):
+   - 소유자 성명
+   - 소유권 이전일 (YYYY-MM-DD 포맷)
+
+4. 주민등록등본 동거인 요약:
+   - 세대주 외 동거 구성원 성명+관계 (예: "김세연(배우자), 백지훈(부)")
+
 {
   "insured_status": "소유자겸점유자 | 임차인겸점유자 | 임대인 | 확인불가",
-  "insured_status_reason": "소유자명과 세대주명 비교 결과 명시한 1문장",
+  "insured_status_reason": "소유자명·세대주명·주소·거주여부를 비교한 결과를 1문장으로 명시",
+  "insured_residence": "주민등록상 실거주지 전체 주소",
+  "insured_owner_name": "세대 소유자 성명",
+  "insured_owner_transfer_date": "YYYY-MM-DD 또는 null",
+  "insured_cohabitants": "동거인 요약 (없거나 미확인 시 null)",
   "address_match": "ok | warn | error",
   "address_match_note": "주소 차이 설명 (일치하면 null)"
 }` });
 
       const resp = await fetch('/api/claude', {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ model: INS_MODEL, max_tokens: 500, system: SYS,
+        body: JSON.stringify({ model: INS_MODEL, max_tokens: 800, system: SYS,
           messages: [{ role:'user', content: contentArr }] }),
       });
       if (!resp.ok) throw new Error('API 오류 ' + resp.status);
@@ -868,32 +894,45 @@ ${typeCtx}
       Object.assign(result, r2);
     }
 
-    // ── 3차: 피해자 건축물대장 ──
-    if (_insUploaded['building_reg_victim']) {
+    // ── 3차: 피해자 소유자료 ──
+    if (_insUploaded['ownership_victim']) {
       progress(55, '피해자 정보 추출 중…');
-      const b64 = await fetchBase64(_insUploaded['building_reg_victim'].file_path);
+      const b64 = await fetchBase64(_insUploaded['ownership_victim'].file_path);
       if (b64) {
-        const mt = docMediaType(_insUploaded['building_reg_victim'].file_path);
-        const r3 = await callClaudeDoc(b64, mt, '피해자 건축물대장', SYS,
-`피해자 건축물대장에서 피해자 소재지를 추출하세요.
-{"victim_address":"동호수 (예: 101동 1204호)"}`);
+        const mt = docMediaType(_insUploaded['ownership_victim'].file_path);
+        const r3 = await callClaudeDoc(b64, mt, '피해자 소유자료', SYS,
+`피해자 소유자료(등기부등본 또는 건축물대장)에서 아래 JSON을 추출하세요.
+등기부등본이면 소유자 란, 건축물대장이면 소유자 란을 참조하세요.
+
+{
+  "victim_address": "피해자 세대 주소 (예: 101동 1204호)",
+  "victim_name": "피해자(소유자) 성명",
+  "victim_owner_name": "소유자 성명 (피해자와 다를 수 있음, 보통 동일)",
+  "victim_owner_transfer_date": "YYYY-MM-DD 또는 null"
+}`);
         if (r3.victim_address) result.victim_address = r3.victim_address;
+        if (r3.victim_name) result.victim_name = r3.victim_name;
+        if (r3.victim_owner_name) result.victim_owner_name = r3.victim_owner_name;
+        if (r3.victim_owner_transfer_date) result.victim_owner_transfer_date = r3.victim_owner_transfer_date;
       }
     }
 
-    // ── 4차 ★ v5 신규: Sabi 8·9단계 종합 판단 (약관별 분기) ──
+    // ── 4차 ★ v5.2 Sabi 8·9단계 종합 판단 (룰북 + 약관별 분기) ──
     progress(75, '책임 성립/면·부책 판단 중…');
     const cause = _insClaim.accident_cause_type || '배관';
     const repairOpinion = _insField?.repair_opinion || '';
     const judgePrompt = buildJudgmentPrompt(insType, {
-      insured_status:        result.insured_status        || '확인불가',
-      insurance_location:    result.policy_address_raw    || '확인불가',
-      accident_location:     result.victim_address        || '확인불가',
-      insurance_period:      (result.policy_start && result.policy_end)
-                              ? `${result.policy_start} ~ ${result.policy_end}` : '확인불가',
-      accident_location_match: result.address_match       || 'ok',
-      accident_cause:        cause,
-      repair_opinion:        repairOpinion,
+      insured_status:         result.insured_status         || '확인불가',
+      insured_status_reason:  result.insured_status_reason  || '',
+      insurance_location:     result.policy_address_raw     || '확인불가',
+      accident_location:      result.victim_address         || '확인불가',
+      insurance_period:       (result.policy_start && result.policy_end)
+                               ? `${result.policy_start} ~ ${result.policy_end}` : '확인불가',
+      accident_location_match: result.address_match         || 'ok',
+      accident_cause:         cause,
+      repair_opinion:         repairOpinion,
+      insured_owner_name:     result.insured_owner_name     || '',
+      victim_owner_name:      result.victim_owner_name      || '',
     });
 
     const judgeResp = await fetch('/api/claude', {
@@ -1046,67 +1085,177 @@ ${typeLabel}
 
 === 사고 기본 정보 ===
 [피보험자 지위] ${ctx.insured_status}
+[피보험자 지위 근거] ${ctx.insured_status_reason || '(미추출)'}
 [보험증권 소재지] ${ctx.insurance_location}
 [사고 발생 장소(피해자 소재지)] ${ctx.accident_location}
 [보험기간] ${ctx.insurance_period}
 [사고장소 부합 여부] ${ctx.accident_location_match}
-[사고원인 분류] ${ctx.accident_cause}
-[수리 소견] ${ctx.repair_opinion || '없음'}
+[사고원인 분류 (관리자 선택)] ${ctx.accident_cause}
+[수리 소견 (파트너 작성)] ${ctx.repair_opinion || '없음'}
+[피보험자 세대 소유자] ${ctx.insured_owner_name || '확인불가'}
+[피해자 세대 소유자] ${ctx.victim_owner_name || '확인불가'}
+
+⚠ 절대 규칙: [피보험자 지위]는 사전 교차분석으로 확정된 값입니다.
+당신이 임의로 재판단하거나 liability_reasoning/investigator_opinion 안에서
+다른 지위로 바꿔 서술하면 안 됩니다. 반드시 위 지위 그대로 인용하세요.
+
+═══════════════════════════════════════════
+【 Sabi 누수원인 룰북 (v5.2) — 먼저 학습하세요 】
+═══════════════════════════════════════════
+
+5대 책임주체 × 대표 케이스 + 키워드:
+
+ⓐ 전유부 설비 하자 (민법 제758조 제1항 단서, 소유자 책임)
+   키워드: "노후", "파손", "결함", "자연 하자"
+   예시: 배관 자연 노후 / 방수층 노후 파손 / 분배기 고장 방치
+   → accident_type = "주택관리"
+
+ⓑ 전유부 관리 과실 (민법 제758조 제1항 본문, 점유자 책임)
+   키워드: "동파방지 미실시", "청소 미실시", "정기점검 태만"
+   예시: 동파방지 조치 미실시 / 배수관 청소 미실시
+   → accident_type = "주택관리"
+
+ⓒ 행위 과실 (민법 제750조, 점유자 책임)
+   키워드: "잠금", "이탈", "막힘", "과도 사용", "잘못 사용"
+   예시: 세탁기 호스 이탈 / 수도꼭지 잠금 불량 / 변기 오버플로우
+   → accident_type = "일상생활"
+
+ⓓ 공용부 하자 (민법 제758조 + 공동주택관리법 제63조 + 집합건물법 제16조, 관리단 책임)
+   키워드: "공용", "옥상", "지하", "소방", "엘리베이터", "물탱크"
+   예시: 공용배관 동파 / 옥상 물탱크 오버플로우 / 공용 급수펌프 고장
+   → accident_type = "공용부"
+
+ⓔ 시공불량 (민법 제750조, 시공사 책임)
+   키워드: "시공 10년 이내", "접합부 불량", "부적합 자재"
+   예시: 배관 접합부 불량 시공 / 방수층 시공 불량
+   → accident_type = "시공불량"
+
+판단 플로우:
+  공용부분인가? → YES: ⓓ (공용부)
+       │
+      NO
+       ↓
+  시공 10년 이내 & 시공 하자 명백? → YES: ⓔ (시공불량)
+       │
+      NO
+       ↓
+  설비 관련 사고? (배관/보일러/방수층 등)
+       ├─ YES → 점유자 관리 과실 있음?
+       │         ├─ YES → ⓑ (관리 과실, 758조 본문)
+       │         └─ NO  → ⓐ (설비 하자, 758조 단서)
+       └─ NO  → ⓒ (행위 과실, 750조)
 
 ═══════════════════════════════════════════
 【 Sabi 8단계 — 손해배상책임 성립 검토 】
 ═══════════════════════════════════════════
 
-accident_type 분류 (반드시 먼저 결정):
-  A) "일상생활" — 피보험자 행위(세탁기 관리 소홀, 수도꼭지 미잠금 등 행위 과실)로 인한 사고
-  B) "주택관리" — 주택 내 설비(배관, 방수층, 분배기, 보일러 등) 하자로 인한 사고
-  C) "공용부" — 공용배관 파손 등 피보험자 관리 범위 외
-  D) "시공불량" — 시공사 하자담보책임 기간 내 (아파트 10년 이내 추정)
+STEP 8-1: accident_type 결정 (위 룰북 기준)
 
-STEP A — 손해배상책임 성립 여부 (liability_result):
-  · accident_type이 "공용부" → "불성립" (피보험자 관리 범위 외)
-  · accident_type이 "시공불량" → "불성립" (시공사 책임)
-  · 그 외 (일상생활/주택관리) → "성립" (민법 제750조 또는 제758조)
+STEP 8-2: accident_cause_detail 결정
+   · [사고원인 분류]와 [수리 소견]을 종합하여 구체 원인 1줄로 서술
+   · 예: "세탁실 전용배관 노후화", "세탁기 호스 이탈", "공용 우수관 파손"
 
-shared_liability (과실 분담 가능성):
-  · 피해자측 과실 가능성 있으면 true, 없으면 false
+STEP 8-3: liability_result 판정
+
+  ■ accident_type = "공용부" (ⓓ) → liability_result = "no"
+    · liability_reasoning 필수 요소: "공동주택관리법 제63조 및 집합건물법 제16조에 따라 관리주체(입주자대표회의)에게 관리 책임이 귀속됨"
+    · 반드시 결론: "피보험자의 손해배상책임은 불성립함."
+
+  ■ accident_type = "시공불량" (ⓔ) → liability_result = "no"
+    · liability_reasoning 필수 요소: "민법 제667조에 따라 시공업체의 하자담보책임 범위"
+    · 반드시 결론: "피보험자의 손해배상책임은 불성립함."
+
+  ■ accident_type = "일상생활" (ⓒ) → liability_result = "yes"
+    · liability_reasoning 필수 요소: "민법 제750조에 따라 피보험자의 행위 과실로 인한 불법행위 책임"
+    · 반드시 결론: "피보험자의 손해배상책임은 성립함."
+
+  ■ accident_type = "주택관리" (ⓐ 또는 ⓑ) → 피보험자 지위별 분기:
+
+    · [피보험자 지위] = "소유자겸점유자"
+      → liability_result = "yes"
+      → 설비 하자(ⓐ)이든 관리 과실(ⓑ)이든 소유자 겸 점유자는 양쪽 모두 책임
+      → 근거 조문: 민법 제758조 제1항 (본문 또는 단서, 상황에 맞게 인용)
+      → 템플릿: "피보험자는 보험증권 기재 주택의 소유자겸점유자로서 민법 제758조 제1항에 따라 공작물 점유자(겸 소유자)의 설치·보존 하자 책임을 부담함. 피보험자의 손해배상책임은 성립함."
+
+    · [피보험자 지위] = "임대인"
+      → liability_result = "yes"
+      → 758조 제1항 단서 (점유자인 임차인 무과실 시 소유자 귀속)
+      → 템플릿: "피보험자는 보험증권 기재 주택의 임대인(소유자)으로서, 점유자인 임차인의 과실이 입증되지 않는 한 민법 제758조 제1항 단서에 따라 공작물 소유자 책임을 부담함. 피보험자의 손해배상책임은 성립함."
+
+    · [피보험자 지위] = "임차인겸점유자" (★ 핵심 분기)
+      → 룰북 ⓐ vs ⓑ 구분:
+        ▸ ⓑ 관리 과실 (점유자의 관리상 주의의무 위반 입증)
+           → liability_result = "yes"
+           → 758조 제1항 본문
+           → 템플릿: "피보험자는 보험증권 기재 주택의 임차인겸점유자이며, [구체 과실 내용]으로 인한 관리상 주의의무 위반이 확인됨. 민법 제758조 제1항 본문에 따라 공작물 점유자의 관리 책임을 부담함. 피보험자의 손해배상책임은 성립함."
+        ▸ ⓐ 설비 하자 (설비 자체 노후·파손, 점유자 과실 불명확)
+           → liability_result = "no" ★
+           → 758조 제1항 단서 (소유자 귀속)
+           → 템플릿: "피보험자는 보험증권 기재 주택의 임차인겸점유자이며, 손해의 원인인 [구체 설비 하자]에 대해 점유자의 관리상 주의의무 해태가 확인되지 않음. 민법 제758조 제1항 단서에 따라 최종 책임은 소유자에게 귀속됨. 피보험자의 손해배상책임은 불성립함."
+
+    · [피보험자 지위] = "확인불가"
+      → liability_result = "no"
+      → liability_reasoning: "피보험자 지위 미확정으로 법률상 배상책임 성립 여부 판단 보류. 추가 자료 확인 후 재검토 필요."
+      → (9단계 STEP A에서 coverage_result = "판단유보"로 특례 처리)
+
+STEP 8-4: shared_liability (과실 분담 가능성)
+   · 피해자측 관리 과실·방조 가능성 있으면 true (예: 피해자가 누수 신고 장기 미룸)
+   · 없으면 false
 
 ═══════════════════════════════════════════
 【 Sabi 9단계 — 보험금 지급 면·부책 검토 】
 ═══════════════════════════════════════════
 
-STEP A: liability_result = "불성립"?
-  → coverage_result = "면책" (배상책임 미성립)
+STEP 9-A: liability_result = "no"?
+  · [피보험자 지위] = "확인불가"로 인한 "no" → coverage_result = "판단유보"
+    coverage_reasoning: "피보험자 지위 미확정으로 부책/면책 판단 보류. 소유자료·주민등록등본 재확인 후 전환 가능."
+  · 그 외 "no" (공용부/시공불량/임차인 무과실) → coverage_result = "면책"
+    coverage_reasoning: "피보험자의 법률상 배상책임이 성립하지 않는 사고로 보험금 지급 검토 대상 아님."
 
-STEP B: [보험기간] 검토?
+STEP 9-B: 보험기간 검토
   · "확인불가" → coverage_result = "판단유보"
-  · 사고일이 보험기간 밖 (불일치) → coverage_result = "면책"
-  · 일치 → STEP C로
+    coverage_reasoning: "보험증권상 보험기간 확인 불가. 추후 보험증권 재확인 후 재검토 필요."
+  · 사고일이 보험기간 밖 → coverage_result = "면책"
+  · 일치 → STEP 9-C
 ${step9Logic}
-STEP D: 약관상 "보상하지 않는 손해" 해당?
+STEP 9-D: 약관상 "보상하지 않는 손해" 해당?
+  · 주요 누수 관련 면책 사유:
+    - 고의 사고, 천재지변(지진/홍수/해일)
+    - 주택의 수리·개조·신축·철거공사로 생긴 손해 (통상 유지·보수는 보상)
+    - 세대를 같이하는 친족에 대한 배상책임
+    - 핵연료·방사선·전자파·공해물질 관련
+    - 벌과금 및 징벌적 손해
   · 해당 → coverage_result = "면책"
   · 비해당 → coverage_result = "부책"
+    coverage_reasoning: "${typeLabel} 약관상 [주택의 소유·사용·관리 / 일상생활] 중 발생한 대물사고에 해당하며, 약관상 면책 사유에 해당하지 않으므로 보험금 지급 책임이 있는 것으로 판단됨."
 
 ═══════════════════════════════════════════
 
-다음 JSON을 반환하세요:
+다음 JSON을 반환하세요 (v5.2 확장: 25개 항목):
 {
   "accident_type": "일상생활 | 주택관리 | 공용부 | 시공불량",
+  "accident_cause_detail": "구체 사고원인 1줄 (예: 세탁실 전용배관 노후화)",
+  "accident_description": "사고경위 재구성 1-2문장 (예: 2025.03.03 10:00경 101동 206호 세탁실 내부 전용배관 노후화로 인해 균열이 발생하여 직하층 107호 거실 천장에 수침피해를 입힌 사고임.)",
+  "victim_damages": "피해사항 서술 1문장 (예: 107호 거실 천장 수침피해 발생)",
   "shared_liability": true | false,
   "liability_result": "yes | no",
-  "liability_reasoning": "민법 조문 근거 포함 2문장 (yes=성립, no=불성립)",
+  "liability_reasoning": "위 8-3 템플릿 기반 2문장. [피보험자 지위]·법조문 정확히 인용·피보험자 책임 성립/불성립 결론 반드시 명시",
   "coverage_result": "부책 | 면책 | 판단유보",
-  "coverage_reasoning": "1~3문장. 부책: 약관명+보상대상+면책사유 미해당. 면책(불성립): 배상책임 불성립 명시. 면책(기타): 구체 사유. 판단유보: 확인불가/불일치 구체 언급+재검토 필요+부책 전환 가능성",
+  "coverage_reasoning": "1-3문장. 부책/면책/판단유보별 표준 문구 적용 (위 STEP 9 가이드 참조)",
   "fault_ratio": "피보험자 100% | 피보험자 70% / 피해자 30% | 피보험자 50% / 피해자 50%",
-  "fault_reason": "과실 비율 판단 근거 1문장",
-  "investigator_opinion": "2~3문장, ~됨·~판단됨 간결체. accident_type과 coverage_result 반영"
+  "fault_reason": "과실 비율 판단 근거 1문장 (shared_liability=true일 때만 의미)",
+  "investigator_opinion": "2-3문장, ~됨·~판단됨 간결체. accident_type·accident_cause_detail·coverage_result 반영. [피보험자 지위] 정확히 인용"
 }
 
-주의사항:
-- liability_result = "no"이면 coverage_result는 반드시 "면책"
-- liability_result가 "yes/no"가 아닌 "성립/불성립"으로 나오면 안 됨 (yes/no로만)
-- shared_liability = true면 coverage_reasoning에 "과실 비율에 따른 보험금 산정이 필요할 수 있음" 포함
-- 약관 "정보 없음" 시 추정 금지, 판단유보 권장`;
+⚠ 필수 준수 사항 (위반 시 재생성):
+1. [피보험자 지위]가 "임차인겸점유자"인데 liability_reasoning에 "소유자겸점유자" 또는 "소유 겸 점유자"라고 쓰면 안 됨 (원 지위대로 인용)
+2. liability_reasoning 마지막 문장은 반드시 "피보험자의 손해배상책임은 [성립/불성립]함." 형태로 명시 결론
+3. liability_result = "no"이면 coverage_result는 "면책" 또는 "판단유보" (절대 "부책" 아님)
+4. liability_result는 "yes" 또는 "no" 두 값만 (성립/불성립 금지)
+5. coverage_result는 정확히 "부책" / "면책" / "판단유보" 세 값 중 하나 ("면책(판단유보)" 같은 복합 표기 금지)
+6. 조문 인용 시 정확한 조문번호 사용 (제750조, 제758조 제1항 본문, 제758조 제1항 단서 구분 필수)
+7. 약관 정보 불충분 시 추정 금지, 판단유보 권장
+8. shared_liability = true면 coverage_reasoning에 "과실 비율에 따른 보험금 산정이 필요할 수 있음" 포함`;
 }
 
 async function callClaudeDoc(b64, mediaType, title, system, prompt) {
@@ -1158,7 +1307,7 @@ async function s2Save() {
   };
 
   try {
-    // Supabase 저장
+    // Supabase 저장 (기존 RPC — 변경 없음)
     await sb.rpc('rpc_save_extraction', {
       p_claim_id:           _insClaim.id,
       p_policy_no:          _insResult.policy_no||null,
@@ -1183,6 +1332,30 @@ async function s2Save() {
       p_damage_amount:         rc||null,
       p_payout_amount:         pay||null,
     });
+
+    // v5.2 신규: RPC가 커버 못하는 11개 컬럼 직접 UPDATE
+    const { error: updErr } = await sb.from('insurance_claims').update({
+      insured_status_reason:       _insResult.insured_status_reason       || null,
+      insured_owner_name:          _insResult.insured_owner_name          || null,
+      insured_owner_transfer_date: _insResult.insured_owner_transfer_date || null,
+      insured_cohabitants:         _insResult.insured_cohabitants         || null,
+      victim_name:                 _insResult.victim_name                 || null,
+      victim_owner_name:           _insResult.victim_owner_name           || null,
+      victim_owner_transfer_date:  _insResult.victim_owner_transfer_date  || null,
+      victim_damages:              _insResult.victim_damages              || null,
+      accident_datetime:           _insResult.accident_datetime           || null,
+      accident_cause_detail:       _insResult.accident_cause_detail       || null,
+      accident_description:        _insResult.accident_description        || null,
+      accident_type:               _insResult.accident_type               || null,
+      shared_liability:            _insResult.shared_liability === true,
+      liability_reasoning:         _insResult.liability_reasoning         || null,
+      coverage_result:             _insResult.coverage_result             || null,
+      coverage_reasoning:          _insResult.coverage_reasoning          || null,
+    }).eq('id', _insClaim.id);
+    if (updErr) {
+      console.warn('[v5.2] 신규 컬럼 UPDATE 일부 실패:', updErr.message);
+      // 치명적이지 않음 — RPC 저장은 성공했으므로 기존 데이터는 보존
+    }
 
     _insClaim = { ..._insClaim, insurance_tab_status: 'ready_for_draft',
       deductible: ded, payout_amount: pay };
