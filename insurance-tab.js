@@ -1,4 +1,4 @@
-// v2026-04-17-v5.2.1 — JSON 파서 견고화 (중첩 괄호 카운팅)
+// v2026-04-17-v5.2.1 — JSON 파서 + 판단 가드 + 사고원인 재설계 + RPC 일원화
 /**
  * insurance-tab.js  v5.2.1
  * 누수패스 보험자료 탭
@@ -6,10 +6,37 @@
  * 의존성: sb, toast(), curUser (index.html)
  *
  * ✨ v5.2.1 변경사항 (2026-04-17 오후)
- *   🔴 BUGFIX: "Unexpected non-whitespace character after JSON at position N" 오류 수정
- *      - 원인: Claude 응답이 JSON 뒤에 설명/개행을 덧붙일 때 JSON.parse 실패
- *      - 해결: parseClaudeJson() 헬퍼 추가 (코드펜스 제거 + 중첩 괄호 카운팅으로 첫 JSON만 추출)
- *      - 적용 지점: 2차(피보험자 지위) / 4차(Sabi 판단) / callClaudeDoc (1차·3차)
+ *   🔴 BUGFIX 1: "Unexpected non-whitespace character after JSON at position N"
+ *      - 원인: Claude 응답 JSON 뒤 설명/개행 덧붙음 → JSON.parse 실패
+ *      - 해결: parseClaudeJson() 헬퍼 (중첩 괄호 카운팅)
+ *
+ *   🔴 BUGFIX 2: 사고원인 미지정인데 "부책" 오판정
+ *      - 원인: accident_cause_type 기본값이 '배관'으로 하드코딩
+ *      - 해결: 기본값 '미지정' + STEP 8-0 조기반환 (판단유보)
+ *
+ *   🔴 BUGFIX 3: 소재지 불일치(error)인데 "부책" 오판정
+ *      - 원인: 9단계 STEP C 약관 분기 안쪽 address_match 체크 누락 쉬움
+ *      - 해결: STEP 9-B2 최우선 가드 (약관 분기 전 전역 차단)
+ *
+ *   🔴 BUGFIX 4: AI가 insured_status 필드와 reasoning 불일치 반환
+ *      - 해결: 프롬프트 상단 절대규칙에 필드-텍스트 일관성 자기점검 명시
+ *
+ *   🔴 BUGFIX 5: 임차인+배관(노후) → 부책 오판정 (핵심 구조 결함)
+ *      - 원인: 사고원인 옵션이 "부위"(배관/방수층)만 있고 책임주체(ⓐ/ⓑ) 축 없음
+ *             → 모델이 임차인에 대해 ⓑ(관리과실)로 추측하는 경향
+ *      - 해결: INS_CAUSES 2-depth 확장 (부위 × 하위원인) +
+ *             INS_CAUSE_RULEBOOK_MAP로 프롬프트에 사전 매핑 전달 +
+ *             절대규칙 5번 "임차인 ⓐ 디폴트" 명시
+ *
+ *   🔴 BUGFIX 6: rpc_save_judgment이 신 컬럼(liability_result/coverage_result)에 안 씀
+ *      - 원인: RPC가 구 컬럼(liability_established/liability_pay)에만 UPDATE
+ *             + insurance_tab_status='judgment_done' (CHECK 위반으로 silent fail)
+ *      - 해결: DB 측 마이그레이션 v5_2_1_rpc_bugfix_and_accident_type_expand 적용
+ *             RPC 15-arg 확장 + status='ready_for_draft' + 구 8-arg 오버로드 삭제
+ *      - 클라: s2Save()가 신규 파라미터 전달
+ *
+ *   🔴 BUGFIX 7: DB CHECK 제약에 '미지정' 없어서 STEP 8-0 적용 시 INSERT 에러 유발
+ *      - 해결: 동일 마이그레이션에서 accident_type_check에 '미지정' 추가
  *
  * ✨ v5.2 변경사항 (2026-04-17 저녁)
  *   1. 누수원인 룰북 신설: 5개 책임주체 × 대표 케이스 + 키워드 힌트
@@ -88,10 +115,58 @@ const INS_INSURERS = [
   '롯데손해보험','농협손해보험',
 ];
 
+// ─────────────────────────────────────────────
+// 사고원인 옵션 (v5.2.1 확장)
+//
+// 기존 INS_CAUSES는 "부위"(배관/방수층/...)만 있었음 → 모델이 ⓐ vs ⓑ 구분을 추측하게 되어
+// 임차인+배관(노후) 케이스가 ⓑ(관리과실)로 오판정되는 구조적 문제 있었음.
+//
+// v5.2.1: [부위] + [하위원인]을 결합한 2-depth 옵션으로 확장.
+// 하위원인은 룰북 ⓐ·ⓑ·ⓒ·ⓓ·ⓔ 중 하나로 사전 매핑되어 프롬프트에 명시 전달됨.
+//
+// 기존 데이터 호환: accident_cause_type 컬럼은 text이므로 과거 '배관' 같은 단순 값도 허용.
+//                   프롬프트에서 하위원인 없으면 ⓐ(설비하자) 디폴트 규칙 적용.
+// ─────────────────────────────────────────────
 const INS_CAUSES = [
-  '배관','방수층','분배기','보일러',
-  '세탁기 호스이탈','배수구 막힘','수도꼭지 미잠금','기타(직접입력)',
+  '배관 (노후/파손)',           // → ⓐ 전유부 설비하자 (758 단서, 소유자)
+  '배관 (관리과실/동파)',       // → ⓑ 전유부 관리과실 (758 본문, 점유자)
+  '배관 (시공불량 10년이내)',   // → ⓔ 시공불량 (시공사)
+  '방수층 (노후/파손)',         // → ⓐ
+  '방수층 (시공불량 10년이내)', // → ⓔ
+  '분배기 (고장/노후)',         // → ⓐ
+  '보일러 (고장/노후)',         // → ⓐ
+  '세탁기 호스이탈',            // → ⓒ 행위과실 (750, 점유자)
+  '배수구 막힘 (관리태만)',     // → ⓑ
+  '수도꼭지 미잠금',            // → ⓒ
+  '공용부 (공용배관/옥상/지하)', // → ⓓ 공용부 (관리단)
+  '원인미상 (누수탐지 필요)',   // → 판단유보
+  '기타(직접입력)',             // → 수리소견 기반 판단
 ];
+
+// 사고원인별 룰북 카테고리 사전 매핑 (프롬프트 주입용)
+// key: INS_CAUSES의 value, value: { rulebook_category, 설명 }
+const INS_CAUSE_RULEBOOK_MAP = {
+  '배관 (노후/파손)':           { cat: 'ⓐ', label: '전유부 설비하자 (민법 제758조 제1항 단서, 소유자 책임)' },
+  '배관 (관리과실/동파)':       { cat: 'ⓑ', label: '전유부 관리과실 (민법 제758조 제1항 본문, 점유자 책임)' },
+  '배관 (시공불량 10년이내)':   { cat: 'ⓔ', label: '시공불량 (민법 제750조, 시공사 책임)' },
+  '방수층 (노후/파손)':         { cat: 'ⓐ', label: '전유부 설비하자 (민법 제758조 제1항 단서, 소유자 책임)' },
+  '방수층 (시공불량 10년이내)': { cat: 'ⓔ', label: '시공불량 (민법 제750조, 시공사 책임)' },
+  '분배기 (고장/노후)':         { cat: 'ⓐ', label: '전유부 설비하자 (민법 제758조 제1항 단서, 소유자 책임)' },
+  '보일러 (고장/노후)':         { cat: 'ⓐ', label: '전유부 설비하자 (민법 제758조 제1항 단서, 소유자 책임)' },
+  '세탁기 호스이탈':            { cat: 'ⓒ', label: '행위과실 (민법 제750조, 점유자 책임)' },
+  '배수구 막힘 (관리태만)':     { cat: 'ⓑ', label: '전유부 관리과실 (민법 제758조 제1항 본문, 점유자 책임)' },
+  '수도꼭지 미잠금':            { cat: 'ⓒ', label: '행위과실 (민법 제750조, 점유자 책임)' },
+  '공용부 (공용배관/옥상/지하)': { cat: 'ⓓ', label: '공용부 하자 (공동주택관리법 제63조·집합건물법 제16조, 관리단 책임)' },
+  '원인미상 (누수탐지 필요)':   { cat: '미지정', label: '사고원인 미확정 (판단유보)' },
+  // 레거시 호환 (v5.2 이전 값)
+  '배관':       { cat: 'ⓐ?', label: '전유부 설비하자 추정 (하위원인 미지정 — 수리소견으로 재확인 필요)' },
+  '방수층':     { cat: 'ⓐ?', label: '전유부 설비하자 추정 (하위원인 미지정 — 수리소견으로 재확인 필요)' },
+  '분배기':     { cat: 'ⓐ?', label: '전유부 설비하자 추정 (하위원인 미지정 — 수리소견으로 재확인 필요)' },
+  '보일러':     { cat: 'ⓐ?', label: '전유부 설비하자 추정 (하위원인 미지정 — 수리소견으로 재확인 필요)' },
+  '배수구 막힘': { cat: 'ⓑ?', label: '전유부 관리과실 추정 (하위원인 미지정)' },
+  '기타':        { cat: '?',   label: '수리소견으로 판단' },
+  '기타(직접입력)': { cat: '?', label: '수리소견으로 판단' },
+};
 
 const INS_DOCS = [
   { code:'insurance_policy',  name:'보험증권',                                           type:'pdf', required:true  },
@@ -925,7 +1000,10 @@ ${typeCtx}
 
     // ── 4차 ★ v5.2 Sabi 8·9단계 종합 판단 (룰북 + 약관별 분기) ──
     progress(75, '책임 성립/면·부책 판단 중…');
-    const cause = _insClaim.accident_cause_type || '배관';
+    // v5.2.1 ★ 기본값 변경: '배관'으로 임의 추정하면 모델이 주택관리로 분류해 잘못 부책 판정
+    //                      → '미지정'으로 명시하고 프롬프트에서 판단유보 경로 타도록 처리
+    const cause = _insClaim.accident_cause_type || '미지정';
+    const causeMap = INS_CAUSE_RULEBOOK_MAP[cause] || { cat: '?', label: '사전 매핑 없음 — 수리소견으로 판단' };
     const repairOpinion = _insField?.repair_opinion || '';
     const judgePrompt = buildJudgmentPrompt(insType, {
       insured_status:         result.insured_status         || '확인불가',
@@ -936,6 +1014,8 @@ ${typeCtx}
                                ? `${result.policy_start} ~ ${result.policy_end}` : '확인불가',
       accident_location_match: result.address_match         || 'ok',
       accident_cause:         cause,
+      accident_cause_category: causeMap.cat,    // v5.2.1: 룰북 사전 매핑
+      accident_cause_label:    causeMap.label,  // v5.2.1: 사람 친화 설명
       repair_opinion:         repairOpinion,
       insured_owner_name:     result.insured_owner_name     || '',
       victim_owner_name:      result.victim_owner_name      || '',
@@ -1097,13 +1177,56 @@ ${typeLabel}
 [보험기간] ${ctx.insurance_period}
 [사고장소 부합 여부] ${ctx.accident_location_match}
 [사고원인 분류 (관리자 선택)] ${ctx.accident_cause}
+[★ 룰북 사전 매핑] ${ctx.accident_cause_category || '?'} — ${ctx.accident_cause_label || '(매핑 없음)'}
 [수리 소견 (파트너 작성)] ${ctx.repair_opinion || '없음'}
 [피보험자 세대 소유자] ${ctx.insured_owner_name || '확인불가'}
 [피해자 세대 소유자] ${ctx.victim_owner_name || '확인불가'}
 
-⚠ 절대 규칙: [피보험자 지위]는 사전 교차분석으로 확정된 값입니다.
-당신이 임의로 재판단하거나 liability_reasoning/investigator_opinion 안에서
-다른 지위로 바꿔 서술하면 안 됩니다. 반드시 위 지위 그대로 인용하세요.
+⚠ 절대 규칙 (위반 시 응답 전체 무효):
+1. [피보험자 지위]는 사전 교차분석으로 확정된 값입니다.
+   당신이 임의로 재판단하거나 liability_reasoning/investigator_opinion 안에서
+   다른 지위로 바꿔 서술하면 안 됩니다.
+
+2. 출력 JSON의 필드값과 reasoning 텍스트는 반드시 일치해야 합니다:
+   · liability_reasoning에 "임차인겸점유자"라고 썼으면 — 입력된 [피보험자 지위]도 반드시 "임차인겸점유자"여야 함
+   · 근거 문장과 판단 필드가 어긋나면 안 됨 (예: 근거는 "임차인"인데 status는 "소유자겸점유자" 금지)
+
+3. 사고원인 미지정 처리:
+   · [사고원인 분류]가 "미지정" 또는 "원인미상 (누수탐지 필요)"이면 → accident_type 추정 금지
+     → accident_type = "미지정"
+     → liability_result = "no"
+     → coverage_result = "판단유보"
+     → coverage_reasoning: "사고원인 미확정으로 책임 주체 판단 불가. 누수탐지 결과 또는 수리 소견 확인 후 재검토 필요."
+     → (STEP 8·9 나머지 단계는 건너뜀)
+
+4. ★ 룰북 사전 매핑 우선 (v5.2.1 신설):
+   · [★ 룰북 사전 매핑]이 ⓐ·ⓑ·ⓒ·ⓓ·ⓔ 중 하나로 명시되었다면 그 값을 그대로 따르세요.
+     - ⓐ → accident_type = "주택관리" (758조 단서, 소유자 책임)
+     - ⓑ → accident_type = "주택관리" (758조 본문, 점유자 책임)
+     - ⓒ → accident_type = "일상생활" (750조, 점유자 책임)
+     - ⓓ → accident_type = "공용부" (관리단 책임)
+     - ⓔ → accident_type = "시공불량" (시공사 책임)
+   · 사전 매핑값에 "?" 또는 "추정"이 포함되면(레거시 값) — 수리소견과 아래 5번 규칙으로 재판정
+   · 사전 매핑이 없는데 [수리소견]에도 명확한 힌트가 없으면 → 5번 규칙 적용
+
+5. ★ 임차인 ⓐ/ⓑ 분류 디폴트 규칙 (v5.2.1 신설, 가장 중요):
+   [피보험자 지위] = "임차인겸점유자" AND 사전 매핑이 ⓐ? 또는 ? (불명확)인 경우에만 적용.
+   
+   · [수리소견]에 아래 키워드 중 하나가 명시적으로 있으면 → ⓑ (관리과실)
+     키워드: "동파방지 미실시", "청소 미실시", "정기점검 태만", "관리태만", 
+            "장기 방치", "수개월 방치", "누수를 인지하고도", "점유자 과실",
+            "사용 부주의", "과도 사용"
+   
+   · 위 키워드가 하나도 없으면 → ⓐ (설비하자) 디폴트 ★★
+     근거: 민법 제758조 제1항 단서 적용. 점유자(임차인)의 관리상 주의의무 해태가
+          적극적으로 입증되지 않는 한 소유자 책임으로 귀속.
+          이는 판례의 주류 입장이며 임차인의 무과실 추정에 해당.
+     → accident_type = "주택관리"
+     → liability_result = "no"
+     → coverage_result = "면책" (9단계 STEP A에서 자동 처리)
+   
+   ※ 수리소견이 "테스트", "없음", 한두 단어 등 정보 부족 상태면 → 반드시 ⓐ 디폴트 적용.
+   ※ 임차인이 과실을 자백하거나 명백한 외부 증거가 없는 상태에서 ⓑ로 분류하면 안 됨.
 
 ═══════════════════════════════════════════
 【 Sabi 누수원인 룰북 (v5.2) — 먼저 학습하세요 】
@@ -1154,6 +1277,18 @@ ${typeLabel}
 ═══════════════════════════════════════════
 【 Sabi 8단계 — 손해배상책임 성립 검토 】
 ═══════════════════════════════════════════
+
+STEP 8-0: 사고원인 입력 검증 (★ v5.2.1 최우선)
+   · [사고원인 분류] = "미지정" 또는 "원인미상 (누수탐지 필요)"이면 즉시 아래 값으로 확정하고 STEP 8-1 ~ 8-4, 9-A ~ 9-D 모두 건너뜀:
+     - accident_type: "미지정"
+     - accident_cause_detail: "사고원인 미확인"
+     - liability_result: "no"
+     - liability_reasoning: "사고원인 분류가 미지정 상태로 책임주체(소유자/점유자/관리단/시공자) 판단이 불가함. 피보험자의 손해배상책임 성립 여부는 판단 보류함."
+     - coverage_result: "판단유보"
+     - coverage_reasoning: "사고원인 미확정으로 약관 적용 조항 결정 불가. 누수탐지 결과 또는 수리 소견 확인 후 재검토 필요."
+     - fault_ratio: "피보험자 100%"  (형식상 기본값)
+     - shared_liability: false
+     - investigator_opinion: "사고원인이 확인되지 아니하여 본건 보험금 지급 여부에 대한 판단은 보류함. 누수탐지 및 수리 소견 확인 후 재검토 필요함."
 
 STEP 8-1: accident_type 결정 (위 룰북 기준)
 
@@ -1222,7 +1357,17 @@ STEP 9-B: 보험기간 검토
   · "확인불가" → coverage_result = "판단유보"
     coverage_reasoning: "보험증권상 보험기간 확인 불가. 추후 보험증권 재확인 후 재검토 필요."
   · 사고일이 보험기간 밖 → coverage_result = "면책"
-  · 일치 → STEP 9-C
+  · 일치 → STEP 9-B2
+
+STEP 9-B2: 소재지 불일치 최우선 가드 (★ v5.2.1 신규)
+  · [사고장소 부합 여부]를 먼저 확인 — 아래 3개 약관 분기(STEP C)보다 선행
+  · "error" (보험증권 소재지 ≠ 사고 발생 장소) → coverage_result = "면책"
+    coverage_reasoning: "보험증권 기재 소재지와 사고 발생 장소가 구·동·호수 모두 불일치하여 약관상 담보 범위를 벗어남. 보험금 지급 책임이 성립하지 않음."
+    ※ 구형·신형·일배책 모든 약관 공통 적용. 주택관리 사고의 경우 특히 엄격히 적용.
+    ※ [피보험자 지위]가 "임대인"이든 "소유자겸점유자"든 무관하게 면책.
+  · "warn" → coverage_result = "판단유보"
+    coverage_reasoning: "보험증권 소재지와 사고 장소의 표기가 상이하여 동일 부동산 여부 확인 필요. 추가 확인 후 재검토."
+  · "ok" 또는 "확인불가" → STEP C로 진행
 ${step9Logic}
 STEP 9-D: 약관상 "보상하지 않는 손해" 해당?
   · 주요 누수 관련 면책 사유:
@@ -1239,7 +1384,7 @@ STEP 9-D: 약관상 "보상하지 않는 손해" 해당?
 
 다음 JSON을 반환하세요 (v5.2 확장: 25개 항목):
 {
-  "accident_type": "일상생활 | 주택관리 | 공용부 | 시공불량",
+  "accident_type": "일상생활 | 주택관리 | 공용부 | 시공불량 | 미지정",
   "accident_cause_detail": "구체 사고원인 1줄 (예: 세탁실 전용배관 노후화)",
   "accident_description": "사고경위 재구성 1-2문장 (예: 2025.03.03 10:00경 101동 206호 세탁실 내부 전용배관 노후화로 인해 균열이 발생하여 직하층 107호 거실 천장에 수침피해를 입힌 사고임.)",
   "victim_damages": "피해사항 서술 1문장 (예: 107호 거실 천장 수침피해 발생)",
@@ -1261,7 +1406,9 @@ STEP 9-D: 약관상 "보상하지 않는 손해" 해당?
 5. coverage_result는 정확히 "부책" / "면책" / "판단유보" 세 값 중 하나 ("면책(판단유보)" 같은 복합 표기 금지)
 6. 조문 인용 시 정확한 조문번호 사용 (제750조, 제758조 제1항 본문, 제758조 제1항 단서 구분 필수)
 7. 약관 정보 불충분 시 추정 금지, 판단유보 권장
-8. shared_liability = true면 coverage_reasoning에 "과실 비율에 따른 보험금 산정이 필요할 수 있음" 포함`;
+8. shared_liability = true면 coverage_reasoning에 "과실 비율에 따른 보험금 산정이 필요할 수 있음" 포함
+9. (★ v5.2.1) [사고장소 부합 여부] = "error"이면 — 다른 조건과 무관하게 coverage_result = "면책". 주택관리·일상생활 구분 무관, 피보험자 지위 무관.
+10. (★ v5.2.1) [사고원인 분류] = "미지정"이면 — STEP 8-0 규칙에 따라 모든 판단 필드를 판단유보 값으로 채움. 누수탐지 결과가 없는 상태에서 "배관 노후" 등으로 임의 추정 금지.`;
 }
 
 // ─────────────────────────────────────────────
@@ -1391,9 +1538,18 @@ async function s2Save() {
       p_liability_memo:        _insResult.coverage_reasoning||null,
       p_damage_amount:         rc||null,
       p_payout_amount:         pay||null,
+      // v5.2.1 신규: 신 컬럼도 RPC 내부에서 함께 저장됨
+      p_liability_result:      _insResult.liability_result||null,
+      p_coverage_result:       coverage,
+      p_liability_reasoning:   _insResult.liability_reasoning||null,
+      p_coverage_reasoning:    _insResult.coverage_reasoning||null,
+      p_accident_type:         _insResult.accident_type||null,
+      p_accident_cause_detail: _insResult.accident_cause_detail||null,
+      p_shared_liability:      _insResult.shared_liability===true,
     });
 
-    // v5.2 신규: RPC가 커버 못하는 11개 컬럼 직접 UPDATE
+    // v5.2 신규: RPC가 커버 못하는 "추출 확장 컬럼"만 직접 UPDATE
+    //           (판단 관련은 rpc_save_judgment가 이제 모두 커버함)
     const { error: updErr } = await sb.from('insurance_claims').update({
       insured_status_reason:       _insResult.insured_status_reason       || null,
       insured_owner_name:          _insResult.insured_owner_name          || null,
@@ -1404,13 +1560,7 @@ async function s2Save() {
       victim_owner_transfer_date:  _insResult.victim_owner_transfer_date  || null,
       victim_damages:              _insResult.victim_damages              || null,
       accident_datetime:           _insResult.accident_datetime           || null,
-      accident_cause_detail:       _insResult.accident_cause_detail       || null,
       accident_description:        _insResult.accident_description        || null,
-      accident_type:               _insResult.accident_type               || null,
-      shared_liability:            _insResult.shared_liability === true,
-      liability_reasoning:         _insResult.liability_reasoning         || null,
-      coverage_result:             _insResult.coverage_result             || null,
-      coverage_reasoning:          _insResult.coverage_reasoning          || null,
     }).eq('id', _insClaim.id);
     if (updErr) {
       console.warn('[v5.2] 신규 컬럼 UPDATE 일부 실패:', updErr.message);
