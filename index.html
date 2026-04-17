@@ -197,6 +197,72 @@ select.form-control{cursor:pointer}
 .ins-banner{padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:12px}
 .ins-banner-info{background:var(--primary-soft);color:var(--primary);border:1px solid #bfdbfe}
 .ins-banner-success{background:var(--green-soft);color:var(--green);border:1px solid #86efac}
+.ins-banner-warn{background:var(--amber-soft);color:var(--amber);border:1px solid #fcd34d}
+
+/* ── v5 추가: 약관 구분 선택 카드 ── */
+.ins-type-card{
+  padding:14px 12px;border:2px solid var(--line);border-radius:10px;
+  background:var(--surface);cursor:pointer;transition:all .15s;
+  display:flex;flex-direction:column;gap:2px;
+}
+.ins-type-card:hover{border-color:#93c5fd;background:#f8faff}
+.ins-type-selected{
+  border-color:var(--primary);background:var(--primary-soft);
+  box-shadow:0 0 0 3px rgba(37,99,235,.08);
+}
+
+/* ── v5 추가: 서류 업로드 드롭존 ── */
+.ins-dz{
+  position:relative;padding:16px 12px;border:2px dashed var(--line);
+  border-radius:10px;background:var(--bg);cursor:pointer;
+  text-align:center;transition:all .15s;
+  display:flex;flex-direction:column;align-items:center;gap:4px;
+  min-height:112px;justify-content:center;
+}
+.ins-dz:hover{border-color:var(--primary);background:var(--primary-soft)}
+.ins-dz-over{border-color:var(--primary);background:var(--primary-soft);transform:scale(1.02)}
+.ins-dz-done{border-style:solid;border-color:#86efac;background:var(--green-soft)}
+.ins-dz-done:hover{border-color:var(--green);background:#dcfce7}
+.ins-dz-icon{font-size:22px;line-height:1}
+.ins-dz-name{font-size:13px;font-weight:700;color:var(--text)}
+.ins-dz-sub{font-size:11px;color:var(--muted);word-break:break-all;max-width:100%}
+.ins-dz-badge{
+  position:absolute;top:6px;right:6px;
+  padding:2px 7px;border-radius:10px;
+  font-size:10px;font-weight:700;line-height:1.4;
+}
+.ins-badge-req{background:var(--red);color:#fff}
+.ins-badge-opt{background:var(--subtle);color:#fff}
+.ins-dz-done .ins-dz-badge{background:var(--green);color:#fff}
+.ins-dz-progress{
+  display:none;position:absolute;left:0;bottom:0;height:3px;
+  width:0%;background:var(--primary);border-radius:0 0 8px 8px;
+  transition:width .15s ease-out;
+}
+
+/* ── v5 추가: Step 2 판단 박스 ── */
+.ins-judge-box{
+  border:1px solid var(--line);border-radius:10px;background:var(--surface);
+  margin-bottom:12px;overflow:hidden;
+}
+.ins-judge-head{
+  padding:10px 14px;background:var(--bg);border-bottom:1px solid var(--line);
+  font-size:12px;font-weight:700;color:var(--text);
+  display:flex;justify-content:space-between;align-items:center;gap:8px;
+}
+.ins-judge-body{padding:12px 14px;font-size:13px;line-height:1.6}
+.ins-judge-label{
+  font-size:11px;color:var(--muted);font-weight:700;
+  text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;
+}
+.ins-judge-sel{
+  width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;
+  font:inherit;background:var(--surface);cursor:pointer;
+}
+.ins-judge-sel:focus{outline:none;border-color:var(--primary)}
+
+/* ── v5 추가: Step bar 보조 라벨 ── */
+.ins-step-sub{font-size:10px;color:var(--subtle);margin-top:2px}
 
 </style>
 </head>
@@ -768,7 +834,21 @@ function go(screen){
   if(screen==='caseList') loadCaseList();
   if(screen==='pHome') loadPartnerHome();
   if(screen==='pAssignments') loadPartnerAssignments();
-      if(screen==='insurance') loadInsuranceCaseSelector();
+  if(screen==='insurance'){
+    if(typeof loadInsuranceCaseSelector==='function'){
+      loadInsuranceCaseSelector().catch(e=>{
+        console.error('[insurance] loadInsuranceCaseSelector 실패:', e);
+        const sel = document.getElementById('insuranceCaseSelect');
+        if(sel) sel.innerHTML = `<option value="">— 로드 실패: ${e.message||e} —</option>`;
+        toast('사건 목록 로드 실패: '+(e.message||e),'e');
+      });
+    } else {
+      console.error('[insurance] insurance-tab.js가 로드되지 않았거나 함수 미정의');
+      toast('insurance-tab.js 로드 실패 — 캐시를 지우고 새로고침하세요 (Ctrl+Shift+R)','e');
+      const sel = document.getElementById('insuranceCaseSelect');
+      if(sel) sel.innerHTML = '<option value="">— insurance-tab.js 로드 실패 —</option>';
+    }
+  }
 }
 
 // ══════════════════════════════════════════════════════════
@@ -972,6 +1052,17 @@ async function openCaseDetail(caseId){
       .in('document_type',['repair_photo_before','repair_photo_during','repair_photo_after'])
       .order('created_at');
     repairDocs = docs;
+
+    // v5: file_url이 경로면 signed URL로 변환 (http로 시작하면 레거시 publicUrl — 그대로 사용)
+    if(repairDocs && repairDocs.length){
+      for(const d of repairDocs){
+        if(d.file_url && !d.file_url.startsWith('http')){
+          const { data: su } = await sb.storage.from('partner-work')
+            .createSignedUrl(d.file_url, 3600);  // 1시간 유효
+          if(su?.signedUrl) d.file_url = su.signedUrl;
+        }
+      }
+    }
   }
 
   document.getElementById('caseDetailBody').innerHTML=`
@@ -1302,7 +1393,8 @@ async function submitWorkDone(){
 
   if(!isReal){ toast('[MOCK] 수리완료 보고서 제출 완료 (실제 저장 안 됨)','i'); closeModal('workDoneModal'); return; }
 
-  // Storage 업로드 (버킷: partner-work)
+  // Storage 업로드 (버킷: partner-work, private)
+  // v5 수정: getPublicUrl은 private 버킷에서 403. 경로만 저장 → 관리자 조회 시 signed URL 생성
   const uploads = {};
   for(const k of ['before','during','after']){
     const file = document.getElementById(`photo_${k}`).files[0];
@@ -1310,8 +1402,7 @@ async function submitWorkDone(){
       const path = `${selectedAssignmentId}/${k}_${Date.now()}.jpg`;
       const { error: upErr } = await sb.storage.from('partner-work').upload(path,file,{upsert:true});
       if(upErr){ toast(`사진(${k}) 업로드 실패: `+upErr.message,'e'); return; }
-      const { data: urlData } = sb.storage.from('partner-work').getPublicUrl(path);
-      uploads[k] = urlData.publicUrl;
+      uploads[k] = path;   // publicUrl 대신 경로만 저장
     }
   }
 
@@ -1322,20 +1413,22 @@ async function submitWorkDone(){
   });
   if(error){ toast('보고서 제출 실패: '+error.message,'e'); return; }
 
-  // 사진 URL을 case_documents에 저장 (있으면)
+  // 사진 경로를 case_documents에 저장
+  // v5 수정: 존재하지 않는 doc_type 컬럼 제거 (document_type만 사용)
   if(Object.keys(uploads).length){
     const { data: pa } = await sb.from('partner_assignments').select('case_id').eq('id',selectedAssignmentId).maybeSingle();
     if(pa?.case_id){
-      for(const [k,url] of Object.entries(uploads)){
-        await sb.from('case_documents').insert({
+      for(const [k,path] of Object.entries(uploads)){
+        const { error: docErr } = await sb.from('case_documents').insert({
           case_id: pa.case_id,
+          assignment_id: selectedAssignmentId,
           document_type: `repair_photo_${k}`,
-          doc_type: `repair_photo_${k}`,
-          file_url: url,
+          file_url: path,
           file_name: `${k}.jpg`,
           uploaded_by_type: 'partner',
           uploaded_by_role: 'partner'
         });
+        if(docErr){ console.error(`사진 메타 저장 실패 (${k}):`, docErr); }
       }
     }
   }
@@ -1357,6 +1450,6 @@ document.addEventListener('keydown', e=>{
 });
 </script>
 
-<script src="./insurance-tab.js"></script>
+<script src="./insurance-tab.js?v=5.1"></script>
 </body>
 </html>
