@@ -264,6 +264,241 @@ select.form-control{cursor:pointer}
 /* ── v5 추가: Step bar 보조 라벨 ── */
 .ins-step-sub{font-size:10px;color:var(--subtle);margin-top:2px}
 
+/* ═══════════════════════════════════════════════════════════════
+   v5.4.2 Phase 3: 손해사정보고서 전용 스타일
+   ═══════════════════════════════════════════════════════════════ */
+.report-doc {
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 40px 50px;
+  font-family: 'Malgun Gothic', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: #222;
+  font-size: 12px;
+  line-height: 1.7;
+  max-width: 820px;
+  margin: 0 auto;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+}
+.report-section { margin-bottom: 28px; }
+.report-section-title {
+  font-size: 15px; font-weight: 900;
+  color: #1e40af;
+  padding: 8px 0 6px;
+  border-bottom: 2px solid #1e40af;
+  margin-bottom: 14px;
+}
+.report-subsection { margin-top: 14px; margin-bottom: 14px; }
+.report-subsection-title {
+  font-size: 13px; font-weight: 700;
+  color: #1e3a8a;
+  margin-bottom: 8px;
+}
+.report-plain-line {
+  padding: 10px 14px; font-size: 12px; color: var(--muted);
+}
+
+/* 표지 스타일 */
+.report-cover { 
+  min-height: 900px; 
+  position: relative;
+  padding-bottom: 120px;
+}
+.report-company-header { 
+  border-bottom: 2px solid #1e40af; 
+  padding-bottom: 12px; 
+  margin-bottom: 24px;
+}
+.report-company-name {
+  font-size: 22px; font-weight: 900; color: #1e40af;
+}
+.report-company-sub {
+  font-size: 11px; color: #666; margin-top: 4px;
+}
+.report-company-en {
+  font-size: 10px; color: #999; font-style: italic;
+}
+.report-meta-line {
+  display: flex; justify-content: space-between;
+  font-size: 12px; margin: 24px 0 18px;
+}
+.report-meta-table {
+  width: 100%; border-collapse: collapse; 
+  margin-bottom: 30px; font-size: 13px;
+}
+.report-meta-table td {
+  padding: 10px 12px; border: none;
+}
+.report-meta-table td.lbl {
+  width: 80px; font-weight: 700; letter-spacing: 2px;
+}
+.report-intro {
+  padding: 16px 20px; background: #f9fafb;
+  border-left: 3px solid #1e40af;
+  border-radius: 4px; margin: 20px 0;
+  font-size: 12.5px; line-height: 1.9;
+}
+.report-signatures {
+  margin-top: 40px; padding: 16px 20px;
+  font-size: 12px; line-height: 1.9;
+}
+.report-ceo-stamp {
+  position: absolute; bottom: 40px; right: 40px;
+  text-align: right; font-size: 13px; line-height: 1.8;
+}
+.report-stamp-img {
+  width: 44px; height: 44px;
+  object-fit: contain; margin: 0 6px;
+  vertical-align: middle;
+}
+
+/* 테이블 공통 */
+.report-kv-table, .report-num-table, .report-three-col-table {
+  width: 100%; border-collapse: collapse;
+  font-size: 12px; margin-bottom: 10px;
+}
+.report-kv-table td, .report-num-table td, .report-three-col-table td,
+.report-num-table th, .report-three-col-table th {
+  padding: 8px 12px; border: 1px solid #cbd5e1;
+  vertical-align: top;
+}
+.report-kv-table td.lbl, 
+.report-three-col-table td.lbl,
+.report-num-table td.lbl {
+  background: #f1f5f9; font-weight: 700;
+  width: 22%; white-space: nowrap;
+}
+.report-num-table { text-align: center; }
+.report-num-table th {
+  background: #1e40af; color: white; 
+  font-weight: 700; font-size: 11.5px;
+}
+.report-num-table .total-row { background: #fefce8; }
+.report-three-col-table th {
+  background: #f1f5f9; font-weight: 700;
+  font-size: 12px;
+}
+.report-three-col-table td:last-child { text-align: center; }
+.report-unit-label {
+  font-size: 11px; text-align: right;
+  margin: 8px 0 4px; color: #666;
+}
+
+/* 편집 가능 영역 (노란 배경) */
+.report-editable, .report-editable-input {
+  width: 100%;
+  background: #fef9c3 !important;  /* 연한 노란 */
+  border: 1px dashed #eab308;
+  padding: 6px 8px; font-size: 12px;
+  font-family: inherit;
+  border-radius: 3px;
+  line-height: 1.6;
+  box-sizing: border-box;
+}
+.report-editable-multi { 
+  resize: vertical; min-height: 60px; 
+}
+.report-editable:focus, .report-editable-input:focus {
+  outline: 2px solid #eab308; background: #fffdf0 !important;
+}
+
+/* 사진 그룹 */
+.report-photo-group { 
+  margin-bottom: 14px; 
+  page-break-inside: avoid;
+}
+.report-photo-label {
+  font-size: 12px; font-weight: 700;
+  color: #1e40af; margin-bottom: 6px;
+}
+.report-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+}
+.report-photo {
+  width: 100%; aspect-ratio: 4/3;
+  object-fit: cover; border: 1px solid #cbd5e1;
+  border-radius: 4px;
+}
+.report-photo-empty {
+  padding: 16px; text-align: center;
+  color: #94a3b8; font-size: 11px;
+  border: 1px dashed #cbd5e1; border-radius: 4px;
+}
+.report-footer {
+  margin-top: 40px;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   @media print: PDF 인쇄 모드
+   ═══════════════════════════════════════════════════════════════ */
+@media print {
+  /* 전역 — 인쇄 외 UI 숨김 */
+  @page { size: A4; margin: 15mm 12mm; }
+  body.printing-report * { visibility: hidden; }
+  body.printing-report #report-print,
+  body.printing-report #report-print * { visibility: visible; }
+  body.printing-report #report-print {
+    position: absolute; left: 0; top: 0; width: 100%;
+    margin: 0; padding: 0;
+    box-shadow: none; border: none;
+    max-width: none;
+  }
+
+  /* 보고서 본체 */
+  .report-doc {
+    box-shadow: none; border: none; border-radius: 0;
+    max-width: 100%; padding: 0;
+    font-size: 11px;
+  }
+  .report-section { 
+    margin-bottom: 18px;
+    page-break-inside: avoid;
+  }
+  .page-break-after { page-break-after: always; }
+  .report-cover { min-height: auto; padding-bottom: 60px; }
+
+  /* 편집 영역: 인쇄 시 배경 없애고 div처럼 보이게 */
+  .report-editable, .report-editable-input {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    resize: none;
+    min-height: auto;
+    white-space: pre-wrap;
+    overflow: visible;
+    height: auto;
+  }
+  textarea.report-editable {
+    display: block;
+    height: auto !important;
+  }
+
+  /* 사진 인쇄 품질 */
+  .report-photo { 
+    max-height: 150px;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .report-photo-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  /* 색상 보존 */
+  .report-num-table th,
+  .report-kv-table td.lbl,
+  .report-three-col-table td.lbl,
+  .report-three-col-table th,
+  .report-num-table .total-row,
+  .report-section-title {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .no-print { display: none !important; }
+}
+
 </style>
 </head>
 <body>
@@ -1857,6 +2092,6 @@ async function saveCompanySettings() {
 }
 </script>
 
-<script src="./insurance-tab.js?v=5.4.1"></script>
+<script src="./insurance-tab.js?v=5.4.2"></script>
 </body>
 </html>
