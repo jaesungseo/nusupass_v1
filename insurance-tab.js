@@ -1,9 +1,21 @@
-// v2026-04-17-v5.3.1 — 결정론적 지위 판정기 + Sabi 룰 엔진 후처리
+// v2026-04-17-v5.3.2 — 업로드 덮어쓰기 정책 (UNIQUE 제약 호환)
 /**
- * insurance-tab.js  v5.3.1
+ * insurance-tab.js  v5.3.2
  * 누수패스 보험자료 탭
  *
  * 의존성: sb, toast(), curUser (index.html)
+ *
+ * ✨ v5.3.2 변경사항 (2026-04-17 밤)
+ *   🔴 BUGFIX: 같은 doc_code로 재업로드 시 UNIQUE 제약 위반 에러
+ *      "duplicate key value violates unique constraint insurance_doc_uploads_claim_doc_unique"
+ *      - 원인: v5.3.1 UNIQUE 제약 + 구 로직(is_latest 플래그로 이력 보존)의 충돌
+ *             is_latest=false 만 표시하고 INSERT → 중복 레코드 발생 → UNIQUE 위반
+ *      - 해결: 덮어쓰기 정책으로 전환
+ *             · 기존 Storage 파일 삭제
+ *             · 기존 DB 레코드 DELETE
+ *             · 새 파일 업로드 + INSERT
+ *             · 같은 doc_code 재업로드가 자연스럽게 "교체"로 동작
+ *      - Toast 메시지: 신규=" 업로드 완료" / 교체=" 교체 완료"
  *
  * ✨ v5.3.1 변경사항 (2026-04-17 저녁 최종)
  *   🔴 BUGFIX: AI가 필드-텍스트 불일치로 반환 (근거는 "확인불가", 필드는 "임대인")
@@ -109,7 +121,7 @@
 // 상수
 // ─────────────────────────────────────────────
 const INS_MODEL      = 'claude-sonnet-4-6';
-const INS_PROMPT_VER = 'v5.3.1';
+const INS_PROMPT_VER = 'v5.3.2';
 const INS_LEGAL_VER  = 'v2.0';
 
 const INS_LEGAL = `[민법 제750조] 고의 또는 과실로 인한 위법행위로 타인에게 손해를 가한 자는 그 손해를 배상할 책임이 있다.
@@ -613,12 +625,36 @@ async function insUpload(file, code, name) {
   const t = setInterval(() => { pct=Math.min(pct+12,85); if(prog) prog.style.width=pct+'%'; }, 120);
 
   try {
-    // v5 수정: update 에러 체크 추가
-    const { error: updErr } = await sb.from('insurance_doc_uploads')
-      .update({is_latest:false})
-      .eq('claim_id',_insClaim.id).eq('doc_code',code).eq('is_latest',true);
-    if (updErr) throw new Error('기존 파일 상태 업데이트 실패: ' + updErr.message);
+    // v5.3.2 ★ 덮어쓰기 정책 (UNIQUE 제약과 호환)
+    // 기존 정책(is_latest 플래그로 이력 보존)은 v5.3.1 UNIQUE (claim_id, doc_code) 제약과 충돌.
+    // → 같은 doc_code로 재업로드 시 "교체" 의미로 간주:
+    //    1) 기존 Storage 파일 삭제 (용량 절약)
+    //    2) 기존 DB 레코드 삭제
+    //    3) 새 파일 업로드 + 새 레코드 INSERT
+    //
+    // 1. 기존 레코드 조회 (삭제 대상 file_path 확보)
+    const { data: existing, error: selErr } = await sb.from('insurance_doc_uploads')
+      .select('id, file_path')
+      .eq('claim_id', _insClaim.id)
+      .eq('doc_code', code);
+    if (selErr) throw new Error('기존 레코드 조회 실패: ' + selErr.message);
 
+    // 2. 기존 Storage 파일 삭제 (있으면)
+    if (existing && existing.length > 0) {
+      const pathsToRemove = existing.map(r => r.file_path).filter(Boolean);
+      if (pathsToRemove.length > 0) {
+        const { error: rmErr } = await sb.storage.from('insurance-docs').remove(pathsToRemove);
+        if (rmErr) console.warn('[v5.3.2] 기존 Storage 파일 삭제 경고 (무시 가능):', rmErr.message);
+      }
+      // 3. 기존 DB 레코드 삭제
+      const ids = existing.map(r => r.id);
+      const { error: delErr } = await sb.from('insurance_doc_uploads')
+        .delete()
+        .in('id', ids);
+      if (delErr) throw new Error('기존 레코드 삭제 실패: ' + delErr.message);
+    }
+
+    // 4. 새 파일 Storage 업로드
     const ext = file.name.split('.').pop().toLowerCase();
     const safeExt = ['pdf','jpg','jpeg','png','webp','heic'].includes(ext)?ext:'pdf';
     const path = `${_insClaim.id}/${code}/${Date.now()}.${safeExt}`;
@@ -627,7 +663,7 @@ async function insUpload(file, code, name) {
       .upload(path, file, {cacheControl:'3600',upsert:true});
     if (upErr) throw new Error('Storage: '+upErr.message);
 
-    // v5.2 수정: 피해자 서류는 doc_category='victim' (ownership_victim 반영)
+    // 5. 새 DB 레코드 INSERT
     const docCategory = code === 'ownership_victim' ? 'victim' : 'insured';
 
     const { data: row, error: dbErr } = await sb.from('insurance_doc_uploads').insert({
@@ -641,7 +677,8 @@ async function insUpload(file, code, name) {
     clearInterval(t);
     if (prog) { prog.style.width='100%'; setTimeout(()=>{prog.style.display='none';prog.style.width='0%';},400); }
     if (zone) zone.style.opacity='1';
-    toast(name+' 업로드 완료', 's');
+    const isReplace = existing && existing.length > 0;
+    toast(name + (isReplace ? ' 교체 완료' : ' 업로드 완료'), 's');
     _insStep=1; insRender();
   } catch(err) {
     clearInterval(t);
