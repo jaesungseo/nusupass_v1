@@ -728,28 +728,73 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
     <div style="margin-bottom:16px;padding:12px;background:var(--amber-soft);border-radius:8px;font-size:12px;color:var(--amber)">
       📸 사진은 보험 청구 시 핵심 증거입니다. 꼭 3단계 모두 촬영해 주세요.
     </div>
+    
+    <!-- v5.4.1 신규: 사고 기본 정보 -->
+    <div style="padding:14px;background:var(--bg);border-radius:8px;margin-bottom:16px">
+      <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--primary)">📋 사고 기본 정보</div>
+      <div class="form-group" style="margin-bottom:10px">
+        <label class="form-label" style="font-size:11px">사고발생일자 <span style="color:var(--muted);font-weight:400">(현장 확인 기준)</span></label>
+        <input class="form-control" id="wd_accident_at" type="datetime-local" style="font-size:12px"/>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="form-group" style="margin:0">
+          <label class="form-label" style="font-size:11px">가해세대 동·호수 <span style="color:#dc2626">*</span></label>
+          <input class="form-control" id="wd_attacker_unit" placeholder="예: 104동 1203호" style="font-size:12px"/>
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label" style="font-size:11px">피해세대 동·호수 <span style="color:#dc2626">*</span></label>
+          <input class="form-control" id="wd_victim_unit" placeholder="예: 104동 1103호" style="font-size:12px"/>
+        </div>
+      </div>
+    </div>
+
+    <!-- v5.4.1 신규: 누수소견서 (구조화) -->
+    <div style="padding:14px;background:var(--primary-soft);border-radius:8px;margin-bottom:16px">
+      <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--primary)">🔍 누수 소견서</div>
+      <div class="form-group" style="margin-bottom:10px">
+        <label class="form-label" style="font-size:11px">누수 부위 <span style="color:#dc2626">*</span></label>
+        <div style="display:flex;gap:10px;margin-top:4px">
+          <label style="display:flex;align-items:center;gap:6px;padding:8px 14px;border:1px solid var(--line);border-radius:6px;cursor:pointer;flex:1;background:white">
+            <input type="radio" name="wd_leak_area" value="전유부"> <span style="font-size:12px;font-weight:600">전유부</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;padding:8px 14px;border:1px solid var(--line);border-radius:6px;cursor:pointer;flex:1;background:white">
+            <input type="radio" name="wd_leak_area" value="공용부"> <span style="font-size:12px;font-weight:600">공용부</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;padding:8px 14px;border:1px solid var(--line);border-radius:6px;cursor:pointer;flex:1;background:white">
+            <input type="radio" name="wd_leak_area" value="미상"> <span style="font-size:12px;font-weight:600">미상</span>
+          </label>
+        </div>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label" style="font-size:11px">누수 원인 <span style="color:#dc2626">*</span></label>
+        <textarea class="form-control" id="wd_leak_cause" rows="3" 
+          placeholder="예: 세탁실 전용배관(하수관) 노후화로 인한 피팅 이탈. 관로 부식 관찰됨." 
+          style="font-size:12px"></textarea>
+      </div>
+    </div>
+
     <div class="form-group">
-      <div class="step-header"><div class="step-num">1</div><div class="step-label">작업 전 현장 사진</div></div>
+      <div class="step-header"><div class="step-num">1</div><div class="step-label">작업 전 현장 사진 <span style="font-size:11px;color:var(--muted);font-weight:400">2장 이상 권장</span></div></div>
       <div class="photo-upload-area" onclick="document.getElementById('photo_before').click()">
-        <div id="photo_before_label">📷 클릭하여 사진 업로드</div>
-        <img id="photo_before_preview" class="photo-preview" style="display:none"/>
-        <input type="file" id="photo_before" accept="image/*" onchange="previewPhoto(this,'photo_before_preview','photo_before_label')"/>
+        <div id="photo_before_label">📷 클릭하여 사진 업로드 (여러 장 가능)</div>
+        <div id="photo_before_previews" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+        <input type="file" id="photo_before" accept="image/*" multiple onchange="previewMultiPhotos(this,'photo_before_previews','photo_before_label')"/>
       </div>
     </div>
     <div class="form-group">
-      <div class="step-header"><div class="step-num">2</div><div class="step-label">작업 중 현장 사진</div></div>
+      <div class="step-header"><div class="step-num">2</div><div class="step-label">작업 중 현장 사진 <span style="font-size:11px;color:var(--muted);font-weight:400">2장 이상 권장</span></div></div>
       <div class="photo-upload-area" onclick="document.getElementById('photo_during').click()">
-        <div id="photo_during_label">📷 클릭하여 사진 업로드</div>
-        <img id="photo_during_preview" class="photo-preview" style="display:none"/>
-        <input type="file" id="photo_during" accept="image/*" onchange="previewPhoto(this,'photo_during_preview','photo_during_label')"/>
+        <div id="photo_during_label">📷 클릭하여 사진 업로드 (여러 장 가능)</div>
+        <div id="photo_during_previews" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+        <input type="file" id="photo_during" accept="image/*" multiple onchange="previewMultiPhotos(this,'photo_during_previews','photo_during_label')"/>
       </div>
     </div>
     <div class="form-group">
-      <div class="step-header"><div class="step-num">3</div><div class="step-label">작업 후 현장 사진</div></div>
+      <div class="step-header"><div class="step-num">3</div><div class="step-label">작업 후 현장 사진 <span style="font-size:11px;color:var(--muted);font-weight:400">2장 이상 권장</span></div></div>
       <div class="photo-upload-area" onclick="document.getElementById('photo_after').click()">
-        <div id="photo_after_label">📷 클릭하여 사진 업로드</div>
-        <img id="photo_after_preview" class="photo-preview" style="display:none"/>
-        <input type="file" id="photo_after" accept="image/*" onchange="previewPhoto(this,'photo_after_preview','photo_after_label')"/>
+        <div id="photo_after_label">📷 클릭하여 사진 업로드 (여러 장 가능)</div>
+        <div id="photo_after_previews" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+        <input type="file" id="photo_after" accept="image/*" multiple onchange="previewMultiPhotos(this,'photo_after_previews','photo_after_label')"/>
       </div>
     </div>
     <div class="form-group">
@@ -757,8 +802,8 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
       <input class="form-control" id="wd_cost" type="number" placeholder="예: 350000"/>
     </div>
     <div class="form-group">
-      <label class="form-label">누수 소견</label>
-      <textarea class="form-control" id="wd_opinion" rows="4" placeholder="누수 원인, 수리 내용, 특이사항 등 상세히 기재…"></textarea>
+      <label class="form-label">기타 소견 <span style="font-size:10px;color:var(--muted);font-weight:400">(선택 — 누수 원인 외 특이사항)</span></label>
+      <textarea class="form-control" id="wd_opinion" rows="3" placeholder="수리 내용, 추후 조치 필요사항 등 선택적으로 기재…"></textarea>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('workDoneModal')">취소</button>
@@ -1480,70 +1525,153 @@ async function updateWorkStatus(newStatus){
 // ══════════════════════════════════════════════════════════
 // 파트너: 수리완료 보고서
 // ══════════════════════════════════════════════════════════
-function openWorkDoneModal(){
+async function openWorkDoneModal(){
   closeModal('partnerAssignModal');
+  
+  // 기본 초기화
   document.getElementById('wd_cost').value='';
   document.getElementById('wd_opinion').value='';
+  document.getElementById('wd_accident_at').value='';
+  document.getElementById('wd_attacker_unit').value='';
+  document.getElementById('wd_victim_unit').value='';
+  document.getElementById('wd_leak_cause').value='';
+  document.querySelectorAll('input[name="wd_leak_area"]').forEach(r => r.checked=false);
+  
+  // 사진 input + 미리보기 초기화 (v5.4.1: 다중사진)
   ['before','during','after'].forEach(k=>{
-    document.getElementById(`photo_${k}_preview`).style.display='none';
-    document.getElementById(`photo_${k}_label`).textContent='📷 클릭하여 사진 업로드';
-    document.getElementById(`photo_${k}`).value='';
+    const inp = document.getElementById(`photo_${k}`);
+    if (inp) inp.value='';
+    const prev = document.getElementById(`photo_${k}_previews`);
+    if (prev) prev.innerHTML='';
+    const lbl = document.getElementById(`photo_${k}_label`);
+    if (lbl) lbl.textContent='📷 클릭하여 사진 업로드 (여러 장 가능)';
   });
+  
+  // v5.4.1: 기존 보고서 있으면 prefill (파트너가 재제출하는 케이스)
+  if (isReal && selectedAssignmentId) {
+    try {
+      const { data } = await sb.from('partner_assignments')
+        .select('repair_cost, repair_opinion, accident_occurred_at, attacker_unit, victim_unit, leak_area_type, leak_cause')
+        .eq('id', selectedAssignmentId).maybeSingle();
+      if (data) {
+        if (data.repair_cost)     document.getElementById('wd_cost').value = data.repair_cost;
+        if (data.repair_opinion)  document.getElementById('wd_opinion').value = data.repair_opinion;
+        if (data.accident_occurred_at) document.getElementById('wd_accident_at').value = data.accident_occurred_at.slice(0,16);
+        if (data.attacker_unit)   document.getElementById('wd_attacker_unit').value = data.attacker_unit;
+        if (data.victim_unit)     document.getElementById('wd_victim_unit').value = data.victim_unit;
+        if (data.leak_cause)      document.getElementById('wd_leak_cause').value = data.leak_cause;
+        if (data.leak_area_type) {
+          const r = document.querySelector(`input[name="wd_leak_area"][value="${data.leak_area_type}"]`);
+          if (r) r.checked = true;
+        }
+      }
+    } catch (e) {
+      console.warn('[wd] prefill 실패:', e);
+    }
+  }
+  
   openModal('workDoneModal');
 }
 
+// v5.4.1: 다중 사진 미리보기 (2장 이상 지원)
+function previewMultiPhotos(input, previewsContainerId, labelId){
+  const files = Array.from(input.files || []);
+  const container = document.getElementById(previewsContainerId);
+  const label = document.getElementById(labelId);
+  if (!container) return;
+  container.innerHTML = '';
+  if (files.length === 0) {
+    if (label) label.textContent = '📷 클릭하여 사진 업로드 (여러 장 가능)';
+    return;
+  }
+  files.forEach(f => {
+    const img = document.createElement('img');
+    img.src = URL.createObjectURL(f);
+    img.style.cssText = 'width:70px;height:70px;object-fit:cover;border-radius:6px;border:1px solid var(--line)';
+    img.title = f.name;
+    container.appendChild(img);
+  });
+  if (label) label.textContent = `✅ ${files.length}장 선택됨`;
+}
+
+// 레거시 호환: previewPhoto는 남겨둠 (혹시 다른 곳에서 호출될 수 있음)
 function previewPhoto(input, previewId, labelId){
   const file = input.files[0];
   if(!file) return;
   const url = URL.createObjectURL(file);
   const img = document.getElementById(previewId);
-  img.src=url; img.style.display='block';
-  document.getElementById(labelId).textContent='✅ '+file.name;
+  if (img) { img.src=url; img.style.display='block'; }
+  const lbl = document.getElementById(labelId);
+  if (lbl) lbl.textContent='✅ '+file.name;
 }
 
 async function submitWorkDone(){
-  const cost = parseInt(document.getElementById('wd_cost').value)||0;
-  const opinion = document.getElementById('wd_opinion').value.trim();
-  if(!opinion){ toast('누수 소견을 입력해 주세요.','e'); return; }
+  // v5.4.1 ★ 구조화 필드 수집
+  const cost          = parseInt(document.getElementById('wd_cost').value)||0;
+  const opinion       = document.getElementById('wd_opinion').value.trim();
+  const accidentAt    = document.getElementById('wd_accident_at').value || null;
+  const attackerUnit  = document.getElementById('wd_attacker_unit').value.trim();
+  const victimUnit    = document.getElementById('wd_victim_unit').value.trim();
+  const leakAreaEl    = document.querySelector('input[name="wd_leak_area"]:checked');
+  const leakAreaType  = leakAreaEl ? leakAreaEl.value : null;
+  const leakCause     = document.getElementById('wd_leak_cause').value.trim();
+
+  // 필수값 검증
+  if (!attackerUnit) { toast('가해세대 동·호수를 입력해 주세요.','e'); return; }
+  if (!victimUnit)   { toast('피해세대 동·호수를 입력해 주세요.','e'); return; }
+  if (!leakAreaType) { toast('누수 부위(전유부/공용부/미상)를 선택해 주세요.','e'); return; }
+  if (!leakCause)    { toast('누수 원인을 입력해 주세요.','e'); return; }
 
   if(!isReal){ toast('[MOCK] 수리완료 보고서 제출 완료 (실제 저장 안 됨)','i'); closeModal('workDoneModal'); return; }
 
-  // Storage 업로드 (버킷: partner-work, private)
-  // v5 수정: getPublicUrl은 private 버킷에서 403. 경로만 저장 → 관리자 조회 시 signed URL 생성
-  const uploads = {};
+  // v5.4.1 ★ 다중 사진 Storage 업로드 (버킷: partner-work, private)
+  const uploadsByType = { before: [], during: [], after: [] };
   for(const k of ['before','during','after']){
-    const file = document.getElementById(`photo_${k}`).files[0];
-    if(file){
-      const path = `${selectedAssignmentId}/${k}_${Date.now()}.jpg`;
-      const { error: upErr } = await sb.storage.from('partner-work').upload(path,file,{upsert:true});
-      if(upErr){ toast(`사진(${k}) 업로드 실패: `+upErr.message,'e'); return; }
-      uploads[k] = path;   // publicUrl 대신 경로만 저장
+    const files = Array.from(document.getElementById(`photo_${k}`).files || []);
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      const ext = (f.name.split('.').pop() || 'jpg').toLowerCase();
+      const safeExt = ['jpg','jpeg','png','webp','heic'].includes(ext) ? ext : 'jpg';
+      const path = `${selectedAssignmentId}/${k}_${Date.now()}_${i}.${safeExt}`;
+      const { error: upErr } = await sb.storage.from('partner-work').upload(path, f, { upsert: true });
+      if (upErr) { toast(`사진(${k} ${i+1}번) 업로드 실패: `+upErr.message,'e'); return; }
+      uploadsByType[k].push({ path, name: f.name });
     }
   }
 
-  const { error } = await sb.rpc('rpc_submit_work_done',{
-    p_assignment_id: selectedAssignmentId,
-    p_repair_cost: cost,
-    p_repair_opinion: opinion
+  // RPC: partner_assignments 업데이트 + 상태 전환
+  const { error: rpcErr } = await sb.rpc('rpc_submit_work_done', {
+    p_assignment_id:        selectedAssignmentId,
+    p_repair_cost:          cost,
+    p_repair_opinion:       opinion || null,
+    p_accident_occurred_at: accidentAt,
+    p_attacker_unit:        attackerUnit,
+    p_victim_unit:          victimUnit,
+    p_leak_area_type:       leakAreaType,
+    p_leak_cause:           leakCause,
   });
-  if(error){ toast('보고서 제출 실패: '+error.message,'e'); return; }
+  if (rpcErr) { toast('보고서 제출 실패: '+rpcErr.message,'e'); return; }
 
-  // 사진 경로를 case_documents에 저장
-  // v5 수정: 존재하지 않는 doc_type 컬럼 제거 (document_type만 사용)
-  if(Object.keys(uploads).length){
-    const { data: pa } = await sb.from('partner_assignments').select('case_id').eq('id',selectedAssignmentId).maybeSingle();
-    if(pa?.case_id){
-      for(const [k,path] of Object.entries(uploads)){
-        const { error: docErr } = await sb.from('case_documents').insert({
+  // 사진 경로들을 case_documents에 batch 저장
+  const totalPhotos = uploadsByType.before.length + uploadsByType.during.length + uploadsByType.after.length;
+  if (totalPhotos > 0) {
+    const { data: pa } = await sb.from('partner_assignments').select('case_id').eq('id', selectedAssignmentId).maybeSingle();
+    if (pa?.case_id) {
+      const rows = [];
+      for (const [k, arr] of Object.entries(uploadsByType)) {
+        arr.forEach(u => rows.push({
           case_id: pa.case_id,
           assignment_id: selectedAssignmentId,
           document_type: `repair_photo_${k}`,
-          file_url: path,
-          file_name: `${k}.jpg`,
+          file_url: u.path,
+          file_name: u.name,
           uploaded_by_type: 'partner',
-          uploaded_by_role: 'partner'
-        });
-        if(docErr){ console.error(`사진 메타 저장 실패 (${k}):`, docErr); }
+          uploaded_by_role: 'partner',
+        }));
+      }
+      if (rows.length > 0) {
+        const { error: docErr } = await sb.from('case_documents').insert(rows);
+        if (docErr) console.error('사진 메타 batch 저장 실패:', docErr);
       }
     }
   }
@@ -1729,6 +1857,6 @@ async function saveCompanySettings() {
 }
 </script>
 
-<script src="./insurance-tab.js?v=5.4"></script>
+<script src="./insurance-tab.js?v=5.4.1"></script>
 </body>
 </html>

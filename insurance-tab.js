@@ -1,11 +1,30 @@
-// v2026-04-17-v5.4 — 가족 범위 지위 판정 + 피해자 배열 + 회사설정 UI (Phase 2)
+// v2026-04-17-v5.4.1 — 판단근거 편집 + 사고일시 + 룰엔진 reasoning 안전망
 /**
- * insurance-tab.js  v5.4
+ * insurance-tab.js  v5.4.1
  * 누수패스 보험자료 탭
  *
  * 의존성: sb, toast(), curUser (index.html)
  *
- * ✨ v5.4 변경사항 (2026-04-17 밤 최종)
+ * ✨ v5.4.1 변경사항 (2026-04-17 밤 핫픽스)
+ *   🔴 BUGFIX: liability_reasoning / coverage_reasoning이 DB에 NULL로 저장되던 문제
+ *      - 원인: AI 4차 응답에서 reasoning 필드가 빈 문자열 또는 생략되면 그대로 NULL
+ *      - 해결: enforceSabiRuleEngine 끝에 "reasoning 자동 생성 안전망" 추가
+ *        · liability_reasoning 비어있으면 룰북 카테고리·지위 기반으로 자동 작성
+ *        · coverage_reasoning 비어있으면 면부책 사유별 템플릿 자동 작성
+ *        · _liability_reasoning_autogen / _coverage_reasoning_autogen 플래그
+ *      - 결과: 모든 판정에 최소한의 서술형 근거 보장
+ *
+ *   🔴 FEAT: 판단근거 textarea로 수정 가능
+ *      - 기존 읽기 전용 div → textarea로 변경
+ *      - j-liab-reason / j-cov-reason ID로 s2Save에서 수정값 반영
+ *      - 손해사정사가 약관 문장 다듬을 수 있음
+ *
+ *   🔴 FEAT: 사고일시 필드 (ex-accident-dt, datetime-local)
+ *      - 추출정보 카드에 신규 필드
+ *      - _insResult.accident_datetime 또는 _insClaim.accident_datetime에서 로드
+ *      - s2Save에서 accident_datetime으로 저장 (기존 UPDATE 경로 재사용)
+ *
+ * ✨ v5.4 변경사항 (2026-04-17 밤)
  *   🔴 FEAT: 가족 범위 지위 판정 (온프레미스 STEP 1 벤치마킹)
  *      - computeInsuredStatus에 E_spouse, E_cohabitants 파라미터 추가
  *      - 소유자(D)가 피보험자 본인 / 배우자 / 동거가족 중 하나면 "소유자 측"으로 간주
@@ -153,7 +172,7 @@
 // 상수
 // ─────────────────────────────────────────────
 const INS_MODEL      = 'claude-sonnet-4-6';
-const INS_PROMPT_VER = 'v5.4';
+const INS_PROMPT_VER = 'v5.4.1';
 const INS_LEGAL_VER  = 'v2.0';
 
 const INS_LEGAL = `[민법 제750조] 고의 또는 과실로 인한 위법행위로 타인에게 손해를 가한 자는 그 손해를 배상할 책임이 있다.
@@ -865,6 +884,11 @@ function insStep2HTML() {
         <input class="form-control" id="ex-deductible" type="number"
           value="${r.deductible||cl.deductible||''}" placeholder="보험증권에서 추출"/>
       </div>
+      <div class="form-group">
+        <label class="form-label">사고일시 <span style="font-size:10px;color:var(--muted);font-weight:400">파트너 소견서/접수 정보 기반</span></label>
+        <input class="form-control" id="ex-accident-dt" type="datetime-local"
+          value="${(r.accident_datetime||cl.accident_datetime||'').slice(0,16)}"/>
+      </div>
     </div>
 
     <!-- 주소 일치 판단 -->
@@ -931,9 +955,16 @@ function insStep2HTML() {
         </select>
       </div>
       <div class="ins-judge-body">
-        ${r.liability_reasoning || '분석 후 자동으로 채워집니다.'}
-        <br><span class="badge badge-blue" style="margin-top:6px;display:inline-block">민법 제750조</span>
-        <span class="badge badge-blue" style="margin-top:6px">민법 제758조</span>
+        <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">
+          📝 판단근거 <span style="font-size:10px;color:var(--muted);font-weight:400">직접 수정 가능</span>
+        </div>
+        <textarea class="form-control" id="j-liab-reason" 
+          style="font-size:12px;line-height:1.6;min-height:70px;resize:vertical;background:#fafafa"
+          placeholder="분석 후 자동으로 채워집니다. 직접 수정 가능합니다.">${r.liability_reasoning || ''}</textarea>
+        <div style="margin-top:6px">
+          <span class="badge badge-blue" style="display:inline-block">민법 제750조</span>
+          <span class="badge badge-blue">민법 제758조</span>
+        </div>
       </div>
     </div>
 
@@ -947,9 +978,16 @@ function insStep2HTML() {
         </select>
       </div>
       <div class="ins-judge-body">
-        ${r.coverage_reasoning || '보험기간, 소재지 일치 여부, 사고 유형별 약관 조항 검토 후 자동으로 채워집니다.'}
-        <br><span class="badge badge-blue" style="margin-top:6px;display:inline-block">${INS_TYPE_LABELS[cl.insurance_type]||'약관'}</span>
-        <span class="badge badge-blue" style="margin-top:6px">상법 제680조</span>
+        <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">
+          📝 판단근거 <span style="font-size:10px;color:var(--muted);font-weight:400">직접 수정 가능</span>
+        </div>
+        <textarea class="form-control" id="j-cov-reason" 
+          style="font-size:12px;line-height:1.6;min-height:70px;resize:vertical;background:#fafafa"
+          placeholder="보험기간, 소재지 일치 여부, 사고 유형별 약관 조항 검토 후 자동으로 채워집니다. 직접 수정 가능합니다.">${r.coverage_reasoning || ''}</textarea>
+        <div style="margin-top:6px">
+          <span class="badge badge-blue" style="display:inline-block">${INS_TYPE_LABELS[cl.insurance_type]||'약관'}</span>
+          <span class="badge badge-blue">상법 제680조</span>
+        </div>
       </div>
     </div>
 
@@ -2045,6 +2083,62 @@ function enforceSabiRuleEngine(r4, ctx) {
   if (warnings.length > 0) {
     console.warn('[v5.3.1 Sabi 룰엔진 교정]', warnings);
   }
+  
+  // ─────────────────────────────────────────────
+  // v5.4.1 ★ reasoning 안전망 — AI가 빈 문자열 반환해도 JS가 룰 기반으로 자동 생성
+  // (보고서 품질 보장을 위해 liability_reasoning / coverage_reasoning 절대 공백 금지)
+  // ─────────────────────────────────────────────
+  if (!out.liability_reasoning || out.liability_reasoning.trim().length < 10) {
+    if (out.liability_result === 'no') {
+      if (ctx.rulebook_cat === 'ⓐ' && (ctx.insured_status === '임차인겸점유자' || ctx.insured_status === '임차인')) {
+        out.liability_reasoning = `피보험자는 ${ctx.insured_status} 지위이며, 사고 원인이 전유부 공작물(${ctx.accident_cause || '설비'})의 하자에 해당함. 민법 제758조에 따라 공작물 하자 책임은 원칙적으로 소유자에게 귀속되며, 점유자가 주의의무를 다한 것으로 판단되는 경우 임차인인 피보험자의 법률상 배상책임은 성립하지 않는 것으로 판단됨.`;
+      } else if (ctx.rulebook_cat === 'ⓓ') {
+        out.liability_reasoning = `사고 원인이 공용부분(공용배관·우수관·외벽 등)에 기인한 것으로 판단됨. 공동주택관리법 제63조 및 집합건물법 제16조에 따라 관리주체(입주자대표회의)에게 관리 책임이 귀속되므로 피보험자의 법률상 배상책임은 성립하지 않음.`;
+      } else if (ctx.rulebook_cat === 'ⓔ') {
+        out.liability_reasoning = `사고 원인이 시공업체의 시공 불량에 기인한 것으로 판단됨. 민법 제667조에 따라 시공업체의 하자담보책임이 우선 검토되어야 하므로 피보험자의 법률상 배상책임은 성립하지 않음.`;
+      } else if (ctx.insured_status === '확인불가' || ctx.accident_cause === '미지정') {
+        out.liability_reasoning = `피보험자 지위 또는 사고원인이 미확정 상태로 법률상 배상책임 성립 여부 판단 보류함. 추가 자료(소유자료·주민등록등본·누수탐지 결과) 확인 후 재검토 필요.`;
+      } else {
+        out.liability_reasoning = `현재 제출된 자료 및 Sabi 룰엔진 판정 결과 피보험자의 법률상 배상책임은 성립하지 않는 것으로 판단됨.`;
+      }
+    } else {
+      // liability_result === 'yes'
+      const statusStr = ctx.insured_status || '피보험자';
+      out.liability_reasoning = `피보험자는 ${statusStr} 지위이며, 사고 원인(${ctx.accident_cause || '누수사고'})에 대해 ${ctx.rulebook_cat === 'ⓒ' ? '민법 제750조 불법행위 책임' : '민법 제758조 공작물 점유자·소유자 책임'}이 성립함. 따라서 피보험자에게 법률상 손해배상책임이 성립하는 것으로 판단됨.`;
+    }
+    out._liability_reasoning_autogen = true;
+  }
+  
+  if (!out.coverage_reasoning || out.coverage_reasoning.trim().length < 10) {
+    if (out.coverage_result === '면책') {
+      if (ctx.address_match === 'error') {
+        out.coverage_reasoning = `보험증권 기재 소재지와 사고발생장소가 구·동·호수 모두 불일치하여 약관상 담보 범위를 벗어남. 보험금 지급 책임이 성립하지 않음. ※ 피보험자가 주소 이전을 통한 배서(주소 변경) 처리 이력이 있는 경우 담보 범위 확장 가능하므로 배서 내역 확인 후 재검토 권고.`;
+      } else if (out.liability_result === 'no') {
+        out.coverage_reasoning = `선행 분석 결과 피보험자의 법률상 손해배상책임이 성립하지 않는 사고이므로 보험금 지급 검토 대상이 아님.`;
+      } else {
+        out.coverage_reasoning = `약관상 면책 사유에 해당하여 보험금 지급 대상이 아닌 것으로 판단됨.`;
+      }
+    } else if (out.coverage_result === '판단유보') {
+      if (ctx.address_match === 'warn') {
+        out.coverage_reasoning = `보험증권 소재지와 사고발생장소의 표기가 상이하여 동일 부동산 여부 확인 필요. 추가 확인 후 면·부책 판단 재검토.`;
+      } else if (ctx.insured_status === '확인불가') {
+        out.coverage_reasoning = `피보험자 지위 미확정으로 면·부책 판단 보류함. 소유자료·주민등록등본 재확인 후 전환 가능.`;
+      } else if (ctx.accident_cause === '미지정') {
+        out.coverage_reasoning = `사고원인 미확정으로 약관 적용 조항 결정 불가. 누수탐지 결과 또는 수리 소견 확인 후 재검토 필요.`;
+      } else {
+        out.coverage_reasoning = `보험증권 상 주요 정보 확인 필요로 면·부책 판단을 유보함.`;
+      }
+    } else {
+      // 부책
+      const typeStr = ctx.insurance_type === 'family_daily_old' ? '가족일상생활배상책임(구형)'
+                    : ctx.insurance_type === 'family_daily_new' ? '가족일상생활배상책임(신형)'
+                    : ctx.insurance_type === 'personal_daily'   ? '일상생활배상책임(일배책)'
+                    : '배상책임';
+      out.coverage_reasoning = `${typeStr} 약관상 [주택의 소유·사용·관리 / 일상생활] 중 발생한 대물사고에 해당하며, 약관상 면책 사유에 해당하지 않으므로 보험금 지급 책임이 있는 것으로 판단됨.`;
+    }
+    out._coverage_reasoning_autogen = true;
+  }
+  
   return out;
 }
 
@@ -2150,7 +2244,12 @@ async function s2Save() {
     liability_result: document.getElementById('j-established')?.value,
     coverage_result: coverage,
     fault_ratio:     document.getElementById('j-fault')?.value,
+    // v5.4.1 ★ 판단근거 textarea 수정값 반영 (없으면 기존 _insResult 값 유지)
+    liability_reasoning: document.getElementById('j-liab-reason')?.value?.trim() || _insResult.liability_reasoning || null,
+    coverage_reasoning:  document.getElementById('j-cov-reason')?.value?.trim()  || _insResult.coverage_reasoning || null,
     investigator_opinion: document.getElementById('j-opinion')?.value,
+    // v5.4.1 ★ 사고일시 (datetime-local input 값)
+    accident_datetime: document.getElementById('ex-accident-dt')?.value || _insResult.accident_datetime || null,
     payout_amount:   pay,
   };
 
