@@ -1,9 +1,33 @@
-// v2026-04-17-v5.2.1 — JSON 파서 + 판단 가드 + 사고원인 재설계 + RPC 일원화
+// v2026-04-17-v5.3 — 사고발생장소 용어 재정의 + 판정 5축 재설계
 /**
- * insurance-tab.js  v5.2.1
+ * insurance-tab.js  v5.3
  * 누수패스 보험자료 탭
  *
  * 의존성: sb, toast(), curUser (index.html)
+ *
+ * ✨ v5.3 변경사항 (2026-04-17 저녁)
+ *   🔴 구조 개편 1: 서류 용어 재정의
+ *      - ownership_insured → ownership_accident (사고발생장소 소유자료)
+ *      - "피보험자 세대" 개념 제거 → "사고발생장소" / "피해세대" 이분법
+ *      - UI 라벨: "사고발생장소 소유자료" / "피해세대 소유자료" / "피보험자 주민등록등본"
+ *      - DB 마이그레이션 v5_3_ownership_accident_rename_and_consistency 적용
+ *
+ *   🔴 구조 개편 2: 판정 5축 재설계 (재성님 원칙 반영)
+ *      A = 보험증권 소재지 / B = 사고발생장소 / C = 피보험자 실거주지
+ *      D = 사고발생장소 소유자 / E = 피보험자 성명
+ *      · 1단계: A vs B → 담보범위 체크 (다르면 기본 면책)
+ *      · 2단계: D,E,B,C 교차 → 피보험자 지위 (소유자겸점유자/임차인/임대인/확인불가)
+ *      · 3단계: Sabi 9단계 약관 분기 (기존 유지)
+ *      이전 버그: C(실거주지)와 B(사고발생장소)가 다를 때 혼동 → 임차인/임대인 잘못 판정
+ *
+ *   🔴 구조 개편 3: 배서 확인 권고 자동 삽입
+ *      - 담보범위 불일치(error) 케이스에서 면책 처리 시
+ *        investigator_opinion에 "배서 이력 확인 권고" 자동 삽입
+ *      - 원칙: 증권 주소 ≠ 사고장소 = 기본 면책. 사람이 배서 확인 후 수동 변경.
+ *
+ *   🔴 구조 개편 4: DB 정합성 — 레거시 doc_code 전수 정리
+ *      - insurance_doc_uploads에 CHECK 제약 신설 (6종 doc_code 고정)
+ *      - 레거시 데이터(building_register_at, resident_registration 등) 일괄 마이그레이션
  *
  * ✨ v5.2.1 변경사항 (2026-04-17 오후)
  *   🔴 BUGFIX 1: "Unexpected non-whitespace character after JSON at position N"
@@ -67,7 +91,7 @@
 // 상수
 // ─────────────────────────────────────────────
 const INS_MODEL      = 'claude-sonnet-4-6';
-const INS_PROMPT_VER = 'v5.2.1';
+const INS_PROMPT_VER = 'v5.3';
 const INS_LEGAL_VER  = 'v2.0';
 
 const INS_LEGAL = `[민법 제750조] 고의 또는 과실로 인한 위법행위로 타인에게 손해를 가한 자는 그 손해를 배상할 책임이 있다.
@@ -169,12 +193,12 @@ const INS_CAUSE_RULEBOOK_MAP = {
 };
 
 const INS_DOCS = [
-  { code:'insurance_policy',  name:'보험증권',                                           type:'pdf', required:true  },
-  { code:'resident_reg',      name:'주민등록등본',                                       type:'pdf', required:true  },
-  { code:'ownership_insured', name:'피보험자 소유자료 (등기부등본 또는 건축물대장)',     type:'pdf', required:true  },
-  { code:'ownership_victim',  name:'피해자 소유자료 (등기부등본 또는 건축물대장)',       type:'pdf', required:true  },
-  { code:'family_cert',       name:'가족관계증명서',                                     type:'pdf', required:false },
-  { code:'claim_form',        name:'보험청구서',                                         type:'pdf', required:false },
+  { code:'insurance_policy',   name:'보험증권',                                               type:'pdf', required:true  },
+  { code:'resident_reg',       name:'피보험자 주민등록등본',                                  type:'pdf', required:true  },
+  { code:'ownership_accident', name:'사고발생장소 소유자료 (등기부등본 또는 건축물대장)',     type:'pdf', required:true  },
+  { code:'ownership_victim',   name:'피해세대 소유자료 (등기부등본 또는 건축물대장)',         type:'pdf', required:true  },
+  { code:'family_cert',        name:'가족관계증명서',                                         type:'pdf', required:false },
+  { code:'claim_form',         name:'보험청구서',                                             type:'pdf', required:false },
 ];
 
 // 피보험자 지위 4-value (표기 통일 — 백엔드 enum과 매칭)
@@ -910,7 +934,7 @@ ${typeCtx}
     // ── 2차: 피보험자 소유자료 + 주민등록등본 교차 분석 ──
     progress(35, '피보험자 지위 판단 중…');
     const contentArr = [];
-    for (const code of ['ownership_insured','resident_reg']) {
+    for (const code of ['ownership_accident','resident_reg']) {
       const up = _insUploaded[code];
       if (!up) continue;
       const b64 = await fetchBase64(up.file_path);
@@ -920,48 +944,75 @@ ${typeCtx}
       contentArr.push({
         type: isPdf ? 'document' : 'image',
         source: { type:'base64', media_type: mt, data: b64 },
-        ...(isPdf ? { title: code==='ownership_insured'?'피보험자 소유자료(등기부 또는 건축물대장)':'주민등록등본' } : {}),
+        ...(isPdf ? { title: code==='ownership_accident'?'사고발생장소 소유자료(등기부 또는 건축물대장)':'피보험자 주민등록등본' } : {}),
       });
     }
     if (contentArr.length > 0) {
       const policyAddr = result.policy_address_raw || '(보험증권 주소 미추출)';
+      const insuredNameHint = result.insured_name || '(보험증권에서 미추출)';
       contentArr.push({ type:'text', text:
-`위 서류(피보험자 소유자료 + 주민등록등본)를 교차 분석하여 아래 JSON을 반환하세요.
+`위 2개 서류를 교차 분석하여 아래 JSON을 반환하세요.
+서류 식별:
+  • 첫 번째 = 사고발생장소 소유자료 (등기부등본 또는 건축물대장)
+  • 두 번째 = 피보험자 주민등록등본
 
-★ 자료 판독 우선순위:
-   - 피보험자 소유자료가 "등기부등본"이면: 최우선 (소유권 공시의 법적 근거)
-   - 피보험자 소유자료가 "건축물대장"이면: 보조 (소유자 란 참고 가능)
-   - 둘 다 있으면 등기부등본 기준으로 판단, 건축물대장과 불일치 시 등기부 우선
+═══════════════════════════════════════════
+【 v5.3 판정 로직 — 정확히 이 순서로 따르세요 】
+═══════════════════════════════════════════
 
-판단 기준:
+입력 5개 축:
+  A = 보험증권 소재지 (이미 추출됨): "${policyAddr}"
+  B = 사고발생장소 주소 — 첫 번째 서류(등기부/건축물대장)의 소재지
+  C = 피보험자 실거주지 — 두 번째 서류(주민등록등본)의 세대 주소
+  D = 사고발생장소 소유자 성명 — 첫 번째 서류의 소유자 란
+  E = 피보험자 성명 (이미 추출됨): "${insuredNameHint}"
 
-1. 피보험자 지위 (insured_status, 4-value):
-   - 소유자(등기부/건축물대장) = 주민등록 세대주 (동일인) → "소유자겸점유자"
-   - 주민등록상 해당 주소에 거주 중이나 소유자 ≠ 세대주 → "임차인겸점유자"
-   - 소유자이지만 주민등록상 다른 주소에 거주 → "임대인"
-   - 판단 근거 부족 → "확인불가"
+※ 주의: 피보험자(E)는 사고발생장소에 살 수도, 안 살 수도 있음 (임대인 케이스 존재).
+        사고발생장소 주소(B)를 피보험자 실거주지(C)라고 가정하지 마세요.
 
-2. 주소 일치 (보험증권 소재지 "${policyAddr}" 기준):
-   - 완전 일치 또는 도로명↔지번 동일건물 표기차이 → "ok"
-   - 동일 건물 추정되나 표기 차이 큼 → "warn"
-   - 구/동/호수 불일치 → "error"
+─────────────────────────────────────────
+STEP 1: 피보험자 지위 판정 (insured_status)
+─────────────────────────────────────────
+D와 E 비교: 사고발생장소 소유자(D) == 피보험자(E)?
+B와 C 비교: 사고발생장소(B) == 피보험자 실거주지(C)?
+  · 동일 건물·동·호수면 일치로 간주
 
-3. 세대 소유자 정보 추출 (등기부등본 우선):
-   - 소유자 성명
-   - 소유권 이전일 (YYYY-MM-DD 포맷)
+4가지 조합:
+  D==E (피보험자 본인 소유) AND C==B (피보험자가 거기 거주) → "소유자겸점유자"
+  D!=E (남이 소유)           AND C==B (피보험자가 거기 거주) → "임차인겸점유자"
+  D==E (피보험자 본인 소유) AND C!=B (피보험자는 다른 곳 거주) → "임대인"
+  D!=E                      AND C!=B                          → "확인불가"
 
-4. 주민등록등본 동거인 요약:
-   - 세대주 외 동거 구성원 성명+관계 (예: "김세연(배우자), 백지훈(부)")
+★ 중요: 소유 판단 근거의 법적 우선순위 = 등기부등본 > 건축물대장
+        둘 다 있으면 등기부, 불일치 시 등기부 우선
 
+─────────────────────────────────────────
+STEP 2: 담보 범위 판정 (address_match)
+─────────────────────────────────────────
+A (보험증권 소재지) vs B (사고발생장소) 비교:
+  · 완전 일치 또는 도로명↔지번 동일건물 표기차이 → "ok"
+  · 동일 건물 추정되나 표기 차이 큼 → "warn"
+  · 구·동·호수 불일치 → "error"
+    (※ 이 경우 사고장소가 약관상 담보 범위 밖 — 기본 면책 대상)
+
+─────────────────────────────────────────
+STEP 3: 동거인 요약 (주민등록등본에서)
+─────────────────────────────────────────
+세대주 외 동거 구성원 성명+관계 (예: "김세연(배우자), 백지훈(부)")
+
+─────────────────────────────────────────
+반환 JSON (필드명 정확히, 다른 설명 없이 JSON만)
+─────────────────────────────────────────
 {
   "insured_status": "소유자겸점유자 | 임차인겸점유자 | 임대인 | 확인불가",
-  "insured_status_reason": "소유자명·세대주명·주소·거주여부를 비교한 결과를 1문장으로 명시",
-  "insured_residence": "주민등록상 실거주지 전체 주소",
-  "insured_owner_name": "세대 소유자 성명",
-  "insured_owner_transfer_date": "YYYY-MM-DD 또는 null",
+  "insured_status_reason": "D=[소유자명], E=[피보험자명], B=[사고발생장소], C=[실거주지] 를 교차 비교한 결과를 1-2문장으로. '피보험자(성명)는 사고발생장소의 [소유자/비소유자]이며, 해당 장소에 [거주/비거주]하므로 [지위]에 해당함' 형태 권장",
+  "insured_residence": "C값 (주민등록상 실거주지 전체 주소)",
+  "accident_location_from_doc": "B값 (첫 번째 서류에서 읽은 사고발생장소 주소)",
+  "insured_owner_name": "D값 (사고발생장소 소유자 성명)",
+  "insured_owner_transfer_date": "소유권 이전일 YYYY-MM-DD 또는 null",
   "insured_cohabitants": "동거인 요약 (없거나 미확인 시 null)",
   "address_match": "ok | warn | error",
-  "address_match_note": "주소 차이 설명 (일치하면 null)"
+  "address_match_note": "A와 B의 차이 설명 (ok면 null)"
 }` });
 
       const resp = await fetch('/api/claude', {
@@ -975,15 +1026,16 @@ ${typeCtx}
       Object.assign(result, r2);
     }
 
-    // ── 3차: 피해자 소유자료 ──
+    // ── 3차: 피해세대 소유자료 ──
     if (_insUploaded['ownership_victim']) {
-      progress(55, '피해자 정보 추출 중…');
+      progress(55, '피해세대 정보 추출 중…');
       const b64 = await fetchBase64(_insUploaded['ownership_victim'].file_path);
       if (b64) {
         const mt = docMediaType(_insUploaded['ownership_victim'].file_path);
-        const r3 = await callClaudeDoc(b64, mt, '피해자 소유자료', SYS,
-`피해자 소유자료(등기부등본 또는 건축물대장)에서 아래 JSON을 추출하세요.
+        const r3 = await callClaudeDoc(b64, mt, '피해세대 소유자료', SYS,
+`피해세대 소유자료(등기부등본 또는 건축물대장)에서 아래 JSON을 추출하세요.
 등기부등본이면 소유자 란, 건축물대장이면 소유자 란을 참조하세요.
+※ 피해세대 = 물이 떨어진 아랫집 (피보험자의 가해 세대가 아닌 제3자 세대)
 
 {
   "victim_address": "피해자 세대 주소 (예: 101동 1204호)",
@@ -1005,11 +1057,14 @@ ${typeCtx}
     const cause = _insClaim.accident_cause_type || '미지정';
     const causeMap = INS_CAUSE_RULEBOOK_MAP[cause] || { cat: '?', label: '사전 매핑 없음 — 수리소견으로 판단' };
     const repairOpinion = _insField?.repair_opinion || '';
+    // v5.3 ★ 사고발생장소 주소는 accident_location_from_doc(신) 또는 victim_address(구) 사용
+    //        피해자 소재지와 사고발생장소는 서로 다름(윗집 vs 아랫집) — 분리 전달
     const judgePrompt = buildJudgmentPrompt(insType, {
       insured_status:         result.insured_status         || '확인불가',
       insured_status_reason:  result.insured_status_reason  || '',
       insurance_location:     result.policy_address_raw     || '확인불가',
-      accident_location:      result.victim_address         || '확인불가',
+      accident_location:      result.accident_location_from_doc || '확인불가',  // ★ v5.3: 사고발생장소 (가해세대)
+      victim_location:        result.victim_address         || '확인불가',      // ★ v5.3: 피해세대 주소 (추가)
       insurance_period:       (result.policy_start && result.policy_end)
                                ? `${result.policy_start} ~ ${result.policy_end}` : '확인불가',
       accident_location_match: result.address_match         || 'ok',
@@ -1019,6 +1074,7 @@ ${typeCtx}
       repair_opinion:         repairOpinion,
       insured_owner_name:     result.insured_owner_name     || '',
       victim_owner_name:      result.victim_owner_name      || '',
+      insured_name:           result.insured_name           || '',  // v5.3: 피보험자 본인 성명 (소유자 동일여부 판정용)
     });
 
     const judgeResp = await fetch('/api/claude', {
@@ -1170,17 +1226,25 @@ STEP C: [사고 유형]에 따른 분기 (일상생활 일배책)
 ${typeLabel}
 
 === 사고 기본 정보 ===
+[피보험자] ${ctx.insured_name || '(미추출)'}
 [피보험자 지위] ${ctx.insured_status}
 [피보험자 지위 근거] ${ctx.insured_status_reason || '(미추출)'}
-[보험증권 소재지] ${ctx.insurance_location}
-[사고 발생 장소(피해자 소재지)] ${ctx.accident_location}
+[보험증권 소재지 (A)] ${ctx.insurance_location}
+[사고발생장소 — 가해 세대 주소 (B)] ${ctx.accident_location}
+[피해세대 주소 — 물이 떨어진 아랫집] ${ctx.victim_location || '확인불가'}
 [보험기간] ${ctx.insurance_period}
-[사고장소 부합 여부] ${ctx.accident_location_match}
+[담보범위 부합 여부 (A vs B)] ${ctx.accident_location_match}
 [사고원인 분류 (관리자 선택)] ${ctx.accident_cause}
 [★ 룰북 사전 매핑] ${ctx.accident_cause_category || '?'} — ${ctx.accident_cause_label || '(매핑 없음)'}
 [수리 소견 (파트너 작성)] ${ctx.repair_opinion || '없음'}
-[피보험자 세대 소유자] ${ctx.insured_owner_name || '확인불가'}
-[피해자 세대 소유자] ${ctx.victim_owner_name || '확인불가'}
+[사고발생장소 소유자 (D)] ${ctx.insured_owner_name || '확인불가'}
+[피해세대 소유자] ${ctx.victim_owner_name || '확인불가'}
+
+★★ v5.3 핵심 개념 (혼동 금지):
+  · "사고발생장소" = 가해 세대 (배관이 터진 윗집) — [B] 주소
+  · "피해세대"     = 아랫집 (물이 떨어진 세대)  — 위에 별도 표시
+  · 보통 피보험자(가입자)는 가해 세대와 관련된 사람 (소유자겸점유자/임차인/임대인 중 하나)
+  · 피해세대는 제3자 (배상받을 대상)
 
 ⚠ 절대 규칙 (위반 시 응답 전체 무효):
 1. [피보험자 지위]는 사전 교차분석으로 확정된 값입니다.
@@ -1359,14 +1423,15 @@ STEP 9-B: 보험기간 검토
   · 사고일이 보험기간 밖 → coverage_result = "면책"
   · 일치 → STEP 9-B2
 
-STEP 9-B2: 소재지 불일치 최우선 가드 (★ v5.2.1 신규)
-  · [사고장소 부합 여부]를 먼저 확인 — 아래 3개 약관 분기(STEP C)보다 선행
-  · "error" (보험증권 소재지 ≠ 사고 발생 장소) → coverage_result = "면책"
-    coverage_reasoning: "보험증권 기재 소재지와 사고 발생 장소가 구·동·호수 모두 불일치하여 약관상 담보 범위를 벗어남. 보험금 지급 책임이 성립하지 않음."
-    ※ 구형·신형·일배책 모든 약관 공통 적용. 주택관리 사고의 경우 특히 엄격히 적용.
+STEP 9-B2: 담보범위 불일치 최우선 가드 (★ v5.3 강화)
+  · [담보범위 부합 여부]를 먼저 확인 — 아래 3개 약관 분기(STEP C)보다 선행
+  · "error" (보험증권 소재지 A ≠ 사고발생장소 B) → coverage_result = "면책"
+    coverage_reasoning: "보험증권 기재 소재지(A: ${ctx.insurance_location})와 사고발생장소(B: ${ctx.accident_location})가 구·동·호수 모두 불일치하여 약관상 담보 범위를 벗어남. 보험금 지급 책임이 성립하지 않음. ※ 피보험자가 주소 변경·이사 등으로 보험증권 배서(주소 변경) 누락 가능성 있음 — 배서 이력 확인 시 재검토 필요."
+    investigator_opinion에 자동 권고 문구 포함: "본건은 보험증권 기재 소재지와 사고발생장소가 상이하여 현 증권 기준으로는 담보 범위에 해당하지 아니하는 것으로 판단됨. 다만 피보험자가 보험계약 후 주소 이전을 통해 배서(주소 변경) 처리한 이력이 있는 경우 담보 범위가 확장될 수 있으므로, 증권 배서 내역 확인 후 재검토를 권고함."
+    ※ 구형·신형·일배책 모든 약관 공통 적용.
     ※ [피보험자 지위]가 "임대인"이든 "소유자겸점유자"든 무관하게 면책.
   · "warn" → coverage_result = "판단유보"
-    coverage_reasoning: "보험증권 소재지와 사고 장소의 표기가 상이하여 동일 부동산 여부 확인 필요. 추가 확인 후 재검토."
+    coverage_reasoning: "보험증권 소재지와 사고발생장소의 표기가 상이하여 동일 부동산 여부 확인 필요. 추가 확인 후 재검토."
   · "ok" 또는 "확인불가" → STEP C로 진행
 ${step9Logic}
 STEP 9-D: 약관상 "보상하지 않는 손해" 해당?
