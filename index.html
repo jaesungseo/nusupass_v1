@@ -334,6 +334,10 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
           <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
           보험자료 탭
         </button>
+        <button class="sb-btn" onclick="go('company')">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0H5m14 0h2m-2 0v-4a2 2 0 00-2-2h-2a2 2 0 00-2 2v4m-4 0V11a2 2 0 00-2-2H7a2 2 0 00-2 2v10m4 0h4"/></svg>
+          회사설정
+        </button>
       </div>
       <!-- 파트너 메뉴 -->
       <div id="partnerNav" style="display:none">
@@ -507,6 +511,116 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
         <div class="empty">
           <div class="empty-icon">🛡️</div>
           <div class="empty-text">위에서 사건을 선택하거나, 접수 목록에서 "보험자료" 버튼을 클릭하세요</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ───────────────── 관리자: 회사설정 ───────────────── -->
+    <div class="screen" id="screen-company">
+      <div class="page-header">
+        <div>
+          <div class="page-title">회사설정</div>
+          <div class="page-sub">보고서에 사용되는 회사 정보 및 직인</div>
+        </div>
+        <button class="btn btn-primary" onclick="saveCompanySettings()">💾 저장</button>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <div style="font-size:14px;font-weight:900;margin-bottom:14px">🏢 회사 기본정보</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">회사명 (한글)</label>
+            <input class="form-control" id="co-name" placeholder="예: 누수패스손해사정(주)">
+          </div>
+          <div class="form-group">
+            <label class="form-label">회사명 (영문)</label>
+            <input class="form-control" id="co-name-en" placeholder="예: NUSUPASS ADJUSTERS CO.,LTD.">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">사업자번호</label>
+            <input class="form-control" id="co-biz" placeholder="000-00-00000">
+          </div>
+          <div class="form-group">
+            <label class="form-label">대표자명</label>
+            <input class="form-control" id="co-rep" placeholder="예: 서재성">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">주소</label>
+          <input class="form-control" id="co-addr" placeholder="예: 경기도 용인시 수지구 수풍로 38">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">대표 전화번호</label>
+            <input class="form-control" id="co-phone" placeholder="예: 010-4385-4005">
+          </div>
+          <div class="form-group">
+            <label class="form-label">팩스번호</label>
+            <input class="form-control" id="co-fax" placeholder="예: 070-0000-0000 (선택)">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">이메일</label>
+          <input class="form-control" id="co-email" placeholder="예: contact@nusupass.com (선택)" type="email">
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <div style="font-size:14px;font-weight:900;margin-bottom:14px">👤 손해사정사 · 조사자 정보</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">손해사정사 이름</label>
+            <input class="form-control" id="co-adj-name" placeholder="예: 서재성">
+          </div>
+          <div class="form-group">
+            <label class="form-label">손해사정사 등록번호</label>
+            <input class="form-control" id="co-adj-no" placeholder="예: 손사 제 000000000호">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">조사자 이름</label>
+            <input class="form-control" id="co-inv-name" placeholder="예: 서재성">
+          </div>
+          <div class="form-group">
+            <label class="form-label">조사자 등록번호</label>
+            <input class="form-control" id="co-inv-no" placeholder="예: AP 0000000">
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <div style="font-size:14px;font-weight:900;margin-bottom:6px">🔴 직인 이미지</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:14px">보고서 표지에 삽입되는 대표자 직인. PNG 권장 (배경 투명).</div>
+        <div style="display:flex;gap:20px;align-items:flex-start">
+          <div id="co-stamp-preview" 
+               style="width:140px;height:140px;border:2px dashed var(--line);border-radius:8px;display:flex;align-items:center;justify-content:center;background:#fafafa;overflow:hidden;flex-shrink:0">
+            <div style="font-size:11px;color:var(--muted);text-align:center">직인<br>미등록</div>
+          </div>
+          <div style="flex:1">
+            <input type="file" id="co-stamp-file" accept="image/png,image/jpeg,image/webp,image/svg+xml" 
+                   style="display:none" onchange="onCompanyStampFile(this.files[0])">
+            <button class="btn btn-ghost btn-sm" onclick="document.getElementById('co-stamp-file').click()" style="margin-bottom:8px">
+              📤 직인 이미지 업로드
+            </button>
+            <button class="btn btn-ghost btn-sm" onclick="removeCompanyStamp()" id="co-stamp-remove" style="display:none;margin-left:6px">
+              🗑 삭제
+            </button>
+            <div style="font-size:11px;color:var(--muted);line-height:1.6;margin-top:4px">
+              · 권장: 정사각형 PNG (배경 투명)<br>
+              · 크기: 가로세로 300~500px 권장<br>
+              · 최대 5MB, png/jpg/webp/svg 지원
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="background:#fef3c7;border-color:#fde68a">
+        <div style="font-size:12px;color:#92400e;line-height:1.7">
+          💡 <b>팁:</b> 저장된 회사정보와 직인은 모든 손해사정보고서 표지와 푸터에 자동 삽입됩니다. 
+          보고서 출력 전에 직인이 올바르게 등록되어 있는지 확인하세요.
         </div>
       </div>
     </div>
@@ -834,6 +948,7 @@ function go(screen){
   if(screen==='caseList') loadCaseList();
   if(screen==='pHome') loadPartnerHome();
   if(screen==='pAssignments') loadPartnerAssignments();
+  if(screen==='company') loadCompanySettings();
   if(screen==='insurance'){
     if(typeof loadInsuranceCaseSelector==='function'){
       loadInsuranceCaseSelector().catch(e=>{
@@ -1448,8 +1563,172 @@ document.querySelectorAll('.modal-overlay').forEach(el=>{
 document.addEventListener('keydown', e=>{
   if(e.key==='Escape') document.querySelectorAll('.modal-overlay.open').forEach(m=>m.classList.remove('open'));
 });
+
+// ══════════════════════════════════════════════════════════
+// v5.4: 회사설정 (company_settings)
+// ══════════════════════════════════════════════════════════
+let _companyRow = null;   // 메모리 상 현재 회사설정 레코드 (id 포함)
+
+async function loadCompanySettings(){
+  try {
+    const { data, error } = await sb.from('company_settings').select('*').limit(1).maybeSingle();
+    if (error) throw error;
+    _companyRow = data || { id: null };
+
+    // 폼 채우기
+    const fill = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
+    fill('co-name',      _companyRow.company_name);
+    fill('co-name-en',   _companyRow.company_name_en);
+    fill('co-biz',       _companyRow.business_no);
+    fill('co-rep',       _companyRow.representative);
+    fill('co-addr',      _companyRow.address);
+    fill('co-phone',     _companyRow.phone);
+    fill('co-fax',       _companyRow.fax);
+    fill('co-email',     _companyRow.email);
+    fill('co-adj-name',  _companyRow.adjuster_name);
+    fill('co-adj-no',    _companyRow.adjuster_license_no);
+    fill('co-inv-name',  _companyRow.investigator_name);
+    fill('co-inv-no',    _companyRow.investigator_reg_no);
+
+    // 직인 미리보기
+    renderStampPreview(_companyRow.stamp_image_url);
+  } catch (err) {
+    console.error('[company] 로드 실패:', err);
+    toast('회사설정 로드 실패: ' + (err.message || err), 'e');
+  }
+}
+
+function renderStampPreview(url) {
+  const prev = document.getElementById('co-stamp-preview');
+  const rmBtn = document.getElementById('co-stamp-remove');
+  if (!prev) return;
+  if (url) {
+    prev.innerHTML = `<img src="${url}" alt="직인" style="max-width:100%;max-height:100%;object-fit:contain">`;
+    if (rmBtn) rmBtn.style.display = 'inline-block';
+  } else {
+    prev.innerHTML = '<div style="font-size:11px;color:var(--muted);text-align:center">직인<br>미등록</div>';
+    if (rmBtn) rmBtn.style.display = 'none';
+  }
+}
+
+async function onCompanyStampFile(file) {
+  if (!file) return;
+  const allowed = ['image/png','image/jpeg','image/jpg','image/webp','image/svg+xml'];
+  if (!allowed.includes(file.type)) {
+    toast('PNG/JPG/WEBP/SVG 이미지만 업로드 가능합니다.', 'e');
+    return;
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    toast('5MB 이하 이미지만 업로드 가능합니다.', 'e');
+    return;
+  }
+
+  try {
+    toast('직인 이미지 업로드 중...', 'i');
+
+    // 기존 파일 있으면 Storage에서 제거
+    if (_companyRow?.stamp_image_url) {
+      // URL에서 path 추출 (public URL 형식: .../storage/v1/object/public/company-assets/<path>)
+      const m = _companyRow.stamp_image_url.match(/\/company-assets\/(.+)$/);
+      if (m) {
+        await sb.storage.from('company-assets').remove([m[1]]);
+      }
+    }
+
+    // 새 파일 업로드
+    const ext = file.name.split('.').pop().toLowerCase();
+    const safeExt = ['png','jpg','jpeg','webp','svg'].includes(ext) ? ext : 'png';
+    const path = `stamps/company_${Date.now()}.${safeExt}`;
+    const { error: upErr } = await sb.storage.from('company-assets')
+      .upload(path, file, { cacheControl:'3600', upsert:true });
+    if (upErr) throw upErr;
+
+    // public URL 획득
+    const { data: pub } = sb.storage.from('company-assets').getPublicUrl(path);
+    if (!pub?.publicUrl) throw new Error('public URL 생성 실패');
+
+    // _companyRow에 반영 + 즉시 DB에도 저장 (사용자가 저장 안 눌러도 직인은 유지되게)
+    _companyRow.stamp_image_url = pub.publicUrl;
+    if (_companyRow.id) {
+      const { error: updErr } = await sb.from('company_settings')
+        .update({ stamp_image_url: pub.publicUrl, updated_at: new Date().toISOString() })
+        .eq('id', _companyRow.id);
+      if (updErr) throw updErr;
+    }
+
+    renderStampPreview(pub.publicUrl);
+    toast('직인 이미지가 업로드되었습니다.', 's');
+  } catch (err) {
+    console.error('[company] 직인 업로드 실패:', err);
+    toast('직인 업로드 실패: ' + (err.message || err), 'e');
+  }
+}
+
+async function removeCompanyStamp() {
+  if (!confirm('직인 이미지를 삭제하시겠습니까?')) return;
+  try {
+    if (_companyRow?.stamp_image_url) {
+      const m = _companyRow.stamp_image_url.match(/\/company-assets\/(.+)$/);
+      if (m) await sb.storage.from('company-assets').remove([m[1]]);
+    }
+    if (_companyRow?.id) {
+      await sb.from('company_settings')
+        .update({ stamp_image_url: null, updated_at: new Date().toISOString() })
+        .eq('id', _companyRow.id);
+    }
+    _companyRow.stamp_image_url = null;
+    renderStampPreview(null);
+    toast('직인이 삭제되었습니다.', 's');
+  } catch (err) {
+    console.error('[company] 직인 삭제 실패:', err);
+    toast('삭제 실패: ' + (err.message || err), 'e');
+  }
+}
+
+async function saveCompanySettings() {
+  const v = (id) => document.getElementById(id)?.value?.trim() || null;
+  const payload = {
+    company_name:          v('co-name'),
+    company_name_en:       v('co-name-en'),
+    business_no:           v('co-biz'),
+    representative:        v('co-rep'),
+    address:               v('co-addr'),
+    phone:                 v('co-phone'),
+    fax:                   v('co-fax'),
+    email:                 v('co-email'),
+    adjuster_name:         v('co-adj-name'),
+    adjuster_license_no:   v('co-adj-no'),
+    investigator_name:     v('co-inv-name'),
+    investigator_reg_no:   v('co-inv-no'),
+    updated_at:            new Date().toISOString(),
+  };
+
+  if (!payload.company_name) {
+    toast('회사명(한글)은 필수입니다.', 'e');
+    return;
+  }
+
+  try {
+    if (_companyRow?.id) {
+      // 업데이트 (직인 URL은 별도로 관리되므로 덮어쓰지 않음)
+      const { error } = await sb.from('company_settings').update(payload).eq('id', _companyRow.id);
+      if (error) throw error;
+    } else {
+      // 신규 생성
+      payload.stamp_image_url = _companyRow?.stamp_image_url || null;
+      const { data, error } = await sb.from('company_settings').insert(payload).select().single();
+      if (error) throw error;
+      _companyRow = data;
+    }
+    toast('회사설정이 저장되었습니다.', 's');
+    await loadCompanySettings();  // 최신 값으로 재로드
+  } catch (err) {
+    console.error('[company] 저장 실패:', err);
+    toast('저장 실패: ' + (err.message || err), 'e');
+  }
+}
 </script>
 
-<script src="./insurance-tab.js?v=5.2"></script>
+<script src="./insurance-tab.js?v=5.4"></script>
 </body>
 </html>

@@ -1,9 +1,41 @@
-// v2026-04-17-v5.3.2 — 업로드 덮어쓰기 정책 (UNIQUE 제약 호환)
+// v2026-04-17-v5.4 — 가족 범위 지위 판정 + 피해자 배열 + 회사설정 UI (Phase 2)
 /**
- * insurance-tab.js  v5.3.2
+ * insurance-tab.js  v5.4
  * 누수패스 보험자료 탭
  *
  * 의존성: sb, toast(), curUser (index.html)
+ *
+ * ✨ v5.4 변경사항 (2026-04-17 밤 최종)
+ *   🔴 FEAT: 가족 범위 지위 판정 (온프레미스 STEP 1 벤치마킹)
+ *      - computeInsuredStatus에 E_spouse, E_cohabitants 파라미터 추가
+ *      - 소유자(D)가 피보험자 본인 / 배우자 / 동거가족 중 하나면 "소유자 측"으로 간주
+ *      - 4분기 로직 재편:
+ *        · 가족포함 AND C==B → 소유자겸점유자
+ *        · 가족밖   AND C==B → 임차인겸점유자
+ *        · 가족포함 AND C!=B → 임대인
+ *        · 가족밖   AND C!=B → 임차인 (단독)
+ *      - 2차 프롬프트 STEP 1에 가족 단위 피보험자 개념 명시
+ *      - JSON에 insured_spouse 필드 신설
+ *      - enforceSabiRuleEngine R5에 '임차인' 상태도 포함
+ *
+ *   🔴 FEAT: 피해자 배열 지원 (insurance_victims 테이블)
+ *      - _insVictims 전역 변수 + CRUD 헬퍼 3개 (insFetchVictims/Save/Delete)
+ *      - STEP 2에 피해자 배열 카드 신설 (추가/수정/삭제 가능)
+ *      - 3차 분석에서 피해세대 소유자료로 첫 피해자 자동 채움
+ *      - s2Save에서 _insVictims 일괄 저장 (victim_order 재정렬)
+ *      - legacy victim_address 필드는 첫 피해자 주소로 동기화 (보고서 호환)
+ *
+ *   🔴 FEAT: 회사설정 UI (index.html 쪽에서 구현)
+ *      - 사이드바 "회사설정" 메뉴 + 전용 화면
+ *      - 기본정보(한/영문 이름, 사업자번호, 주소, 전화, FAX, 이메일)
+ *      - 손해사정사·조사자 (이름 + 등록번호 각 2쌍)
+ *      - 직인 이미지 업로드 (company-assets 버킷)
+ *
+ *   🔴 DB 마이그레이션 (Phase 1에서 적용 완료)
+ *      - insurance_victims 테이블 신설
+ *      - insurance_claims 보고서 편집 필드 5개 추가
+ *      - rpc_next_report_no() RPC
+ *      - company-assets Storage 버킷
  *
  * ✨ v5.3.2 변경사항 (2026-04-17 밤)
  *   🔴 BUGFIX: 같은 doc_code로 재업로드 시 UNIQUE 제약 위반 에러
@@ -121,7 +153,7 @@
 // 상수
 // ─────────────────────────────────────────────
 const INS_MODEL      = 'claude-sonnet-4-6';
-const INS_PROMPT_VER = 'v5.3.2';
+const INS_PROMPT_VER = 'v5.4';
 const INS_LEGAL_VER  = 'v2.0';
 
 const INS_LEGAL = `[민법 제750조] 고의 또는 과실로 인한 위법행위로 타인에게 손해를 가한 자는 그 손해를 배상할 책임이 있다.
@@ -254,6 +286,7 @@ let _insStep     = 1;
 let _insResult   = {};     // Claude 추출 + 판단 결과 (STEP 2)
 let _insDraft    = null;   // 저장된 초안
 let _insAnalyzing = false;
+let _insVictims  = [];     // v5.4: 피해자 배열 [{id?, victim_order, victim_name, victim_address, ...}]
 
 // ─────────────────────────────────────────────
 // 진입점
@@ -262,6 +295,7 @@ async function openInsuranceTab(caseId, caseNo) {
   _insClaim = null; _insCaseId = caseId; _insField = null;
   _insCompany = null; _insUploaded = {}; _insStep = 1;
   _insResult = {}; _insDraft = null; _insAnalyzing = false;
+  _insVictims = [];
 
   go('insurance');
   document.getElementById('insurancePageSub').textContent = `사건 ${caseNo || caseId.slice(0,8)}`;
@@ -278,6 +312,9 @@ async function openInsuranceTab(caseId, caseNo) {
 
     const uploads = await insFetchUploads(claim.id);
     uploads.forEach(u => { _insUploaded[u.doc_code] = u; });
+
+    // v5.4: 피해자 배열 로드
+    _insVictims = await insFetchVictims(claim.id);
 
     if (claim.current_draft_id) {
       const { data } = await sb.from('insurance_claim_drafts')
@@ -349,6 +386,46 @@ async function insFetchUploads(claimId) {
 async function insFetchCompany() {
   const { data } = await sb.from('company_settings').select('*').eq('id',1).maybeSingle();
   return data;
+}
+
+// v5.4: 피해자 배열 CRUD
+async function insFetchVictims(claimId) {
+  const { data, error } = await sb.from('insurance_victims')
+    .select('*')
+    .eq('claim_id', claimId)
+    .order('victim_order', { ascending: true });
+  if (error) { console.warn('[v5.4] insFetchVictims error:', error); return []; }
+  return data || [];
+}
+async function insSaveVictim(victim) {
+  const payload = {
+    claim_id: _insClaim.id,
+    victim_order: victim.victim_order,
+    victim_name: victim.victim_name || null,
+    victim_address: victim.victim_address || null,
+    victim_owner_name: victim.victim_owner_name || null,
+    victim_owner_transfer_date: victim.victim_owner_transfer_date || null,
+    victim_phone: victim.victim_phone || null,
+    victim_resident_no: victim.victim_resident_no || null,
+    victim_damage: victim.victim_damage || null,
+    victim_note: victim.victim_note || null,
+    updated_at: new Date().toISOString(),
+  };
+  if (victim.id) {
+    const { data, error } = await sb.from('insurance_victims')
+      .update(payload).eq('id', victim.id).select().single();
+    if (error) throw error;
+    return data;
+  } else {
+    const { data, error } = await sb.from('insurance_victims')
+      .insert(payload).select().single();
+    if (error) throw error;
+    return data;
+  }
+}
+async function insDeleteVictim(victimId) {
+  const { error } = await sb.from('insurance_victims').delete().eq('id', victimId);
+  if (error) throw error;
 }
 async function fetchBase64(filePath) {
   const { data } = await sb.storage.from('insurance-docs').download(filePath);
@@ -788,10 +865,6 @@ function insStep2HTML() {
         <input class="form-control" id="ex-deductible" type="number"
           value="${r.deductible||cl.deductible||''}" placeholder="보험증권에서 추출"/>
       </div>
-      <div class="form-group">
-        <label class="form-label">피해자 소재지 <span style="font-size:10px;color:var(--muted);font-weight:400">피해자 건축물대장</span></label>
-        <input class="form-control" id="ex-victim" value="${r.victim_address||cl.victim_address||''}" placeholder="예: 101동 1204호"/>
-      </div>
     </div>
 
     <!-- 주소 일치 판단 -->
@@ -824,6 +897,22 @@ function insStep2HTML() {
       <strong>사고 유형 분류:</strong> ${r.accident_type}
       ${r.shared_liability ? ' <span class="badge badge-amber" style="margin-left:6px">과실 분담 가능성</span>' : ''}
     </div>` : ''}
+  </div>
+
+  <!-- v5.4: 피해자 배열 카드 -->
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div style="font-size:14px;font-weight:900">
+        👥 피해자 정보
+        <span style="font-size:11px;font-weight:400;color:var(--muted);margin-left:8px">
+          건축물대장/등기부등본으로 자동 채움, 빈칸은 수기 입력
+        </span>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="victimAdd()">+ 피해자 추가</button>
+    </div>
+    <div id="victims-container">
+      ${renderVictimsList()}
+    </div>
   </div>
 
   <!-- 책임 판단 (Sabi 8·9단계) -->
@@ -932,6 +1021,116 @@ function s2RecalcPay() {
 }
 
 // ─────────────────────────────────────────────
+// v5.4: 피해자 배열 UI
+// ─────────────────────────────────────────────
+function renderVictimsList() {
+  if (!_insVictims || _insVictims.length === 0) {
+    return `<div class="empty" style="padding:20px">
+      <div style="font-size:12px;color:var(--muted)">
+        피해자가 아직 등록되지 않았습니다. "+ 피해자 추가" 버튼을 눌러 등록하세요.<br>
+        피해세대 건축물대장/등기부등본을 업로드하면 분석 시 자동으로 첫 피해자가 채워집니다.
+      </div>
+    </div>`;
+  }
+  return _insVictims.map((v, idx) => {
+    const num = v.victim_order || (idx + 1);
+    const dbIdBadge = v.id 
+      ? '<span class="badge" style="background:#dcfce7;color:#15803d;font-size:10px">저장됨</span>'
+      : '<span class="badge" style="background:#fef3c7;color:#b45309;font-size:10px">미저장</span>';
+    return `
+    <div class="victim-item" data-idx="${idx}" style="border:1px solid var(--line);border-radius:8px;padding:14px;margin-bottom:10px;background:var(--bg)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div style="font-size:13px;font-weight:700;color:var(--primary)">
+          피해자 ${num} ${dbIdBadge}
+        </div>
+        <button class="btn btn-ghost btn-sm" style="color:#dc2626;padding:4px 10px;font-size:11px" 
+          onclick="victimRemove(${idx})">🗑 삭제</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="form-group" style="margin:0">
+          <label class="form-label" style="font-size:11px">성명</label>
+          <input class="form-control" style="font-size:12px" 
+            value="${v.victim_name || ''}" 
+            placeholder="예: 홍길동"
+            onchange="victimUpdate(${idx}, 'victim_name', this.value)"/>
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label" style="font-size:11px">주소 (소재지)</label>
+          <input class="form-control" style="font-size:12px" 
+            value="${v.victim_address || ''}" 
+            placeholder="예: 101동 107호"
+            onchange="victimUpdate(${idx}, 'victim_address', this.value)"/>
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label" style="font-size:11px">건물소유자</label>
+          <input class="form-control" style="font-size:12px" 
+            value="${v.victim_owner_name || ''}" 
+            placeholder="예: 김인수"
+            onchange="victimUpdate(${idx}, 'victim_owner_name', this.value)"/>
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label" style="font-size:11px">기타사항 (선택)</label>
+          <input class="form-control" style="font-size:12px" 
+            value="${v.victim_note || ''}" 
+            placeholder="필요 시 메모"
+            onchange="victimUpdate(${idx}, 'victim_note', this.value)"/>
+        </div>
+      </div>
+      ${v.victim_damage ? `
+      <div style="margin-top:10px;padding:8px 12px;background:white;border-radius:6px;font-size:11px;border-left:3px solid var(--primary)">
+        <strong>피해사항:</strong> ${v.victim_damage}
+      </div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function victimAdd() {
+  const nextOrder = _insVictims.length > 0 
+    ? Math.max(..._insVictims.map(v => v.victim_order || 0)) + 1 
+    : 1;
+  _insVictims.push({
+    id: null,
+    victim_order: nextOrder,
+    victim_name: '',
+    victim_address: '',
+    victim_owner_name: '',
+    victim_note: '',
+    victim_damage: '',
+  });
+  refreshVictimsContainer();
+}
+
+async function victimRemove(idx) {
+  const v = _insVictims[idx];
+  if (!v) return;
+  if (!confirm(`피해자 ${v.victim_order} (${v.victim_name || '미기입'})를 삭제하시겠습니까?`)) return;
+  try {
+    if (v.id) {
+      await insDeleteVictim(v.id);
+    }
+    _insVictims.splice(idx, 1);
+    // 순번 재정렬
+    _insVictims.forEach((x, i) => { x.victim_order = i + 1; });
+    refreshVictimsContainer();
+    toast('피해자가 삭제되었습니다.', 's');
+  } catch (err) {
+    console.error('[v5.4] victimRemove 실패:', err);
+    toast('삭제 실패: ' + (err.message || err), 'e');
+  }
+}
+
+function victimUpdate(idx, field, value) {
+  if (!_insVictims[idx]) return;
+  _insVictims[idx][field] = value;
+  // 저장은 s2Save()에서 일괄 처리 — 여기서는 메모리만 업데이트
+}
+
+function refreshVictimsContainer() {
+  const el = document.getElementById('victims-container');
+  if (el) el.innerHTML = renderVictimsList();
+}
+
+// ─────────────────────────────────────────────
 // STEP 2: Claude 분석
 // (1차) 보험증권 추출
 // (2차) 건축물대장 + 주민등록등본 교차 → 피보험자 지위, 주소 일치
@@ -1026,17 +1225,26 @@ ${typeCtx}
         사고발생장소 주소(B)를 피보험자 실거주지(C)라고 가정하지 마세요.
 
 ─────────────────────────────────────────
-STEP 1: 피보험자 지위 판정 (insured_status)
+STEP 1: 피보험자 지위 판정 (insured_status)  ★ v5.4 가족 범위 포함
 ─────────────────────────────────────────
-D와 E 비교: 사고발생장소 소유자(D) == 피보험자(E)?
-B와 C 비교: 사고발생장소(B) == 피보험자 실거주지(C)?
-  · 동일 건물·동·호수면 일치로 간주
+「가족일상생활배상책임」 보험은 가족 단위 피보험자 개념이 적용됩니다.
+따라서 소유자(D)가 피보험자 본인이 아니더라도, 피보험자의 **배우자 또는 동거 가족**이면 "소유자 측"으로 간주합니다.
 
-4가지 조합:
-  D==E (피보험자 본인 소유) AND C==B (피보험자가 거기 거주) → "소유자겸점유자"
-  D!=E (남이 소유)           AND C==B (피보험자가 거기 거주) → "임차인겸점유자"
-  D==E (피보험자 본인 소유) AND C!=B (피보험자는 다른 곳 거주) → "임대인"
-  D!=E                      AND C!=B                          → "확인불가"
+STEP 1-A: 소유자가 피보험자 가족 범위에 포함되는가?
+  · D(소유자) == E(피보험자 본인) → "가족 범위 포함"
+  · D == 피보험자의 배우자 (주민등록등본 동거인 또는 가족관계증명서 확인) → "가족 범위 포함"
+  · D == 피보험자의 동거 가족 (주민등록등본 세대 구성원) → "가족 범위 포함"
+  · 그 외 → "가족 범위 밖 (남이 소유)"
+
+STEP 1-B: B(사고발생장소)와 C(피보험자 실거주지) 비교
+  · 동일 건물·동·호수면 일치로 간주
+  · 도로명↔지번 차이, 아파트명 표기 차이는 동일 장소로 판단
+
+【 4가지 조합 】
+  가족 범위 포함 AND C==B → "소유자겸점유자" (피보험자 또는 가족이 소유·거주)
+  가족 범위 밖   AND C==B → "임차인겸점유자" (남이 소유, 피보험자가 임차 거주)
+  가족 범위 포함 AND C!=B → "임대인" (피보험자 또는 가족이 소유, 다른 곳 거주)
+  가족 범위 밖   AND C!=B → "임차인" (남이 소유, 피보험자는 다른 곳 거주 — 관련성 없음 확인불가 가능)
 
 ★ 중요: 소유 판단 근거의 법적 우선순위 = 등기부등본 > 건축물대장
         둘 다 있으면 등기부, 불일치 시 등기부 우선
@@ -1059,13 +1267,14 @@ STEP 3: 동거인 요약 (주민등록등본에서)
 반환 JSON (필드명 정확히, 다른 설명 없이 JSON만)
 ─────────────────────────────────────────
 {
-  "insured_status": "소유자겸점유자 | 임차인겸점유자 | 임대인 | 확인불가",
-  "insured_status_reason": "D=[소유자명], E=[피보험자명], B=[사고발생장소], C=[실거주지] 를 교차 비교한 결과를 1-2문장으로. '피보험자(성명)는 사고발생장소의 [소유자/비소유자]이며, 해당 장소에 [거주/비거주]하므로 [지위]에 해당함' 형태 권장",
+  "insured_status": "소유자겸점유자 | 임차인겸점유자 | 임대인 | 임차인 | 확인불가",
+  "insured_status_reason": "D=[소유자명], E=[피보험자명], B=[사고발생장소], C=[실거주지] 를 교차 비교한 결과를 1-2문장으로. 가족 범위 포함 여부도 명시 (예: '소유자(김영희)는 피보험자(홍길동)의 배우자로 가족 범위에 포함됨'). '피보험자(성명)는 사고발생장소의 [소유자/비소유자]이며, 해당 장소에 [거주/비거주]하므로 [지위]에 해당함' 형태 권장",
   "insured_residence": "C값 (주민등록상 실거주지 전체 주소)",
   "accident_location_from_doc": "B값 (첫 번째 서류에서 읽은 사고발생장소 주소)",
   "insured_owner_name": "D값 (사고발생장소 소유자 성명)",
   "insured_owner_transfer_date": "소유권 이전일 YYYY-MM-DD 또는 null",
-  "insured_cohabitants": "동거인 요약 (없거나 미확인 시 null)",
+  "insured_cohabitants": "동거인 요약 (예: '김세연(배우자), 백지훈(부)' — 없거나 미확인 시 null)",
+  "insured_spouse": "피보험자의 배우자 성명 (동거인 목록에서 배우자로 표시된 사람 또는 가족관계증명서에서 확인. 없으면 null)",
   "address_match": "ok | warn | error",
   "address_match_note": "A와 B의 차이 설명 (ok면 null)"
 }` });
@@ -1079,15 +1288,17 @@ STEP 3: 동거인 요약 (주민등록등본에서)
       const res = await resp.json();
       const r2 = parseClaudeJson(res.content?.[0]?.text, '피보험자 지위 분석');
       
-      // v5.3.1 ★ 결정론적 지위 판정 후처리
+      // v5.3.1 + v5.4 ★ 결정론적 지위 판정 후처리 (가족 범위 포함)
       // AI가 필드-텍스트 불일치로 반환하는 경우 JS 룰 엔진이 교정
       const derived = {
         ...computeInsuredStatus({
-          A_policy:    result.policy_address_raw,
-          B_accident:  r2.accident_location_from_doc,
-          C_residence: r2.insured_residence,
-          D_owner:     r2.insured_owner_name,
-          E_insured:   result.insured_name,
+          A_policy:      result.policy_address_raw,
+          B_accident:    r2.accident_location_from_doc,
+          C_residence:   r2.insured_residence,
+          D_owner:       r2.insured_owner_name,
+          E_insured:     result.insured_name,
+          E_spouse:      r2.insured_spouse,      // v5.4: 배우자 성명
+          E_cohabitants: r2.insured_cohabitants, // v5.4: 동거인 목록
         }),
         addressMatch: computeAddressMatch(
           result.policy_address_raw,
@@ -1131,6 +1342,32 @@ STEP 3: 동거인 요약 (주민등록등본에서)
         if (r3.victim_name) result.victim_name = r3.victim_name;
         if (r3.victim_owner_name) result.victim_owner_name = r3.victim_owner_name;
         if (r3.victim_owner_transfer_date) result.victim_owner_transfer_date = r3.victim_owner_transfer_date;
+        
+        // v5.4 ★ 첫 피해자 자동 채움 (비어있으면 신규 생성, 이미 있으면 빈 필드만 보강)
+        if (r3.victim_address || r3.victim_name || r3.victim_owner_name) {
+          if (_insVictims.length === 0) {
+            _insVictims.push({
+              id: null,
+              victim_order: 1,
+              victim_name: r3.victim_name || '',
+              victim_address: r3.victim_address || '',
+              victim_owner_name: r3.victim_owner_name || '',
+              victim_owner_transfer_date: r3.victim_owner_transfer_date || null,
+              victim_note: '',
+              victim_damage: '',
+            });
+            console.log('[v5.4] 피해자 서류에서 첫 피해자 자동 생성됨');
+          } else {
+            // 첫 피해자의 빈 필드만 보강 (사용자가 이미 입력한 값은 유지)
+            const v0 = _insVictims[0];
+            if (!v0.victim_name        && r3.victim_name)        v0.victim_name = r3.victim_name;
+            if (!v0.victim_address     && r3.victim_address)     v0.victim_address = r3.victim_address;
+            if (!v0.victim_owner_name  && r3.victim_owner_name)  v0.victim_owner_name = r3.victim_owner_name;
+            if (!v0.victim_owner_transfer_date && r3.victim_owner_transfer_date) {
+              v0.victim_owner_transfer_date = r3.victim_owner_transfer_date;
+            }
+          }
+        }
       }
     }
 
@@ -1631,21 +1868,57 @@ function compareAddresses(addr1, addr2) {
   return 'mismatch';
 }
 
-// 결정론적 지위 판정
-function computeInsuredStatus({ A_policy, B_accident, C_residence, D_owner, E_insured }) {
+// 결정론적 지위 판정 (v5.4: 가족 범위 포함)
+// E_spouse: 배우자 성명 (가족관계증명서 또는 주민등록등본 동거인)
+// E_cohabitants: 동거 가족 목록 (주민등록등본, "홍길동(부), 김영희(자녀)" 형식)
+function computeInsuredStatus({ A_policy, B_accident, C_residence, D_owner, E_insured, E_spouse, E_cohabitants }) {
   // 입력 불충분 체크
   if (!D_owner || !E_insured || !B_accident || !C_residence) {
     return { status: '확인불가', reason: 'insufficient_input' };
   }
-  const sameOwner = normalizeName(D_owner) === normalizeName(E_insured);
-  const addrCmp   = compareAddresses(B_accident, C_residence);
-  const sameAddr  = addrCmp === 'match';
   
-  // 4분기
-  if (sameOwner && sameAddr)   return { status: '소유자겸점유자', reason: 'D==E AND C==B' };
-  if (!sameOwner && sameAddr)  return { status: '임차인겸점유자', reason: 'D!=E AND C==B' };
-  if (sameOwner && !sameAddr)  return { status: '임대인',         reason: 'D==E AND C!=B' };
-  return { status: '확인불가', reason: 'D!=E AND C!=B' };
+  // v5.4 ★ 가족 범위 포함 체크
+  // 소유자(D)가 피보험자 본인 또는 배우자/동거가족이면 "소유자 측"으로 간주
+  const Dn = normalizeName(D_owner);
+  const En = normalizeName(E_insured);
+  const Spn = E_spouse ? normalizeName(E_spouse) : '';
+  
+  // 동거인 목록에서 성명만 추출 (괄호 관계 제거)
+  // 예: "홍길동(부), 김영희(자녀)" → ["홍길동", "김영희"]
+  const cohabNames = (E_cohabitants || '')
+    .split(/[,，、]/)
+    .map(s => s.replace(/\([^)]*\)/g, '').trim())
+    .filter(Boolean)
+    .map(normalizeName);
+  
+  const isOwnerSelf      = Dn === En;
+  const isOwnerSpouse    = !!Spn && Dn === Spn;
+  const isOwnerCohabit   = cohabNames.includes(Dn);
+  const ownerInFamily    = isOwnerSelf || isOwnerSpouse || isOwnerCohabit;
+  
+  const addrCmp = compareAddresses(B_accident, C_residence);
+  const sameAddr = addrCmp === 'match';
+  
+  // v5.4 4분기 (가족 범위 반영)
+  if (!ownerInFamily) {
+    // 소유자가 피보험자 가족 범위 밖이면 "임차인" (거주 여부 무관)
+    return { 
+      status: sameAddr ? '임차인겸점유자' : '임차인', 
+      reason: `D(${D_owner}) not in family of E(${E_insured})${sameAddr ? ', C==B' : ', C!=B'}` 
+    };
+  }
+  
+  // 소유자가 가족 범위 안에 있는 경우 — 거주 여부로 세분
+  if (sameAddr) {
+    return { 
+      status: '소유자겸점유자', 
+      reason: `D in family AND C==B (${isOwnerSelf?'self':isOwnerSpouse?'spouse':'cohabitant'})` 
+    };
+  }
+  return { 
+    status: '임대인', 
+    reason: `D in family AND C!=B (${isOwnerSelf?'self':isOwnerSpouse?'spouse':'cohabitant'})` 
+  };
 }
 
 // 담보범위 판정 (address_match: A vs B)
@@ -1741,11 +2014,13 @@ function enforceSabiRuleEngine(r4, ctx) {
     out._coverage_corrected = true;
   }
   
-  // 규칙 5: 룰북 카테고리 ⓐ + 임차인 + 관리과실 키워드 없음 → liability="no"
+  // 규칙 5: 룰북 카테고리 ⓐ + 임차인/임차인겸점유자 + 관리과실 키워드 없음 → liability="no"
   //         (v5.2.1 절대규칙 5번의 JS 재확인)
-  if (ctx.rulebook_cat === 'ⓐ' && ctx.insured_status === '임차인겸점유자') {
+  //         v5.4: '임차인' 단독도 포함 (가족 범위 밖 + 거주無)
+  if (ctx.rulebook_cat === 'ⓐ' && 
+      (ctx.insured_status === '임차인겸점유자' || ctx.insured_status === '임차인')) {
     if (out.liability_result !== 'no') {
-      warnings.push(`임차인+ⓐ(설비하자) → liability "${out.liability_result}" → "no" 교정 (758조 단서)`);
+      warnings.push(`${ctx.insured_status}+ⓐ(설비하자) → liability "${out.liability_result}" → "no" 교정 (758조 단서)`);
       out.liability_result = 'no';
       out._liability_corrected = true;
       if (ctx.address_match !== 'error') {
@@ -1854,6 +2129,10 @@ async function s2Save() {
   const coverage = document.getElementById('j-coverage')?.value || '부책';
   const pay    = coverage === '부책' ? Math.max(0, rc - ded) : 0;
 
+  // v5.4: 첫 피해자 주소를 legacy victim_address 필드에도 백업 저장 (보고서 호환)
+  const firstVictim = _insVictims[0] || null;
+  const legacyVictimAddr = firstVictim?.victim_address || _insResult.victim_address || null;
+
   // _insResult 업데이트
   _insResult = {
     ..._insResult,
@@ -1865,7 +2144,7 @@ async function s2Save() {
     insured_status:  document.getElementById('ex-status')?.value,
     coverage_limit:  parseInt(document.getElementById('ex-coverage')?.value)||null,
     deductible:      ded,
-    victim_address:  document.getElementById('ex-victim')?.value,
+    victim_address:  legacyVictimAddr,  // v5.4: 첫 피해자로부터
     address_match:   document.getElementById('ex-addr')?.value,
     address_match_note: document.getElementById('ex-addr-note')?.value||null,
     liability_result: document.getElementById('j-established')?.value,
@@ -1911,7 +2190,6 @@ async function s2Save() {
     });
 
     // v5.2 신규: RPC가 커버 못하는 "추출 확장 컬럼"만 직접 UPDATE
-    //           (판단 관련은 rpc_save_judgment가 이제 모두 커버함)
     const { error: updErr } = await sb.from('insurance_claims').update({
       insured_status_reason:       _insResult.insured_status_reason       || null,
       insured_owner_name:          _insResult.insured_owner_name          || null,
@@ -1926,7 +2204,24 @@ async function s2Save() {
     }).eq('id', _insClaim.id);
     if (updErr) {
       console.warn('[v5.2] 신규 컬럼 UPDATE 일부 실패:', updErr.message);
-      // 치명적이지 않음 — RPC 저장은 성공했으므로 기존 데이터는 보존
+    }
+
+    // v5.4 ★ 피해자 배열 저장 (insurance_victims 테이블)
+    try {
+      const savedVictims = [];
+      for (let i = 0; i < _insVictims.length; i++) {
+        const v = _insVictims[i];
+        v.victim_order = i + 1;  // 순서 재정렬 (혹시 모를 중복 방지)
+        // 빈 레코드는 건너뜀 (성명·주소·소유자 모두 비어있으면)
+        if (!v.victim_name && !v.victim_address && !v.victim_owner_name) continue;
+        const saved = await insSaveVictim(v);
+        savedVictims.push(saved);
+      }
+      _insVictims = savedVictims;
+      console.log(`[v5.4] 피해자 ${savedVictims.length}명 저장됨`);
+    } catch (vErr) {
+      console.warn('[v5.4] 피해자 저장 일부 실패:', vErr.message);
+      toast('피해자 저장 일부 실패: ' + vErr.message, 'e');
     }
 
     _insClaim = { ..._insClaim, insurance_tab_status: 'ready_for_draft',
