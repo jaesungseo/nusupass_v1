@@ -1,9 +1,27 @@
-// v2026-04-17-v5.3 — 사고발생장소 용어 재정의 + 판정 5축 재설계
+// v2026-04-17-v5.3.1 — 결정론적 지위 판정기 + Sabi 룰 엔진 후처리
 /**
- * insurance-tab.js  v5.3
+ * insurance-tab.js  v5.3.1
  * 누수패스 보험자료 탭
  *
  * 의존성: sb, toast(), curUser (index.html)
+ *
+ * ✨ v5.3.1 변경사항 (2026-04-17 저녁 최종)
+ *   🔴 BUGFIX: AI가 필드-텍스트 불일치로 반환 (근거는 "확인불가", 필드는 "임대인")
+ *      - 원인: 프롬프트 절대규칙만으로는 모델 inconsistent output 완전 차단 불가
+ *      - 해결: 결정론적 판정기 JS 룰엔진 도입
+ *        · computeInsuredStatus(): 5축(A~E) 기반 지위 확정
+ *        · computeAddressMatch(): A vs B 담보범위 확정
+ *        · reconcileInsuredStatus(): AI 반환값과 JS 계산값 비교, JS 승리
+ *        · enforceSabiRuleEngine(): 4차 판단 결과 룰 기반 교정
+ *          - address_match=error → 면책 강제
+ *          - insured_status=확인불가 → liability=no, coverage=판단유보 강제
+ *          - 임차인+ⓐ설비하자 → liability=no 강제 (758 단서)
+ *          - ⓓ공용부/ⓔ시공불량 → liability=no, coverage=면책 강제
+ *
+ *   🔴 BUGFIX (DB): (claim_id, doc_code) 중복 업로드로 분석 결과 비결정적
+ *      - 해결: v5_3_1_dedupe_doc_uploads_and_unique_constraint 적용
+ *        · 과거 7건 중복 제거
+ *        · UNIQUE 제약 신설로 재발 원천 차단
  *
  * ✨ v5.3 변경사항 (2026-04-17 저녁)
  *   🔴 구조 개편 1: 서류 용어 재정의
@@ -91,7 +109,7 @@
 // 상수
 // ─────────────────────────────────────────────
 const INS_MODEL      = 'claude-sonnet-4-6';
-const INS_PROMPT_VER = 'v5.3';
+const INS_PROMPT_VER = 'v5.3.1';
 const INS_LEGAL_VER  = 'v2.0';
 
 const INS_LEGAL = `[민법 제750조] 고의 또는 과실로 인한 위법행위로 타인에게 손해를 가한 자는 그 손해를 배상할 책임이 있다.
@@ -1023,7 +1041,36 @@ STEP 3: 동거인 요약 (주민등록등본에서)
       if (!resp.ok) throw new Error('API 오류 ' + resp.status);
       const res = await resp.json();
       const r2 = parseClaudeJson(res.content?.[0]?.text, '피보험자 지위 분석');
-      Object.assign(result, r2);
+      
+      // v5.3.1 ★ 결정론적 지위 판정 후처리
+      // AI가 필드-텍스트 불일치로 반환하는 경우 JS 룰 엔진이 교정
+      const derived = {
+        ...computeInsuredStatus({
+          A_policy:    result.policy_address_raw,
+          B_accident:  r2.accident_location_from_doc,
+          C_residence: r2.insured_residence,
+          D_owner:     r2.insured_owner_name,
+          E_insured:   result.insured_name,
+        }),
+        addressMatch: computeAddressMatch(
+          result.policy_address_raw,
+          r2.accident_location_from_doc
+        ),
+      };
+      const r2Reconciled = reconcileInsuredStatus(r2, derived);
+      
+      // 디버깅용 입력 5축 보존 (필요 시 화면/DB에 노출 가능)
+      result._axes = {
+        A: result.policy_address_raw,
+        B: r2.accident_location_from_doc,
+        C: r2.insured_residence,
+        D: r2.insured_owner_name,
+        E: result.insured_name,
+        derived_status: derived.status,
+        derived_addr_match: derived.addressMatch,
+      };
+      
+      Object.assign(result, r2Reconciled);
     }
 
     // ── 3차: 피해세대 소유자료 ──
@@ -1085,7 +1132,18 @@ STEP 3: 동거인 요약 (주민등록등본에서)
     if (!judgeResp.ok) throw new Error('판단 API 오류 ' + judgeResp.status);
     const judgeRes = await judgeResp.json();
     const r4 = parseClaudeJson(judgeRes.content?.[0]?.text, 'Sabi 책임/면부책 판단');
-    Object.assign(result, r4);
+    
+    // v5.3.1 ★ Sabi 룰 엔진 일관성 검증 (AI 4차 응답 후처리)
+    // 확정된 지위/담보범위/사고원인 카테고리와 AI 판정이 일치하는지 검증,
+    // 어긋나면 결정론적 값으로 교정하고 콘솔 경고.
+    const reconciled = enforceSabiRuleEngine(r4, {
+      insured_status:  result.insured_status,      // 2차에서 JS 교정 끝난 값
+      address_match:   result.address_match,        // 2차에서 JS 교정 끝난 값
+      accident_cause:  cause,
+      rulebook_cat:    causeMap.cat,
+      insurance_type:  insType,
+    });
+    Object.assign(result, reconciled);
 
     progress(100, '✓ 분석 완료!');
     setTimeout(() => { if(load) load.style.display='none'; }, 600);
@@ -1474,6 +1532,208 @@ STEP 9-D: 약관상 "보상하지 않는 손해" 해당?
 8. shared_liability = true면 coverage_reasoning에 "과실 비율에 따른 보험금 산정이 필요할 수 있음" 포함
 9. (★ v5.2.1) [사고장소 부합 여부] = "error"이면 — 다른 조건과 무관하게 coverage_result = "면책". 주택관리·일상생활 구분 무관, 피보험자 지위 무관.
 10. (★ v5.2.1) [사고원인 분류] = "미지정"이면 — STEP 8-0 규칙에 따라 모든 판단 필드를 판단유보 값으로 채움. 누수탐지 결과가 없는 상태에서 "배관 노후" 등으로 임의 추정 금지.`;
+}
+
+// ─────────────────────────────────────────────
+// v5.3.1 ★ 결정론적 지위 판정기 (Deterministic insured_status resolver)
+//
+// 배경: AI가 필드값(insured_status)과 근거 텍스트를 불일치로 반환하는 경우
+//       (근거는 "임차인"으로 쓰고 필드는 "임대인"으로 반환 등) 빈번히 발생.
+// 해결: AI는 5개 축(A, B, C, D, E)의 "원시값"만 추출하게 하고,
+//       최종 insured_status 라벨은 JS 룰 엔진이 결정론적으로 계산.
+//
+// 5축:
+//   A = 보험증권 소재지 (policy_address_raw)
+//   B = 사고발생장소 주소 (accident_location_from_doc)
+//   C = 피보험자 실거주지 (insured_residence)
+//   D = 사고발생장소 소유자 성명 (insured_owner_name)
+//   E = 피보험자 성명 (insured_name)
+// ─────────────────────────────────────────────
+
+// 한글/공백/특수문자/괄호 제거 → 비교용 정규화 (주소)
+function normalizeAddr(s) {
+  if (!s || typeof s !== 'string') return '';
+  return s
+    .replace(/\s+/g, '')
+    .replace(/[(),\-_.~·・●]/g, '')
+    .replace(/특별시|광역시|특별자치시|특별자치도|자치구|자치시|자치도/g, '')
+    .replace(/로길|로|길|동|번지/g, '')  // 주소 구분자 일부 제거 (표기 차이 완화)
+    .toLowerCase();
+}
+
+// 성명 정규화 (공백 제거만)
+function normalizeName(s) {
+  if (!s || typeof s !== 'string') return '';
+  return s.replace(/\s+/g, '').toLowerCase();
+}
+
+// 주소 비교: 핵심 토큰(구·동·호수)이 겹치는지 확인
+// 완전 일치 / 부분 겹침(동·호수 일치) / 불일치 3단계
+function compareAddresses(addr1, addr2) {
+  const a = normalizeAddr(addr1);
+  const b = normalizeAddr(addr2);
+  if (!a || !b) return 'unknown';
+  if (a === b) return 'match';
+  
+  // 동(棟) + 호수 토큰 추출 (예: "101동", "206호")
+  const extractUnitTokens = (s) => {
+    const raw = s.replace(/\s+/g, '');
+    // 숫자+"동" / 숫자+"호" 패턴
+    const matches = raw.match(/\d+[동호]/g) || [];
+    return matches;
+  };
+  const tokensA = extractUnitTokens(addr1 || '');
+  const tokensB = extractUnitTokens(addr2 || '');
+  
+  if (tokensA.length > 0 && tokensB.length > 0) {
+    const setA = new Set(tokensA);
+    const overlap = tokensB.filter(t => setA.has(t));
+    if (overlap.length === tokensA.length && overlap.length === tokensB.length) return 'match';
+    if (overlap.length > 0) return 'partial';
+  }
+  return 'mismatch';
+}
+
+// 결정론적 지위 판정
+function computeInsuredStatus({ A_policy, B_accident, C_residence, D_owner, E_insured }) {
+  // 입력 불충분 체크
+  if (!D_owner || !E_insured || !B_accident || !C_residence) {
+    return { status: '확인불가', reason: 'insufficient_input' };
+  }
+  const sameOwner = normalizeName(D_owner) === normalizeName(E_insured);
+  const addrCmp   = compareAddresses(B_accident, C_residence);
+  const sameAddr  = addrCmp === 'match';
+  
+  // 4분기
+  if (sameOwner && sameAddr)   return { status: '소유자겸점유자', reason: 'D==E AND C==B' };
+  if (!sameOwner && sameAddr)  return { status: '임차인겸점유자', reason: 'D!=E AND C==B' };
+  if (sameOwner && !sameAddr)  return { status: '임대인',         reason: 'D==E AND C!=B' };
+  return { status: '확인불가', reason: 'D!=E AND C!=B' };
+}
+
+// 담보범위 판정 (address_match: A vs B)
+function computeAddressMatch(A_policy, B_accident) {
+  if (!A_policy || !B_accident) return 'warn';
+  const cmp = compareAddresses(A_policy, B_accident);
+  if (cmp === 'match') return 'ok';
+  if (cmp === 'partial') return 'warn';
+  return 'error';
+}
+
+// AI 반환값 vs JS 계산값 검증 및 교정
+// 불일치 발견 시 콘솔 경고 + JS 값으로 교정 (JS가 항상 이긴다)
+function reconcileInsuredStatus(aiResult, derived) {
+  const out = { ...aiResult };
+  const aiStatus = aiResult.insured_status;
+  const jsStatus = derived.status;
+  const aiMatch  = aiResult.address_match;
+  const jsMatch  = derived.addressMatch;
+  
+  if (aiStatus && aiStatus !== jsStatus) {
+    console.warn(`[v5.3.1] insured_status 교정: AI="${aiStatus}" → JS="${jsStatus}" (${derived.reason})`);
+    out.insured_status = jsStatus;
+    out._status_corrected = true;
+  } else if (!aiStatus) {
+    out.insured_status = jsStatus;
+  }
+  
+  if (aiMatch && aiMatch !== jsMatch) {
+    console.warn(`[v5.3.1] address_match 교정: AI="${aiMatch}" → JS="${jsMatch}"`);
+    out.address_match = jsMatch;
+    out._address_match_corrected = true;
+  } else if (!aiMatch) {
+    out.address_match = jsMatch;
+  }
+  
+  return out;
+}
+
+// v5.3.1 ★ Sabi 룰 엔진 일관성 검증 (4차 판단 후처리)
+// AI가 반환한 liability_result / coverage_result / accident_type 이 
+// 확정된 축(지위·담보범위·룰북 카테고리)과 논리적으로 일치하는지 검증.
+// 어긋나면 결정론적으로 교정.
+function enforceSabiRuleEngine(r4, ctx) {
+  const out = { ...r4 };
+  const warnings = [];
+  
+  // 규칙 1: 담보범위 error → 무조건 coverage_result='면책'
+  if (ctx.address_match === 'error') {
+    if (out.coverage_result !== '면책') {
+      warnings.push(`address_match=error → coverage_result "${out.coverage_result}" → "면책" 교정`);
+      out.coverage_result = '면책';
+      out._coverage_corrected = true;
+    }
+  }
+  
+  // 규칙 2: insured_status="확인불가" → liability_result="no", coverage_result="판단유보"
+  if (ctx.insured_status === '확인불가') {
+    if (out.liability_result !== 'no') {
+      warnings.push(`insured_status=확인불가 → liability_result "${out.liability_result}" → "no" 교정`);
+      out.liability_result = 'no';
+      out._liability_corrected = true;
+    }
+    // 판단유보는 담보범위 error 교정이 우선이므로 error가 아닐 때만
+    if (ctx.address_match !== 'error' && out.coverage_result !== '판단유보') {
+      warnings.push(`insured_status=확인불가 → coverage_result "${out.coverage_result}" → "판단유보" 교정`);
+      out.coverage_result = '판단유보';
+      out._coverage_corrected = true;
+    }
+  }
+  
+  // 규칙 3: 사고원인 미지정/원인미상 → 판단유보
+  if (ctx.accident_cause === '미지정' || ctx.accident_cause === '원인미상 (누수탐지 필요)') {
+    if (out.liability_result !== 'no') {
+      warnings.push(`accident_cause=미지정 → liability_result "${out.liability_result}" → "no" 교정`);
+      out.liability_result = 'no';
+      out._liability_corrected = true;
+    }
+    if (out.coverage_result !== '판단유보' && ctx.address_match !== 'error') {
+      warnings.push(`accident_cause=미지정 → coverage_result "${out.coverage_result}" → "판단유보" 교정`);
+      out.coverage_result = '판단유보';
+      out._coverage_corrected = true;
+    }
+    if (!out.accident_type || out.accident_type === '주택관리') {
+      out.accident_type = '미지정';
+    }
+  }
+  
+  // 규칙 4: liability_result="no"이면 coverage_result는 절대 "부책" 불가
+  if (out.liability_result === 'no' && out.coverage_result === '부책') {
+    warnings.push(`liability="no"인데 coverage="부책" 모순 → "면책" 교정`);
+    out.coverage_result = '면책';
+    out._coverage_corrected = true;
+  }
+  
+  // 규칙 5: 룰북 카테고리 ⓐ + 임차인 + 관리과실 키워드 없음 → liability="no"
+  //         (v5.2.1 절대규칙 5번의 JS 재확인)
+  if (ctx.rulebook_cat === 'ⓐ' && ctx.insured_status === '임차인겸점유자') {
+    if (out.liability_result !== 'no') {
+      warnings.push(`임차인+ⓐ(설비하자) → liability "${out.liability_result}" → "no" 교정 (758조 단서)`);
+      out.liability_result = 'no';
+      out._liability_corrected = true;
+      if (ctx.address_match !== 'error') {
+        out.coverage_result = '면책';
+      }
+    }
+  }
+  
+  // 규칙 6: 룰북 ⓓ(공용부) / ⓔ(시공불량) → 무조건 liability="no", coverage="면책"
+  if (ctx.rulebook_cat === 'ⓓ' || ctx.rulebook_cat === 'ⓔ') {
+    if (out.liability_result !== 'no') {
+      out.liability_result = 'no';
+      out._liability_corrected = true;
+      warnings.push(`${ctx.rulebook_cat} → liability="no" 강제`);
+    }
+    if (out.coverage_result !== '면책') {
+      out.coverage_result = '면책';
+      out._coverage_corrected = true;
+    }
+  }
+  
+  if (warnings.length > 0) {
+    console.warn('[v5.3.1 Sabi 룰엔진 교정]', warnings);
+  }
+  return out;
 }
 
 // ─────────────────────────────────────────────
