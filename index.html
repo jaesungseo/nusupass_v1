@@ -2107,6 +2107,20 @@ async function submitWorkDone(){
     }
   }
 
+  // ─── 🚨 사진 0장 방어 로직 ───
+  // 사진이 하나도 없으면(신규+기존 모두 0) 실수 방지용 이중 확인
+  const totalPhotos = photoItems.length + alreadyUploaded.length;
+  if(totalPhotos === 0){
+    const proceed = confirm(
+      '📸 현장 사진이 한 장도 첨부되지 않았습니다.\n\n'+
+      '보험 청구 시 현장 사진은 필수 증빙자료입니다.\n'+
+      '정말로 사진 없이 제출하시겠습니까?\n\n'+
+      '[확인] = 사진 없이 제출\n'+
+      '[취소] = 취소하고 사진 추가하기'
+    );
+    if(!proceed) return;
+  }
+
   // ─── 로딩 시작 ───
   setWdSubmitting(true, '제출 준비 중…');
   const progWrap = document.getElementById('wd_progress_wrap');
@@ -2237,16 +2251,22 @@ async function submitWorkDone(){
     // ─── 사진 메타 INSERT (case_documents) ───
     // uploadedMeta (이번 제출에서 올린 것) + alreadyUploaded (이전 재시도 때 올려둔 것)
     const allMeta = [...uploadedMeta, ...alreadyUploaded];
+    let metaInsertedCount = 0;
     if(allMeta.length){
       setWdSubmitting(true, '사진 정보 등록 중…');
       progText.textContent = '사진 정보 등록 중…';
-      const { data: pa } = await sb.from('partner_assignments').select('case_id').eq('id',selectedAssignmentId).maybeSingle();
-      if(pa?.case_id){
+      const { data: pa, error: paErr } = await sb.from('partner_assignments')
+        .select('case_id').eq('id',selectedAssignmentId).maybeSingle();
+      if(paErr || !pa?.case_id){
+        console.error('case_id 조회 실패 — 사진 메타 저장 건너뜀:', paErr);
+      } else {
         // 재제출 시 중복 방지: 이 배정의 기존 repair_photo 메타 먼저 삭제
-        await sb.from('case_documents')
+        const { error: delErr } = await sb.from('case_documents')
           .delete()
           .eq('assignment_id', selectedAssignmentId)
           .like('document_type', 'repair_photo_%');
+        if(delErr) console.warn('기존 사진 메타 삭제 실패(무시):', delErr);
+
         // 전체 bulk INSERT
         const rows = allMeta.map(m => ({
           case_id: pa.case_id,
@@ -2257,14 +2277,24 @@ async function submitWorkDone(){
           uploaded_by_type: 'partner',
           uploaded_by_role: 'partner'
         }));
-        const { error: docErr } = await sb.from('case_documents').insert(rows);
-        if(docErr) console.error('사진 메타 저장 실패:', docErr);
+        const { data: inserted, error: docErr } = await sb.from('case_documents').insert(rows).select('id');
+        if(docErr){
+          console.error('사진 메타 저장 실패:', docErr);
+          // 에러 나도 보고서 본문은 이미 저장됐으므로 끝까지 진행, 사용자에게만 경고
+          toast(`⚠️ 보고서는 저장됐지만 사진 정보 등록 실패 (${allMeta.length}장). 관리자에게 문의해 주세요.`, 'e');
+        } else {
+          metaInsertedCount = inserted?.length || allMeta.length;
+          console.log(`[메타 저장 완료] ${metaInsertedCount}장`);
+        }
       }
     }
 
     progWrap.style.display = 'none';
     setWdSubmitting(false);
-    toast(`수리완료 보고서 제출 완료! (사진 ${allMeta.length}장) 수고하셨습니다.`,'s');
+    const doneMsg = allMeta.length === 0
+      ? '수리완료 보고서 제출 완료! (사진 없음) 수고하셨습니다.'
+      : `수리완료 보고서 제출 완료! (사진 ${metaInsertedCount}장) 수고하셨습니다.`;
+    toast(doneMsg, 's');
     closeModal('workDoneModal');
     loadPartnerAssignments();
     loadPartnerHome();
