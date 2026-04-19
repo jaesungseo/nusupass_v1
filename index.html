@@ -164,10 +164,42 @@ select.form-control{cursor:pointer}
 .tl-title{font-size:13px;font-weight:700}
 .tl-meta{font-size:11px;color:var(--muted);margin-top:2px}
 
+/* ═══════ v5.5 Phase 3: 모바일 햄버거 메뉴 ═══════ */
+.mobile-menu-btn {
+  display: none;
+  position: fixed; top: 12px; left: 12px;
+  z-index: 200;
+  width: 44px; height: 44px;
+  background: var(--nav); color: white;
+  border: none; border-radius: 8px;
+  align-items: center; justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+.sidebar-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 150;
+}
+.sidebar-overlay.open { display: block; }
+
 @media(max-width:768px){
   .app{grid-template-columns:1fr}
-  .sidebar{display:none}
-  .content{padding:16px}
+  .sidebar{
+    display:flex !important;
+    position: fixed; top: 0; left: 0;
+    height: 100vh; width: 260px;
+    z-index: 180;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+  }
+  .sidebar.open { transform: translateX(0); }
+  .mobile-menu-btn { display: flex; }
+  .content{padding:16px;padding-top:56px;margin-left:0 !important}
+}
+@media print {
+  .mobile-menu-btn, .sidebar-overlay { display: none !important; }
 }
 
 /* ── 보험자료 탭 스타일 ── */
@@ -502,6 +534,14 @@ select.form-control{cursor:pointer}
 </style>
 </head>
 <body>
+
+<!-- ══ v5.5 Phase 3: 모바일 햄버거 버튼 + 오버레이 ══ -->
+<button id="mobile-menu-btn" class="mobile-menu-btn" onclick="toggleSidebar()" aria-label="메뉴">
+  <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+    <path d="M4 6h16M4 12h16M4 18h16"/>
+  </svg>
+</button>
+<div id="sidebar-overlay" class="sidebar-overlay" onclick="toggleSidebar()"></div>
 
 <!-- ══════════════════════════════════════
      설정 — 여기에 실제 Supabase 키를 넣으세요
@@ -964,13 +1004,61 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
       📸 사진은 보험 청구 시 핵심 증거입니다. 꼭 3단계 모두 촬영해 주세요.
     </div>
     
-    <!-- v5.4.1 신규: 사고 기본 정보 -->
+    <!-- v5.5 ★ 사고일시 파악 섹션 (보험금 지급 판정의 핵심 정보) -->
+    <div style="padding:14px;background:var(--primary-soft);border-radius:8px;margin-bottom:16px;border:1px solid var(--primary)">
+      <div style="font-size:13px;font-weight:700;margin-bottom:6px;color:var(--primary)">
+        🕐 사고일시 파악 <span style="color:#dc2626">*</span>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.6">
+        💡 누수가 <b>최초 발생한 시점</b>을 현장에서 물어봐 주세요.<br>
+        방문일·수리일이 아닌, <b>누수가 처음 새기 시작한 날</b>입니다.<br>
+        보험금 지급 여부를 결정하는 가장 중요한 정보입니다.
+      </div>
+      
+      <div class="form-group" style="margin-bottom:10px">
+        <label class="form-label" style="font-size:11px">사고일시 <span style="color:#dc2626">*</span></label>
+        <input class="form-control" id="wd_accident_site_at" type="datetime-local" style="font-size:12px"/>
+      </div>
+      
+      <div class="form-group" style="margin-bottom:10px">
+        <label class="form-label" style="font-size:11px">파악 방법 (복수 선택 가능) <span style="color:#dc2626">*</span></label>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
+            <input type="checkbox" name="wd_acc_src" value="victim_statement"> 
+            피해세대 주민에게 직접 질문
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
+            <input type="checkbox" name="wd_acc_src" value="complaint_log"> 
+            관리사무소 민원 접수일 확인
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
+            <input type="checkbox" name="wd_acc_src" value="insured_statement"> 
+            피보험자 진술
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
+            <input type="checkbox" name="wd_acc_src" value="partner_estimate"> 
+            현장 관찰로 추정 (얼룩 크기 등)
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
+            <input type="checkbox" name="wd_acc_src" value="unknown"> 
+            정확한 시점 특정 불가 (대략치만 입력)
+          </label>
+        </div>
+      </div>
+      
+      <div class="form-group" style="margin:0">
+        <label class="form-label" style="font-size:11px">파악 메모 <span style="color:var(--muted);font-weight:400">(누구에게 어떻게 들었는지)</span></label>
+        <textarea class="form-control" id="wd_accident_note" rows="2" 
+          placeholder="예: 피해세대 (1502호) 김○○님 진술 — '8월 15일 저녁 천장에서 물 떨어지기 시작'"
+          style="font-size:12px"></textarea>
+      </div>
+    </div>
+    
+    <!-- 가해/피해세대 동·호수 -->
     <div style="padding:14px;background:var(--bg);border-radius:8px;margin-bottom:16px">
       <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--primary)">📋 사고 기본 정보</div>
-      <div class="form-group" style="margin-bottom:10px">
-        <label class="form-label" style="font-size:11px">사고발생일자 <span style="color:var(--muted);font-weight:400">(현장 확인 기준)</span></label>
-        <input class="form-control" id="wd_accident_at" type="datetime-local" style="font-size:12px"/>
-      </div>
+      <!-- v5.4.1 하위호환: wd_accident_at 필드는 숨김 유지 (구 코드 참조 안전망) -->
+      <input type="hidden" id="wd_accident_at"/>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         <div class="form-group" style="margin:0">
           <label class="form-label" style="font-size:11px">가해세대 동·호수 <span style="color:#dc2626">*</span></label>
@@ -1148,35 +1236,56 @@ document.addEventListener('keydown', e=>{ if(e.key==='Enter'&&document.getElemen
 async function resolveRole(uid, email){
   console.log('[resolveRole] uid:', uid, 'email:', email);
 
-  // 1) admin_users 확인
-  const { data: adm, error: admErr } = await sb.from('admin_users')
-    .select('id,name,role_code')
-    .eq('id', uid)
-    .eq('is_active', true)
-    .maybeSingle();
-  console.log('[admin_users] data:', adm, 'error:', admErr);
+  // v5.5 Phase 4 ★ 병렬 체크 + 역할 충돌 이중 방어
+  // 기존: admin_users 먼저 확인 → partner_users 순차 (한 쪽이 먼저 매칭되면 거기서 확정)
+  // 신규: 두 테이블 동시 조회 → 양쪽 모두 매칭되면 "충돌" 감지 → 자동 로그아웃
+  //       (DB 트리거 v5_4_3_prevent_role_conflict를 보완하는 클라이언트 방어선)
+  const [admRes, puRes] = await Promise.all([
+    sb.from('admin_users')
+      .select('id,name,role_code,is_active')
+      .eq('id', uid).maybeSingle(),
+    sb.from('partner_users')
+      .select('id,name,partner_company_id,is_active')
+      .eq('auth_user_id', uid).maybeSingle(),
+  ]);
 
-  if(adm && !admErr){
-    curRole='admin';
-    curUser={id:uid, email, name:adm.name, role_code:adm.role_code};
-    showApp(); return;
+  console.log('[admin_users] data:', admRes.data, 'error:', admRes.error);
+  console.log('[partner_users] data:', puRes.data, 'error:', puRes.error);
+
+  const isAdmin   = !!(admRes.data && admRes.data.is_active);
+  const isPartner = !!(puRes.data && puRes.data.is_active);
+
+  // 양쪽 모두 매칭 → 역할 충돌 (DB 트리거 실패 가능성) → 즉시 로그아웃
+  if (isAdmin && isPartner) {
+    console.error('[SECURITY] 역할 충돌 감지 (admin AND partner):', uid, email);
+    toast('역할 충돌이 감지되어 자동 로그아웃되었습니다. 관리자에게 문의하세요.', 'e');
+    await sb.auth.signOut();
+    document.getElementById('mainApp').style.display='none';
+    document.getElementById('loginPage').style.display='block';
+    setTimeout(() => location.reload(), 2000);
+    return;
   }
 
-  // 2) partner_users 확인
-  const { data: pu, error: puErr } = await sb.from('partner_users')
-    .select('id,name,partner_company_id')
-    .eq('auth_user_id', uid)
-    .eq('is_active', true)
-    .maybeSingle();
-  console.log('[partner_users] data:', pu, 'error:', puErr);
-
-  if(pu && !puErr){
-    curRole='partner';
-    curUser={id:uid, email, name:pu.name, partner_user_id:pu.id, company_id:pu.partner_company_id};
-    showApp(); return;
+  if (isAdmin) {
+    curRole = 'admin';
+    curUser = { id:uid, email, name: admRes.data.name, role_code: admRes.data.role_code };
+    showApp();
+    return;
   }
 
-  // 3) 둘 다 없음
+  if (isPartner) {
+    curRole = 'partner';
+    curUser = {
+      id: uid, email,
+      name: puRes.data.name,
+      partner_user_id: puRes.data.id,
+      company_id: puRes.data.partner_company_id,
+    };
+    showApp();
+    return;
+  }
+
+  // 둘 다 없음 → 권한 없음
   console.log('[resolveRole] 역할 없음 → 로그아웃');
   toast('등록된 관리자/파트너 계정이 아닙니다.','e');
   await sb.auth.signOut();
@@ -1211,6 +1320,28 @@ function showApp(){
   if(session) await resolveRole(session.user.id, session.user.email);
   else document.getElementById('loginPage').style.display='block';
 })();
+
+// ══════════════════════════════════════════════════════════
+// v5.5 Phase 3: 모바일 햄버거 메뉴
+// ══════════════════════════════════════════════════════════
+function toggleSidebar() {
+  const sbEl = document.querySelector('.sidebar');
+  const ov = document.getElementById('sidebar-overlay');
+  if (!sbEl || !ov) return;
+  const isOpen = sbEl.classList.toggle('open');
+  ov.classList.toggle('open', isOpen);
+}
+
+// 모바일: 메뉴 항목 클릭 시 자동 닫기
+document.addEventListener('click', (e) => {
+  if (window.innerWidth <= 768 && 
+      (e.target.closest('.sb-btn') || e.target.closest('.sb-logout'))) {
+    setTimeout(() => {
+      document.querySelector('.sidebar')?.classList.remove('open');
+      document.getElementById('sidebar-overlay')?.classList.remove('open');
+    }, 100);
+  }
+});
 
 // ══════════════════════════════════════════════════════════
 // 화면 라우팅
@@ -1766,11 +1897,16 @@ async function openWorkDoneModal(){
   // 기본 초기화
   document.getElementById('wd_cost').value='';
   document.getElementById('wd_opinion').value='';
-  document.getElementById('wd_accident_at').value='';
+  document.getElementById('wd_accident_at').value='';  // 하위호환 hidden field
   document.getElementById('wd_attacker_unit').value='';
   document.getElementById('wd_victim_unit').value='';
   document.getElementById('wd_leak_cause').value='';
   document.querySelectorAll('input[name="wd_leak_area"]').forEach(r => r.checked=false);
+  
+  // v5.5 ★ 사고일시 파악 필드 초기화
+  document.getElementById('wd_accident_site_at').value='';
+  document.getElementById('wd_accident_note').value='';
+  document.querySelectorAll('input[name="wd_acc_src"]').forEach(c => c.checked=false);
   
   // 사진 input + 미리보기 초기화 (v5.4.1: 다중사진)
   ['before','during','after'].forEach(k=>{
@@ -1782,11 +1918,11 @@ async function openWorkDoneModal(){
     if (lbl) lbl.textContent='📷 클릭하여 사진 업로드 (여러 장 가능)';
   });
   
-  // v5.4.1: 기존 보고서 있으면 prefill (파트너가 재제출하는 케이스)
+  // v5.4.1 + v5.5: 기존 보고서 있으면 prefill (파트너가 재제출하는 케이스)
   if (isReal && selectedAssignmentId) {
     try {
       const { data } = await sb.from('partner_assignments')
-        .select('repair_cost, repair_opinion, accident_occurred_at, attacker_unit, victim_unit, leak_area_type, leak_cause')
+        .select('repair_cost, repair_opinion, accident_occurred_at, attacker_unit, victim_unit, leak_area_type, leak_cause, accident_datetime_at_site, accident_datetime_source, accident_datetime_note')
         .eq('id', selectedAssignmentId).maybeSingle();
       if (data) {
         if (data.repair_cost)     document.getElementById('wd_cost').value = data.repair_cost;
@@ -1798,6 +1934,21 @@ async function openWorkDoneModal(){
         if (data.leak_area_type) {
           const r = document.querySelector(`input[name="wd_leak_area"][value="${data.leak_area_type}"]`);
           if (r) r.checked = true;
+        }
+        // v5.5 신규 prefill
+        if (data.accident_datetime_at_site) {
+          document.getElementById('wd_accident_site_at').value = data.accident_datetime_at_site.slice(0,16);
+        }
+        if (data.accident_datetime_note) {
+          document.getElementById('wd_accident_note').value = data.accident_datetime_note;
+        }
+        if (data.accident_datetime_source) {
+          // text 필드(쉼표로 구분된 값들)를 체크박스에 매핑
+          const sources = String(data.accident_datetime_source).split(',').map(s => s.trim()).filter(Boolean);
+          sources.forEach(src => {
+            const c = document.querySelector(`input[name="wd_acc_src"][value="${src}"]`);
+            if (c) c.checked = true;
+          });
         }
       }
     } catch (e) {
@@ -1851,11 +2002,22 @@ async function submitWorkDone(){
   const leakAreaType  = leakAreaEl ? leakAreaEl.value : null;
   const leakCause     = document.getElementById('wd_leak_cause').value.trim();
 
+  // v5.5 ★ 사고일시 파악 필드 수집
+  const accidentSiteAt   = document.getElementById('wd_accident_site_at').value || null;
+  const accidentNote     = document.getElementById('wd_accident_note').value.trim() || null;
+  const srcEls           = document.querySelectorAll('input[name="wd_acc_src"]:checked');
+  const accidentSources  = Array.from(srcEls).map(el => el.value);
+  // DB가 text 타입이므로 쉼표로 join (v5.5 명세서 배열 → 실제 DB는 text)
+  const accidentSourceText = accidentSources.length > 0 ? accidentSources.join(',') : null;
+
   // 필수값 검증
-  if (!attackerUnit) { toast('가해세대 동·호수를 입력해 주세요.','e'); return; }
-  if (!victimUnit)   { toast('피해세대 동·호수를 입력해 주세요.','e'); return; }
-  if (!leakAreaType) { toast('누수 부위(전유부/공용부/미상)를 선택해 주세요.','e'); return; }
-  if (!leakCause)    { toast('누수 원인을 입력해 주세요.','e'); return; }
+  if (!attackerUnit)                 { toast('가해세대 동·호수를 입력해 주세요.','e'); return; }
+  if (!victimUnit)                   { toast('피해세대 동·호수를 입력해 주세요.','e'); return; }
+  if (!leakAreaType)                 { toast('누수 부위(전유부/공용부/미상)를 선택해 주세요.','e'); return; }
+  if (!leakCause)                    { toast('누수 원인을 입력해 주세요.','e'); return; }
+  // v5.5 ★ 사고일시 필수 검증
+  if (!accidentSiteAt)               { toast('사고일시를 입력해 주세요. (누수 최초 발생 시점)','e'); return; }
+  if (accidentSources.length === 0)  { toast('사고일시 파악 방법을 1개 이상 선택해 주세요.','e'); return; }
 
   if(!isReal){ toast('[MOCK] 수리완료 보고서 제출 완료 (실제 저장 안 됨)','i'); closeModal('workDoneModal'); return; }
 
@@ -1874,16 +2036,20 @@ async function submitWorkDone(){
     }
   }
 
-  // RPC: partner_assignments 업데이트 + 상태 전환
+  // RPC: partner_assignments 업데이트 + 상태 전환 (v5.5: 사고일시 3개 신규 파라미터)
   const { error: rpcErr } = await sb.rpc('rpc_submit_work_done', {
-    p_assignment_id:        selectedAssignmentId,
-    p_repair_cost:          cost,
-    p_repair_opinion:       opinion || null,
-    p_accident_occurred_at: accidentAt,
-    p_attacker_unit:        attackerUnit,
-    p_victim_unit:          victimUnit,
-    p_leak_area_type:       leakAreaType,
-    p_leak_cause:           leakCause,
+    p_assignment_id:             selectedAssignmentId,
+    p_repair_cost:               cost,
+    p_repair_opinion:            opinion || null,
+    p_accident_occurred_at:      accidentAt,
+    p_attacker_unit:             attackerUnit,
+    p_victim_unit:               victimUnit,
+    p_leak_area_type:            leakAreaType,
+    p_leak_cause:                leakCause,
+    // v5.5 신규
+    p_accident_datetime_at_site: accidentSiteAt,
+    p_accident_datetime_source:  accidentSourceText,
+    p_accident_datetime_note:    accidentNote,
   });
   if (rpcErr) { toast('보고서 제출 실패: '+rpcErr.message,'e'); return; }
 
@@ -2092,6 +2258,6 @@ async function saveCompanySettings() {
 }
 </script>
 
-<script src="./insurance-tab.js?v=5.4.2"></script>
+<script src="./insurance-tab.js?v=5.5"></script>
 </body>
 </html>

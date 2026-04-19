@@ -1,9 +1,45 @@
-// v2026-04-17-v5.4.2 — Phase 3: 손해사정보고서 10섹션 + PDF 인쇄
+// v2026-04-19-v5.5 — v5.4.3 (공동소유·마스킹·세대주) + v5.5 (파트너 사고일시)
 /**
- * insurance-tab.js  v5.4.2 (Phase 3)
+ * insurance-tab.js  v5.5
  * 누수패스 보험자료 탭
  *
  * 의존성: sb, toast(), curUser (index.html)
+ *
+ * ✨ v5.5 변경사항 (2026-04-19)
+ *   🔴 FEAT: 파트너 현장 파악 사고일시 STEP 2 자동 반영
+ *      - loadPartnerAccidentData(): partner_assignments.accident_datetime_at_site 로드
+ *      - STEP 2 진입 시 insurance_claims.accident_datetime 비어있으면 파트너값 자동 복사
+ *      - 추출 정보 카드에 파트너 파악 배너 추가 (사고일시 + 메모 + 파악방법)
+ *      - _insPartnerAccident 전역 변수
+ *
+ *   🔴 FEAT: STEP 2 재진입 시 DB 강제 재로드 (화면-DB 동기화 안전망)
+ *      - insGoStep(2) 호출 시 insurance_claims 최신 값 강제 fetch
+ *      - AI 재분석 후 저장 없이 STEP 3 → STEP 2 돌아올 때 값 잃지 않게
+ *
+ * ✨ v5.4.3 변경사항 (2026-04-19) — 공동소유·마스킹·세대주
+ *   🔴 FEAT: 피보험자 성명 마스킹 언마스킹 (insured_name_resolved)
+ *      - 보험증권 '서재*' → 주민등록등본 '서재성(900222-...)' 교차검증
+ *      - 매칭 근거: 주민번호 앞 6자리 (YYMMDD)
+ *      - namesMatch() 유틸로 마스킹 대응 이름 매칭
+ *
+ *   🔴 FEAT: 공동소유 지원 (insured_owners JSON 배열)
+ *      - 기존 insured_owner_name(단일 문자열) → insured_owners([{name, share}]) 배열
+ *      - 2차 프롬프트에서 공동소유자 모두 배열로 반환
+ *      - 하위호환: D_owners는 배열/단일 문자열 모두 허용
+ *
+ *   🔴 FEAT: 세대주 추출 (household_head)
+ *      - 주민등록등본에서 세대주 성명 분리 추출
+ *      - 가족 풀에 자동 포함 (피보험자 + 배우자 + 세대주 + 동거인)
+ *
+ *   🔴 FEAT: 소유자 이름 정화 (sanitizeOwnerName)
+ *      - '서재성 (900222-1******)' → '서재성' (주민번호/괄호 제거)
+ *      - '- 이하여백 -' 행은 배열에서 제외
+ *
+ *   🔴 FEAT: 지위 판정 불일치 감지 배너 (detectStatusMismatch)
+ *      - AI 서술 문장에 언급된 지위 vs 필드값 비교
+ *      - 불일치 시 STEP 2 상단에 빨간 배너 표시
+ *
+ *   🔴 FEAT: 저장 로직 확장 (insured_name_resolved, insured_owners_json, insured_household_head)
  *
  * ✨ v5.4.2 변경사항 (2026-04-17 밤 Phase 3 최종)
  *   🔴 FEAT: STEP 3 손해사정보고서 10섹션 풀 구현 (파란손해사정 시안 기반)
@@ -201,7 +237,7 @@
 // 상수
 // ─────────────────────────────────────────────
 const INS_MODEL      = 'claude-sonnet-4-6';
-const INS_PROMPT_VER = 'v5.4.2';
+const INS_PROMPT_VER = 'v5.5';
 const INS_LEGAL_VER  = 'v2.0';
 
 const INS_LEGAL = `[민법 제750조] 고의 또는 과실로 인한 위법행위로 타인에게 손해를 가한 자는 그 손해를 배상할 책임이 있다.
@@ -335,6 +371,7 @@ let _insResult   = {};     // Claude 추출 + 판단 결과 (STEP 2)
 let _insDraft    = null;   // 저장된 초안
 let _insAnalyzing = false;
 let _insVictims  = [];     // v5.4: 피해자 배열 [{id?, victim_order, victim_name, victim_address, ...}]
+let _insPartnerAccident = null;  // v5.5: 파트너 현장 파악 사고일시 {accident_datetime_at_site, accident_datetime_source, accident_datetime_note}
 
 // ─────────────────────────────────────────────
 // 진입점
@@ -475,6 +512,37 @@ async function insDeleteVictim(victimId) {
   const { error } = await sb.from('insurance_victims').delete().eq('id', victimId);
   if (error) throw error;
 }
+
+// v5.5 ★ 파트너 현장 파악 사고일시 로드
+// STEP 2 진입 시 호출 — insurance_claims.accident_datetime이 비어있으면 파트너값 자동 복사 제안
+async function loadPartnerAccidentData() {
+  if (!_insCaseId) return;
+  try {
+    const { data: pa } = await sb.from('partner_assignments')
+      .select('accident_datetime_at_site, accident_datetime_source, accident_datetime_note')
+      .eq('case_id', _insCaseId)
+      .in('work_status', ['repair_done','repair_completed'])
+      .order('work_done_at', { ascending: false })
+      .limit(1).maybeSingle();
+    
+    if (pa?.accident_datetime_at_site) {
+      _insPartnerAccident = pa;  // 원본 참고용 전역
+      
+      // insurance_claims.accident_datetime 비어있으면 파트너값 자동 복사
+      const hasExisting = _insResult.accident_datetime || _insClaim?.accident_datetime;
+      if (!hasExisting) {
+        _insResult.accident_datetime = pa.accident_datetime_at_site;
+        console.log('[v5.5] 파트너 사고일시 자동 복사:', pa.accident_datetime_at_site);
+      }
+    } else {
+      _insPartnerAccident = null;
+    }
+  } catch (e) { 
+    console.warn('[v5.5] 파트너 사고일시 로드 실패:', e); 
+    _insPartnerAccident = null;
+  }
+}
+
 async function fetchBase64(filePath) {
   const { data } = await sb.storage.from('insurance-docs').download(filePath);
   if (!data) return null;
@@ -524,8 +592,46 @@ function insStepBarHTML() {
   }).join('')}</div>`;
 }
 
-function insGoStep(n) { 
+async function insGoStep(n) { 
   _insStep = n; 
+  
+  // v5.4.3 ★ STEP 2 재진입 시 DB 강제 재로드 (화면-DB 동기화 안전망)
+  // AI 재분석 직후 저장 없이 STEP 3 → STEP 2 돌아올 때 값이 DB 기준으로 복원되도록
+  if (n === 2 && _insClaim?.id) {
+    try {
+      const { data: claim } = await sb.from('insurance_claims')
+        .select('*').eq('id', _insClaim.id).maybeSingle();
+      if (claim) {
+        _insClaim = claim;
+        // _insResult에 DB 최신 값 병합 (사용자가 화면에서 수정한 값은 유지되지 않음, 저장 후 reload 기준)
+        _insResult = {
+          ..._insResult,
+          insured_name:                 claim.insured_name                 || _insResult.insured_name,
+          insured_name_resolved:        claim.insured_name_resolved        || _insResult.insured_name_resolved,
+          insured_status:               claim.insured_status               || _insResult.insured_status,
+          insured_status_reason:        claim.insured_status_reason        || _insResult.insured_status_reason,
+          insured_owner_name:           claim.insured_owner_name           || _insResult.insured_owner_name,
+          insured_owners:               claim.insured_owners_json          || _insResult.insured_owners,
+          household_head:               claim.insured_household_head       || _insResult.household_head,
+          insured_cohabitants:          claim.insured_cohabitants          || _insResult.insured_cohabitants,
+          liability_result:             claim.liability_result             || _insResult.liability_result,
+          coverage_result:              claim.coverage_result              || _insResult.coverage_result,
+          liability_reasoning:          claim.liability_reasoning          || _insResult.liability_reasoning,
+          coverage_reasoning:           claim.coverage_reasoning           || _insResult.coverage_reasoning,
+          fault_ratio:                  claim.fault_ratio                  || _insResult.fault_ratio,
+          accident_datetime:            claim.accident_datetime            || _insResult.accident_datetime,
+          address_match:                claim.address_match                || _insResult.address_match,
+          address_match_note:           claim.address_match_note           || _insResult.address_match_note,
+        };
+      }
+    } catch (e) { console.warn('[v5.4.3] STEP 2 재로드 실패:', e); }
+    
+    // v5.5 ★ 파트너 현장 사고일시 로드 (STEP 2 진입 시)
+    try {
+      await loadPartnerAccidentData();
+    } catch (e) { console.warn('[v5.5] 파트너 사고일시 로드 실패:', e); }
+  }
+  
   insRender(); 
   // v5.4.2 Phase 3: STEP 3 진입 시 파트너 데이터·사진 비동기 로드
   if (n === 3) {
@@ -849,7 +955,27 @@ function insStep2HTML() {
 
   const hasResult = !!(r.policy_product || r.insured_name);
 
+  // v5.4.3 ★ 지위 판정 불일치 감지 배너
+  const mismatch = detectStatusMismatch(r);
+  const mismatchBanner = mismatch ? `
+    <div style="padding:14px;background:#fee2e2;border-left:4px solid #dc2626;border-radius:6px;margin-bottom:14px;font-size:12px;line-height:1.6">
+      ⚠️ <b>지위 판정 불일치 감지</b><br>
+      AI 서술에는 <b>"${mismatch.mentionedStatus}"</b>라고 판단했으나 필드값은 <b>"${mismatch.fieldStatus}"</b>입니다.<br>
+      수동으로 확인해 주세요.
+    </div>` : '';
+  
+  // v5.5 ★ 파트너 현장 사고일시 배너
+  const pAcc = _insPartnerAccident;
+  const partnerAccBanner = pAcc?.accident_datetime_at_site ? `
+    <div style="padding:10px 12px;background:#ecfeff;border-left:3px solid #06b6d4;border-radius:6px;margin-bottom:12px;font-size:12px;line-height:1.6">
+      🔧 <b>파트너 현장 파악 사고일시</b>: ${new Date(pAcc.accident_datetime_at_site).toLocaleString('ko-KR')}<br>
+      ${pAcc.accident_datetime_source ? `<span style="color:var(--muted)">파악방법: ${pAcc.accident_datetime_source}</span>` : ''}
+      ${pAcc.accident_datetime_note ? `<br><span style="color:var(--muted)">메모: ${pAcc.accident_datetime_note}</span>` : ''}
+    </div>` : '';
+
   return `
+  ${mismatchBanner}
+  ${partnerAccBanner}
   <!-- 분석 버튼 + 진행바 -->
   <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${hasResult?'0':'4px'}">
@@ -1092,6 +1218,27 @@ function s2RecalcPay() {
   const pay = Math.max(0, rc - ded);
   const el = document.getElementById('j-pay-display');
   if (el) el.textContent = pay.toLocaleString() + '원';
+}
+
+// v5.4.3 ★ AI 서술 vs 필드값 불일치 감지
+// 예: insured_status_reason에 "소유자겸점유자"라고 썼는데 insured_status는 "임차인겸점유자"
+function detectStatusMismatch(r) {
+  const reasoning = r?.insured_status_reason || r?.liability_reasoning || '';
+  const fieldStatus = r?.insured_status;
+  if (!reasoning || !fieldStatus) return null;
+  
+  const TOKENS = ['소유자겸점유자', '임차인겸점유자', '임대인', '임차인', '확인불가'];
+  // reasoning 안에 언급된 지위 토큰들 (순서 중요: 긴 것 먼저 — 임차인겸점유자가 임차인보다 먼저)
+  const mentioned = TOKENS.filter(s => reasoning.includes(s));
+  
+  // 언급은 있는데 필드값이 거기 포함되지 않으면 불일치
+  if (mentioned.length > 0 && !mentioned.includes(fieldStatus)) {
+    return {
+      mentionedStatus: mentioned[0],
+      fieldStatus,
+    };
+  }
+  return null;
 }
 
 // ─────────────────────────────────────────────
@@ -1340,13 +1487,40 @@ STEP 3: 동거인 요약 (주민등록등본에서)
 ─────────────────────────────────────────
 반환 JSON (필드명 정확히, 다른 설명 없이 JSON만)
 ─────────────────────────────────────────
+
+★★ v5.4.3 소유자 성명 추출 규칙 (매우 중요):
+- 건축물대장·등기부등본에 "서재성 (900222-1******)" 형식으로 나오더라도
+  name 필드에는 **"서재성"만** 반환 (주민번호·괄호·지분 표기 모두 제외)
+- 건축물대장의 "이하여백", "이 하 여 백", "- 이하여백 -" 문구는 빈 공간 표시이며
+  실제 소유자 이름이 아님 → 해당 행은 **배열에서 제외**
+- 공동소유인 경우 모든 소유자를 배열에 포함 (예: 서재성 1/2 + 정영윤 1/2)
+- OCR 흐린 글자는 '서제성', '서재성' 등으로 다르게 보일 수 있음 →
+  주민등록등본·보험증권의 전체 이름과 교차검증하여 가장 가까운 이름으로 수정
+
+★★ v5.4.3 피보험자명 언마스킹 규칙:
+- 보험증권이 '서재*' 처럼 마스킹된 경우
+  insured_name에는 원문 그대로 '서재*' 저장
+  insured_name_resolved 필드에 주민등록등본의 전체 이름 저장
+- 매칭 기준: 주민등록등본에 등재된 가족 중 주민번호 앞 6자리가
+  증권의 마스킹 주민번호 (예: 9002**-1******) 와 일치하는 인물
+- 매칭되는 인물 없으면 insured_name_resolved는 null
+
+★★ v5.4.3 세대주 추출:
+- 주민등록등본 상단 '세대주 성명' 필드에서 추출
+- 가족 범위 판정에 사용됨 (피보험자의 가족으로 인정되는 범위 확대)
+
 {
   "insured_status": "소유자겸점유자 | 임차인겸점유자 | 임대인 | 임차인 | 확인불가",
   "insured_status_reason": "D=[소유자명], E=[피보험자명], B=[사고발생장소], C=[실거주지] 를 교차 비교한 결과를 1-2문장으로. 가족 범위 포함 여부도 명시 (예: '소유자(김영희)는 피보험자(홍길동)의 배우자로 가족 범위에 포함됨'). '피보험자(성명)는 사고발생장소의 [소유자/비소유자]이며, 해당 장소에 [거주/비거주]하므로 [지위]에 해당함' 형태 권장",
   "insured_residence": "C값 (주민등록상 실거주지 전체 주소)",
   "accident_location_from_doc": "B값 (첫 번째 서류에서 읽은 사고발생장소 주소)",
-  "insured_owner_name": "D값 (사고발생장소 소유자 성명)",
+  "insured_owner_name": "D값 — 하위호환용 단일 문자열 (공동소유면 첫 번째 소유자 성명만, 순수 한글 이름만)",
+  "insured_owners": [
+    { "name": "소유자 성명 (순수 한글 이름만, 주민번호·괄호·지번·'이하여백' 등 모두 제외)", "share": "1/2 또는 1/1 등 지분 표기 (확인 불가 시 null)" }
+  ],
   "insured_owner_transfer_date": "소유권 이전일 YYYY-MM-DD 또는 null",
+  "insured_name_resolved": "마스킹된 경우 주민등록등본·가족관계증명서로 교차검증하여 확인한 전체 이름. 매칭 근거는 주민번호 앞 6자리. 예: 증권 '서재*(9002**-1******)' + 등본 '서재성(900222-1508711)' → '서재성'. 매칭 불가 시 null. 마스킹 없으면 insured_name과 동일 값 또는 null",
+  "household_head": "주민등록등본의 세대주 성명 (예: '정영윤'). 세대주 표기 없으면 null",
   "insured_cohabitants": "동거인 요약 (예: '김세연(배우자), 백지훈(부)' — 없거나 미확인 시 null)",
   "insured_spouse": "피보험자의 배우자 성명 (동거인 목록에서 배우자로 표시된 사람 또는 가족관계증명서에서 확인. 없으면 null)",
   "address_match": "ok | warn | error",
@@ -1355,24 +1529,52 @@ STEP 3: 동거인 요약 (주민등록등본에서)
 
       const resp = await fetch('/api/claude', {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ model: INS_MODEL, max_tokens: 800, system: SYS,
+        body: JSON.stringify({ model: INS_MODEL, max_tokens: 1200, system: SYS,
           messages: [{ role:'user', content: contentArr }] }),
       });
       if (!resp.ok) throw new Error('API 오류 ' + resp.status);
       const res = await resp.json();
       const r2 = parseClaudeJson(res.content?.[0]?.text, '피보험자 지위 분석');
       
-      // v5.3.1 + v5.4 ★ 결정론적 지위 판정 후처리 (가족 범위 포함)
+      // v5.4.3 ★ insured_owners 배열 sanitize — 주민번호·괄호·이하여백 제거
+      // AI가 배열로 반환하지 않은 경우 단일 owner_name으로 폴백
+      if (Array.isArray(r2.insured_owners) && r2.insured_owners.length > 0) {
+        r2.insured_owners = r2.insured_owners
+          .map(o => ({
+            name: sanitizeOwnerName(o?.name || o),
+            share: o?.share || null,
+          }))
+          .filter(o => o.name);
+      } else if (r2.insured_owner_name) {
+        // 하위호환: 단일 문자열 → 1-원소 배열로 변환
+        const cleaned = sanitizeOwnerName(r2.insured_owner_name);
+        r2.insured_owners = cleaned ? [{ name: cleaned, share: null }] : [];
+      } else {
+        r2.insured_owners = [];
+      }
+      // insured_owner_name 호환 유지 (첫 번째 소유자)
+      if (r2.insured_owners.length > 0 && !r2.insured_owner_name) {
+        r2.insured_owner_name = r2.insured_owners[0].name;
+      } else if (r2.insured_owner_name) {
+        // 기존 값도 sanitize
+        const cleaned = sanitizeOwnerName(r2.insured_owner_name);
+        if (cleaned) r2.insured_owner_name = cleaned;
+      }
+      
+      // v5.3.1 + v5.4 + v5.4.3 ★ 결정론적 지위 판정 후처리 (공동소유·마스킹·세대주)
       // AI가 필드-텍스트 불일치로 반환하는 경우 JS 룰 엔진이 교정
       const derived = {
         ...computeInsuredStatus({
-          A_policy:      result.policy_address_raw,
-          B_accident:    r2.accident_location_from_doc,
-          C_residence:   r2.insured_residence,
-          D_owner:       r2.insured_owner_name,
-          E_insured:     result.insured_name,
-          E_spouse:      r2.insured_spouse,      // v5.4: 배우자 성명
-          E_cohabitants: r2.insured_cohabitants, // v5.4: 동거인 목록
+          A_policy:            result.policy_address_raw,
+          B_accident:          r2.accident_location_from_doc,
+          C_residence:         r2.insured_residence,
+          D_owners:            r2.insured_owners,          // v5.4.3: 배열
+          D_owner:             r2.insured_owner_name,      // 하위호환
+          E_insured:           result.insured_name,
+          E_insured_resolved:  r2.insured_name_resolved,   // v5.4.3: 마스킹 언마스킹된 이름
+          E_spouse:            r2.insured_spouse,
+          E_cohabitants:       r2.insured_cohabitants,
+          E_household_head:    r2.household_head,          // v5.4.3: 세대주 성명
         }),
         addressMatch: computeAddressMatch(
           result.policy_address_raw,
@@ -1942,56 +2144,140 @@ function compareAddresses(addr1, addr2) {
   return 'mismatch';
 }
 
-// 결정론적 지위 판정 (v5.4: 가족 범위 포함)
-// E_spouse: 배우자 성명 (가족관계증명서 또는 주민등록등본 동거인)
-// E_cohabitants: 동거 가족 목록 (주민등록등본, "홍길동(부), 김영희(자녀)" 형식)
-function computeInsuredStatus({ A_policy, B_accident, C_residence, D_owner, E_insured, E_spouse, E_cohabitants }) {
+// v5.4.3 ★ 소유자 이름 정화 (주민번호·괄호·이하여백 제거)
+// 예: "서재성 (900222-1******)" → "서재성"
+//    "- 이하여백 -" → null (배열에서 제외)
+//    "정영윤 1/2" → "정영윤"
+function sanitizeOwnerName(name) {
+  if (!name) return null;
+  let cleaned = String(name)
+    .replace(/\([^)]*\)/g, '')              // 괄호 내용 제거
+    .replace(/\d{6}-?\d?\*+/g, '')           // 주민번호 마스킹 제거
+    .replace(/\d{6}-?\d{7}/g, '')            // 전체 주민번호 제거
+    .replace(/[-\s]*이\s*하\s*여\s*백[-\s]*/g, '')  // 이하여백 제거
+    .replace(/\d+\s*\/\s*\d+/g, '')          // 지분 표기 (1/2) 제거
+    .replace(/\s+/g, '')
+    .trim();
+  if (!cleaned || /^[\-\s]*$/.test(cleaned)) return null;
+  return cleaned;
+}
+
+// v5.4.3 ★ 마스킹 이름 매칭 (서재* ↔ 서재성)
+// a, b 중 하나만 '*' 포함이면 prefix 일치 확인
+function namesMatch(a, b) {
+  const na = normalizeName(a);
+  const nb = normalizeName(b);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  
+  // 별표 마스킹 처리
+  const maskedA = na.includes('*');
+  const maskedB = nb.includes('*');
+  
+  if (maskedA && !maskedB) {
+    const prefix = na.replace(/\*+$/, '').replace(/\*/g, '');
+    return prefix.length >= 2 && nb.startsWith(prefix);
+  }
+  if (!maskedA && maskedB) {
+    const prefix = nb.replace(/\*+$/, '').replace(/\*/g, '');
+    return prefix.length >= 2 && na.startsWith(prefix);
+  }
+  return false;
+}
+
+// v5.4.3 ★ 동거인 문자열 파싱 (괄호 관계 제거하여 이름만 배열로)
+function parseCohabitants(str) {
+  if (!str) return [];
+  return String(str)
+    .split(/[,，、]/)
+    .map(s => s.replace(/\([^)]*\)/g, '').trim())
+    .map(normalizeName)
+    .filter(Boolean);
+}
+
+// 결정론적 지위 판정 (v5.4.3: 공동소유·마스킹·세대주 지원)
+// 입력:
+//   D_owners: 배열 [{name, share}, ...]  (v5.4.3 신규, 우선)
+//   D_owner:  단일 문자열 (하위호환)
+//   E_insured_resolved: 마스킹 언마스킹된 피보험자 이름 (v5.4.3 신규)
+//   E_household_head:   세대주 성명 (v5.4.3 신규)
+//   E_spouse: 배우자 성명 (v5.4)
+//   E_cohabitants: 동거인 문자열 (v5.4)
+function computeInsuredStatus({ 
+  A_policy, B_accident, C_residence, 
+  D_owners, D_owner,
+  E_insured, E_insured_resolved,
+  E_spouse, E_cohabitants, E_household_head,
+}) {
+  // 입력 정규화: D_owners를 소유자 이름 배열로 변환
+  let ownerNames = [];
+  if (Array.isArray(D_owners) && D_owners.length > 0) {
+    ownerNames = D_owners
+      .map(o => {
+        const raw = o?.name || o;
+        return sanitizeOwnerName(raw);
+      })
+      .filter(Boolean)
+      .map(normalizeName);
+  } else if (D_owner) {
+    const cleaned = sanitizeOwnerName(D_owner);
+    if (cleaned) ownerNames = [normalizeName(cleaned)];
+  }
+  
   // 입력 불충분 체크
-  if (!D_owner || !E_insured || !B_accident || !C_residence) {
+  if (ownerNames.length === 0 || !E_insured || !B_accident || !C_residence) {
     return { status: '확인불가', reason: 'insufficient_input' };
   }
   
-  // v5.4 ★ 가족 범위 포함 체크
-  // 소유자(D)가 피보험자 본인 또는 배우자/동거가족이면 "소유자 측"으로 간주
-  const Dn = normalizeName(D_owner);
+  // v5.4.3 ★ 피보험자 이름 풀 (원본 + 언마스킹된 이름)
   const En = normalizeName(E_insured);
-  const Spn = E_spouse ? normalizeName(E_spouse) : '';
+  const Enr = E_insured_resolved ? normalizeName(E_insured_resolved) : '';
+  const insuredPool = [En, Enr].filter(Boolean);
   
-  // 동거인 목록에서 성명만 추출 (괄호 관계 제거)
-  // 예: "홍길동(부), 김영희(자녀)" → ["홍길동", "김영희"]
-  const cohabNames = (E_cohabitants || '')
-    .split(/[,，、]/)
-    .map(s => s.replace(/\([^)]*\)/g, '').trim())
-    .filter(Boolean)
-    .map(normalizeName);
+  // v5.4.3 ★ 가족 풀 구성: 피보험자 + 배우자 + 세대주 + 동거인
+  const familyPool = new Set([
+    ...insuredPool,
+    E_spouse ? normalizeName(E_spouse) : '',
+    E_household_head ? normalizeName(E_household_head) : '',
+    ...parseCohabitants(E_cohabitants),
+  ].filter(Boolean));
   
-  const isOwnerSelf      = Dn === En;
-  const isOwnerSpouse    = !!Spn && Dn === Spn;
-  const isOwnerCohabit   = cohabNames.includes(Dn);
-  const ownerInFamily    = isOwnerSelf || isOwnerSpouse || isOwnerCohabit;
+  // 소유자 중 피보험자 본인이 있는지 (마스킹 매칭 포함)
+  const isOwnerSelfAny = ownerNames.some(on => 
+    insuredPool.some(ip => namesMatch(on, ip))
+  );
+  
+  // 소유자 중 가족 범위 내 인물 있는지 (마스킹 매칭 포함)
+  const ownerInFamily = ownerNames.some(on => {
+    for (const fn of familyPool) {
+      if (namesMatch(on, fn)) return true;
+    }
+    return false;
+  });
   
   const addrCmp = compareAddresses(B_accident, C_residence);
   const sameAddr = addrCmp === 'match';
   
-  // v5.4 4분기 (가족 범위 반영)
+  // 4분기 (v5.4.3: 공동소유 반영)
   if (!ownerInFamily) {
-    // 소유자가 피보험자 가족 범위 밖이면 "임차인" (거주 여부 무관)
+    // 공동소유자 모두 피보험자 가족 범위 밖 → "임차인"
     return { 
       status: sameAddr ? '임차인겸점유자' : '임차인', 
-      reason: `D(${D_owner}) not in family of E(${E_insured})${sameAddr ? ', C==B' : ', C!=B'}` 
+      reason: `Owners(${ownerNames.join(', ')}) all outside family of E(${E_insured})${sameAddr ? ', C==B' : ', C!=B'}` 
     };
   }
   
-  // 소유자가 가족 범위 안에 있는 경우 — 거주 여부로 세분
+  // 소유자 중 최소 1명이 가족 범위 안에 있음 — 거주 여부로 세분
   if (sameAddr) {
+    const hint = isOwnerSelfAny ? 'self-included' : 'family-only';
     return { 
       status: '소유자겸점유자', 
-      reason: `D in family AND C==B (${isOwnerSelf?'self':isOwnerSpouse?'spouse':'cohabitant'})` 
+      reason: `Owners(${ownerNames.join(', ')}) include family (${hint}) AND C==B` 
     };
   }
   return { 
     status: '임대인', 
-    reason: `D in family AND C!=B (${isOwnerSelf?'self':isOwnerSpouse?'spouse':'cohabitant'})` 
+    reason: `Owners(${ownerNames.join(', ')}) include family AND C!=B` 
   };
 }
 
@@ -2325,6 +2611,7 @@ async function s2Save() {
     });
 
     // v5.2 신규: RPC가 커버 못하는 "추출 확장 컬럼"만 직접 UPDATE
+    // v5.4.3 추가: insured_name_resolved, insured_owners_json, insured_household_head
     const { error: updErr } = await sb.from('insurance_claims').update({
       insured_status_reason:       _insResult.insured_status_reason       || null,
       insured_owner_name:          _insResult.insured_owner_name          || null,
@@ -2336,9 +2623,13 @@ async function s2Save() {
       victim_damages:              _insResult.victim_damages              || null,
       accident_datetime:           _insResult.accident_datetime           || null,
       accident_description:        _insResult.accident_description        || null,
+      // v5.4.3 신규
+      insured_name_resolved:       _insResult.insured_name_resolved       || null,
+      insured_owners_json:         _insResult.insured_owners              || null,
+      insured_household_head:      _insResult.household_head              || null,
     }).eq('id', _insClaim.id);
     if (updErr) {
-      console.warn('[v5.2] 신규 컬럼 UPDATE 일부 실패:', updErr.message);
+      console.warn('[v5.2/v5.4.3] 신규 컬럼 UPDATE 일부 실패:', updErr.message);
     }
 
     // v5.4 ★ 피해자 배열 저장 (insurance_victims 테이블)
