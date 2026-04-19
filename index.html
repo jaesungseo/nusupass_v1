@@ -790,8 +790,8 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
     </div>
 
     <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal('workDoneModal')">취소</button>
-      <button class="btn btn-success" onclick="submitWorkDone()">보고서 제출</button>
+      <button class="btn btn-ghost" id="wd_cancel_btn" onclick="closeModal('workDoneModal')">취소</button>
+      <button class="btn btn-success" id="wd_submit_btn" onclick="submitWorkDone()">보고서 제출</button>
     </div>
   </div>
 </div>
@@ -1737,7 +1737,46 @@ function previewPhoto(input, previewId, labelId){
   document.getElementById(labelId).textContent='✅ '+file.name;
 }
 
+// Supabase/Storage 영문 에러 메시지를 한글로 변환
+function koStorageError(msg){
+  if(!msg) return '알 수 없는 오류';
+  const m = String(msg).toLowerCase();
+  if(m.includes('row-level security') || m.includes('not authorized') || m.includes('unauthorized'))
+    return '업로드 권한이 없습니다. 배정이 본인 회사 소속인지 확인해 주세요.';
+  if(m.includes('payload') && m.includes('large')) return '파일 용량이 너무 큽니다. (사진 한 장당 10MB 이하)';
+  if(m.includes('mime') || m.includes('content-type')) return '지원하지 않는 파일 형식입니다. (이미지만 가능)';
+  if(m.includes('bucket') && m.includes('not found')) return '업로드 버킷을 찾을 수 없습니다. 관리자에게 문의하세요.';
+  if(m.includes('network') || m.includes('fetch')) return '네트워크 오류. 인터넷 연결을 확인해 주세요.';
+  if(m.includes('timeout')) return '서버 응답 지연. 다시 시도해 주세요.';
+  if(m.includes('duplicate')) return '이미 제출된 배정입니다.';
+  return msg;  // 한글화 실패 시 원문
+}
+
+// 제출 버튼 로딩 상태 토글
+function setWdSubmitting(on, label){
+  const btn = document.getElementById('wd_submit_btn');
+  const cancelBtn = document.getElementById('wd_cancel_btn');
+  if(!btn) return;
+  if(on){
+    btn.disabled = true;
+    cancelBtn && (cancelBtn.disabled = true);
+    btn.style.opacity = '.85';
+    btn.style.cursor = 'wait';
+    btn.innerHTML = `<span class="spinner" style="width:14px;height:14px;border-width:2px;margin-right:6px"></span>${label||'제출 중…'}`;
+  } else {
+    btn.disabled = false;
+    cancelBtn && (cancelBtn.disabled = false);
+    btn.style.opacity = '1';
+    btn.style.cursor = 'pointer';
+    btn.innerHTML = '보고서 제출';
+  }
+}
+
 async function submitWorkDone(){
+  // 이중 클릭 방지
+  const submitBtn = document.getElementById('wd_submit_btn');
+  if(submitBtn && submitBtn.disabled) return;
+
   // ─── 공통 필드 수집 ───
   const cost = parseInt(document.getElementById('wd_cost').value)||0;
   const opinion = document.getElementById('wd_opinion').value.trim();
@@ -1779,64 +1818,97 @@ async function submitWorkDone(){
 
   if(!isReal){ toast('[MOCK] 수리완료 보고서 제출 완료 (실제 저장 안 됨)','i'); closeModal('workDoneModal'); return; }
 
-  // ─── Storage 업로드 ───
-  const uploads = {};
+  // ─── 사진 파일 목록 준비 + 용량 사전 검증 ───
+  const photoFiles = [];
   for(const k of ['before','during','after']){
     const file = document.getElementById(`photo_${k}`).files[0];
     if(file){
-      const path = `${selectedAssignmentId}/${k}_${Date.now()}.jpg`;
-      const { error: upErr } = await sb.storage.from('partner-work').upload(path,file,{upsert:true});
-      if(upErr){ toast(`사진(${k}) 업로드 실패: `+upErr.message,'e'); return; }
-      uploads[k] = path;
+      if(file.size > 10 * 1024 * 1024){
+        toast(`사진(${k==='before'?'작업 전':k==='during'?'작업 중':'작업 후'}) 용량이 10MB를 초과합니다.`,'e');
+        return;
+      }
+      photoFiles.push({ key:k, file });
     }
   }
 
-  // ─── RPC 호출 (16-arg, purpose별 필드만 채움) ───
-  const { error } = await sb.rpc('rpc_submit_work_done',{
-    p_assignment_id: selectedAssignmentId,
-    p_repair_cost: cost,
-    p_repair_opinion: opinion,
-    p_accident_datetime_at_site: accidentDt,
-    p_accident_datetime_note: accidentNote || null,
-    p_attacker_unit: attacker || null,
-    p_victim_unit: victim || null,
-    p_leak_area_type: leakArea || null,
-    p_leak_cause: leakCause || null,
-    // detection 전용 (null이면 DEFAULT)
-    p_leak_detail_part: leakDetailPart,
-    p_detection_tools: detectionTools,
-    p_detection_count: detectionCount,
-    // interior 전용
-    p_interior_scope: interiorScope,
-    p_worker_count: workerCount,
-    p_construction_start_date: startDate,
-    p_construction_end_date: endDate
-  });
-  if(error){ toast('보고서 제출 실패: '+error.message,'e'); return; }
+  // ─── 로딩 시작 ───
+  setWdSubmitting(true, '제출 준비 중…');
 
-  // ─── 사진 메타 저장 ───
-  if(Object.keys(uploads).length){
-    const { data: pa } = await sb.from('partner_assignments').select('case_id').eq('id',selectedAssignmentId).maybeSingle();
-    if(pa?.case_id){
-      for(const [k,path] of Object.entries(uploads)){
-        const { error: docErr } = await sb.from('case_documents').insert({
-          case_id: pa.case_id,
-          assignment_id: selectedAssignmentId,
-          document_type: `repair_photo_${k}`,
-          file_url: path,
-          file_name: `${k}.jpg`,
-          uploaded_by_type: 'partner',
-          uploaded_by_role: 'partner'
-        });
-        if(docErr){ console.error(`사진 메타 저장 실패 (${k}):`, docErr); }
+  try {
+    // ─── Storage 업로드 (진행 메시지) ───
+    const uploads = {};
+    for(let i=0; i<photoFiles.length; i++){
+      const { key, file } = photoFiles[i];
+      const stageLabel = key==='before'?'작업 전':key==='during'?'작업 중':'작업 후';
+      setWdSubmitting(true, `사진 업로드 ${i+1}/${photoFiles.length} (${stageLabel})…`);
+
+      const path = `${selectedAssignmentId}/${key}_${Date.now()}.jpg`;
+      const { error: upErr } = await sb.storage.from('partner-work').upload(path, file, {upsert:true, contentType: file.type || 'image/jpeg'});
+      if(upErr){
+        setWdSubmitting(false);
+        toast(`사진(${stageLabel}) 업로드 실패: ${koStorageError(upErr.message)}`, 'e');
+        return;
+      }
+      uploads[key] = path;
+    }
+
+    // ─── RPC 호출 ───
+    setWdSubmitting(true, '보고서 저장 중…');
+    const { error } = await sb.rpc('rpc_submit_work_done',{
+      p_assignment_id: selectedAssignmentId,
+      p_repair_cost: cost,
+      p_repair_opinion: opinion,
+      p_accident_datetime_at_site: accidentDt,
+      p_accident_datetime_note: accidentNote || null,
+      p_attacker_unit: attacker || null,
+      p_victim_unit: victim || null,
+      p_leak_area_type: leakArea || null,
+      p_leak_cause: leakCause || null,
+      p_leak_detail_part: leakDetailPart,
+      p_detection_tools: detectionTools,
+      p_detection_count: detectionCount,
+      p_interior_scope: interiorScope,
+      p_worker_count: workerCount,
+      p_construction_start_date: startDate,
+      p_construction_end_date: endDate
+    });
+    if(error){
+      setWdSubmitting(false);
+      toast('보고서 제출 실패: '+koStorageError(error.message),'e');
+      return;
+    }
+
+    // ─── 사진 메타 저장 ───
+    if(Object.keys(uploads).length){
+      setWdSubmitting(true, '사진 정보 등록 중…');
+      const { data: pa } = await sb.from('partner_assignments').select('case_id').eq('id',selectedAssignmentId).maybeSingle();
+      if(pa?.case_id){
+        for(const [k,path] of Object.entries(uploads)){
+          const { error: docErr } = await sb.from('case_documents').insert({
+            case_id: pa.case_id,
+            assignment_id: selectedAssignmentId,
+            document_type: `repair_photo_${k}`,
+            file_url: path,
+            file_name: `${k}.jpg`,
+            uploaded_by_type: 'partner',
+            uploaded_by_role: 'partner'
+          });
+          if(docErr){ console.error(`사진 메타 저장 실패 (${k}):`, docErr); }
+        }
       }
     }
-  }
 
-  toast('수리완료 보고서 제출 완료! 수고하셨습니다.','s');
-  closeModal('workDoneModal');
-  loadPartnerAssignments();
-  loadPartnerHome();
+    setWdSubmitting(false);
+    toast('수리완료 보고서 제출 완료! 수고하셨습니다.','s');
+    closeModal('workDoneModal');
+    loadPartnerAssignments();
+    loadPartnerHome();
+
+  } catch(e) {
+    console.error('submitWorkDone error:', e);
+    setWdSubmitting(false);
+    toast('제출 중 오류: '+koStorageError(e.message||String(e)),'e');
+  }
 }
 
 // ══════════════════════════════════════════════════════════
