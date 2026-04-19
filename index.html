@@ -691,14 +691,22 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
           <label class="form-label" style="font-size:12px">누수 부위</label>
           <select class="form-control" id="wd_leak_area">
             <option value="">선택</option>
-            <option>주방</option><option>욕실</option><option>보일러실</option>
-            <option>다용도실</option><option>베란다</option><option>거실</option>
-            <option>침실</option><option>공용배관</option><option>기타</option>
+            <option value="living">거실</option>
+            <option value="kitchen">주방</option>
+            <option value="main_room">안방</option>
+            <option value="sub_room_1">작은방 1</option>
+            <option value="sub_room_2">작은방 2</option>
+            <option value="sub_room_3">작은방 3</option>
+            <option value="bathroom">욕실</option>
+            <option value="boiler_room">보일러실</option>
+            <option value="utility_room">다용도실</option>
+            <option value="veranda">베란다</option>
+            <option value="other">기타</option>
           </select>
         </div>
         <div class="form-group" style="margin-bottom:0">
           <label class="form-label" style="font-size:12px">누수 원인</label>
-          <input class="form-control" id="wd_leak_cause" placeholder="예: 배관 노후, 실리콘 크랙 등"/>
+          <input class="form-control" id="wd_leak_cause" placeholder="예: 배관 노후, 실리콘 크랙, 방수층 손상 등"/>
         </div>
       </div>
       <div class="form-group" style="margin-bottom:0">
@@ -712,22 +720,29 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
       <div style="font-size:12px;font-weight:800;margin-bottom:8px;color:#0891b2">🔍 누수탐지 상세</div>
       <div class="form-group" style="margin-bottom:10px">
         <label class="form-label" style="font-size:12px">누수 상세 부위 <span style="color:var(--red)">*</span></label>
-        <input class="form-control" id="wd_leak_detail_part" placeholder="예: 주방 싱크대 하부 온수배관 엘보 부위"/>
+        <select class="form-control" id="wd_leak_detail_part">
+          <option value="">선택</option>
+          <option value="배관">배관</option>
+          <option value="방수층">방수층</option>
+          <option value="분배기">분배기</option>
+          <option value="창틀코킹">창틀코킹</option>
+          <option value="보일러">보일러</option>
+          <option value="기타">기타</option>
+        </select>
       </div>
       <div class="form-group" style="margin-bottom:10px">
         <label class="form-label" style="font-size:12px">사용 탐지 장비 (복수 선택 가능)</label>
         <div style="display:flex;flex-wrap:wrap;gap:10px;padding:4px 0;font-size:12px">
-          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_detection_tool" value="열화상카메라"/>열화상카메라</label>
-          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_detection_tool" value="청음봉"/>청음봉</label>
-          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_detection_tool" value="가스추적기"/>가스추적기</label>
-          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_detection_tool" value="내시경"/>내시경</label>
-          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_detection_tool" value="수압테스트"/>수압테스트</label>
-          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_detection_tool" value="기타"/>기타</label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_detection_tool" value="thermal"/>열화상카메라</label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_detection_tool" value="acoustic"/>청음봉</label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_detection_tool" value="gas_trace"/>가스추적기</label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_detection_tool" value="moisture"/>수분계</label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_detection_tool" value="other"/>기타</label>
         </div>
       </div>
       <div class="form-group" style="margin-bottom:0">
         <label class="form-label" style="font-size:12px">탐지 횟수 <span style="color:var(--red)">*</span></label>
-        <input class="form-control" id="wd_detection_count" type="number" min="1" max="20" placeholder="예: 1"/>
+        <input class="form-control" id="wd_detection_count" type="number" min="1" max="3" placeholder="1~3"/>
       </div>
     </div>
 
@@ -735,23 +750,26 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
     <div id="wd_interior_fields" style="display:none;margin-bottom:14px;padding:10px;background:#fefce8;border-radius:8px;border:1px solid #a1620722">
       <div style="font-size:12px;font-weight:800;margin-bottom:8px;color:#a16207">🏠 인테리어/복구 상세</div>
       <div class="form-group" style="margin-bottom:10px">
-        <label class="form-label" style="font-size:12px">작업 범위 (복수 선택 가능) <span style="color:var(--red)">*</span></label>
+        <label class="form-label" style="font-size:12px">작업 범위 — 어느 방 작업했는지 (복수 선택 가능) <span style="color:var(--red)">*</span></label>
+        <div style="font-size:10px;color:var(--muted);margin-bottom:4px">💡 공정(도배/장판/타일 등)은 업로드 사진으로 확인합니다</div>
         <div style="display:flex;flex-wrap:wrap;gap:10px;padding:4px 0;font-size:12px">
-          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_interior_scope" value="도배"/>도배</label>
-          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_interior_scope" value="장판"/>장판</label>
-          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_interior_scope" value="타일"/>타일</label>
-          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_interior_scope" value="방수"/>방수</label>
-          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_interior_scope" value="페인트"/>페인트</label>
-          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_interior_scope" value="천장"/>천장</label>
-          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_interior_scope" value="목공"/>목공</label>
-          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_interior_scope" value="철거"/>철거</label>
-          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_interior_scope" value="기타"/>기타</label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_interior_scope" value="living"/>거실</label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_interior_scope" value="kitchen"/>주방</label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_interior_scope" value="main_room"/>안방</label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_interior_scope" value="sub_room_1"/>작은방 1</label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_interior_scope" value="sub_room_2"/>작은방 2</label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_interior_scope" value="sub_room_3"/>작은방 3</label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_interior_scope" value="bathroom"/>욕실</label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_interior_scope" value="boiler_room"/>보일러실</label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_interior_scope" value="utility_room"/>다용도실</label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_interior_scope" value="veranda"/>베란다</label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_interior_scope" value="other"/>기타</label>
         </div>
       </div>
       <div style="display:grid;grid-template-columns:80px 1fr 1fr;gap:8px;margin-bottom:0">
         <div class="form-group" style="margin-bottom:0">
           <label class="form-label" style="font-size:12px">인원 <span style="color:var(--red)">*</span></label>
-          <input class="form-control" id="wd_worker_count" type="number" min="1" max="99" placeholder="2"/>
+          <input class="form-control" id="wd_worker_count" type="number" min="1" max="10" placeholder="1~10"/>
         </div>
         <div class="form-group" style="margin-bottom:0">
           <label class="form-label" style="font-size:12px">착공일 <span style="color:var(--red)">*</span></label>
@@ -911,6 +929,41 @@ const CANCEL_REASON_PRESETS = [
   '케이스 종결',
   '기타'
 ];
+
+// v5.6.9 수리완료 보고서 enum 라벨 매핑
+// 프론트 표시는 한글, DB 저장은 영문 코드
+const AREA_LABELS = {
+  living:       '거실',
+  kitchen:      '주방',
+  main_room:    '안방',
+  sub_room_1:   '작은방 1',
+  sub_room_2:   '작은방 2',
+  sub_room_3:   '작은방 3',
+  bathroom:     '욕실',
+  boiler_room:  '보일러실',
+  utility_room: '다용도실',
+  veranda:      '베란다',
+  other:        '기타'
+};
+const DETECTION_TOOL_LABELS = {
+  thermal:   '열화상카메라',
+  acoustic:  '청음봉',
+  gas_trace: '가스추적기',
+  moisture:  '수분계',
+  other:     '기타'
+};
+const LEAK_DETAIL_PART_LABELS = {
+  '배관':     '배관',
+  '방수층':   '방수층',
+  '분배기':   '분배기',
+  '창틀코킹': '창틀코킹',
+  '보일러':   '보일러',
+  '기타':     '기타'
+};
+// 한글→코드 / 코드→한글 양방향 조회 도우미
+function areaLabel(code){ return AREA_LABELS[code] || code || '-'; }
+function areaLabelList(codes){ return Array.isArray(codes) ? codes.map(areaLabel).join(', ') : '-'; }
+function detectionToolLabelList(codes){ return Array.isArray(codes) ? codes.map(c=>DETECTION_TOOL_LABELS[c]||c).join(', ') : '-'; }
 
 // purpose별 진행 상태 배지 (목록 화면용)
 //   - needs_*=false → '—' (해당 업종 불필요)
@@ -1283,8 +1336,18 @@ async function openCaseDetail(caseId){
   document.getElementById('cdModalTitle').textContent=`접수 상세 — ${data.case_no}`;
 
   // purpose별 배정 이력 (assignment_purpose 필드 사용)
+  // v5.6.9: 보고서 상세 렌더링을 위해 모든 보고 필드 SELECT
   const { data: assigns } = await sb.from('partner_assignments')
-    .select('id,assignment_status,assignment_purpose,work_status,requested_at,responded_at,partner_company_id,partner_companies(company_name,specialties)')
+    .select(`
+      id, assignment_status, assignment_purpose, work_status,
+      requested_at, responded_at, partner_company_id,
+      repair_cost, repair_opinion, work_done_at,
+      accident_datetime_at_site, accident_datetime_note,
+      attacker_unit, victim_unit, leak_area_type, leak_cause,
+      leak_detail_part, detection_tools, detection_count,
+      interior_scope, worker_count, construction_start_date, construction_end_date,
+      partner_companies(company_name, specialties)
+    `)
     .eq('case_id',caseId)
     .order('created_at',{ascending:false});
 
@@ -1423,9 +1486,37 @@ function renderPurposeSection(purpose, needs, active, history){
 
 // 수리완료 보고서 렌더링 (purpose별 2개 가능)
 function renderRepairReports(detectionDone, interiorDone, docs){
-  const renderOne = (a, label, color) => {
+  const renderOne = (a, label, color, purpose) => {
     if(!a) return '';
     const myDocs = (docs||[]).filter(d=>d.assignment_id===a.id);
+
+    // 공통 필드 (사고 정보)
+    const commonInfo = [
+      a.accident_datetime_at_site ? `<div><span style="color:var(--muted)">사고일시:</span> <strong>${fmtDateTime(a.accident_datetime_at_site)}</strong></div>` : '',
+      a.attacker_unit ? `<div><span style="color:var(--muted)">가해 세대:</span> <strong>${a.attacker_unit}</strong></div>` : '',
+      a.victim_unit ? `<div><span style="color:var(--muted)">피해 세대:</span> <strong>${a.victim_unit}</strong></div>` : '',
+      a.leak_area_type ? `<div><span style="color:var(--muted)">누수 부위:</span> <strong>${areaLabel(a.leak_area_type)}</strong></div>` : '',
+      a.leak_cause ? `<div><span style="color:var(--muted)">누수 원인:</span> <strong>${a.leak_cause}</strong></div>` : '',
+      a.accident_datetime_note ? `<div><span style="color:var(--muted)">사고 일시 비고:</span> ${a.accident_datetime_note}</div>` : '',
+    ].filter(Boolean).join('');
+
+    // purpose별 상세
+    let purposeDetail = '';
+    if(purpose === 'detection'){
+      purposeDetail = [
+        a.leak_detail_part ? `<div><span style="color:var(--muted)">누수 상세 부위:</span> <strong>${a.leak_detail_part}</strong></div>` : '',
+        a.detection_tools && a.detection_tools.length ? `<div><span style="color:var(--muted)">탐지 장비:</span> <strong>${detectionToolLabelList(a.detection_tools)}</strong></div>` : '',
+        a.detection_count ? `<div><span style="color:var(--muted)">탐지 횟수:</span> <strong>${a.detection_count}회</strong></div>` : '',
+      ].filter(Boolean).join('');
+    } else if(purpose === 'interior'){
+      purposeDetail = [
+        a.interior_scope && a.interior_scope.length ? `<div><span style="color:var(--muted)">작업 범위:</span> <strong>${areaLabelList(a.interior_scope)}</strong></div>` : '',
+        a.worker_count ? `<div><span style="color:var(--muted)">투입 인원:</span> <strong>${a.worker_count}명</strong></div>` : '',
+        a.construction_start_date ? `<div><span style="color:var(--muted)">착공일:</span> <strong>${a.construction_start_date}</strong></div>` : '',
+        a.construction_end_date ? `<div><span style="color:var(--muted)">완공일:</span> <strong>${a.construction_end_date}</strong></div>` : '',
+      ].filter(Boolean).join('');
+    }
+
     return `
       <div style="margin-top:12px;padding:12px;background:var(--green-soft);border-radius:8px">
         <div style="font-size:13px;font-weight:900;margin-bottom:10px;color:${color}">✅ ${label} 수리완료</div>
@@ -1439,7 +1530,9 @@ function renderRepairReports(detectionDone, interiorDone, docs){
             <div style="font-size:13px;font-weight:900;color:${color}">${a.repair_cost ? a.repair_cost.toLocaleString()+'원' : '-'}</div>
           </div>
         </div>
-        ${a.repair_opinion?`<div style="padding:8px;background:white;border-radius:6px;font-size:12px;line-height:1.5;margin-bottom:8px">${a.repair_opinion}</div>`:''}
+        ${commonInfo ? `<div style="padding:8px;background:white;border-radius:6px;font-size:12px;line-height:1.8;margin-bottom:8px;display:grid;grid-template-columns:1fr 1fr;gap:4px 12px">${commonInfo}</div>` : ''}
+        ${purposeDetail ? `<div style="padding:8px;background:white;border-radius:6px;font-size:12px;line-height:1.8;margin-bottom:8px;border-left:3px solid ${color}">${purposeDetail}</div>` : ''}
+        ${a.repair_opinion?`<div style="padding:8px;background:white;border-radius:6px;font-size:12px;line-height:1.5;margin-bottom:8px"><div style="font-size:10px;color:var(--muted);font-weight:700;margin-bottom:2px">기타 의견</div>${a.repair_opinion}</div>`:''}
         ${myDocs.length?(()=>{
           // 단계별 그룹핑
           const groups = {
@@ -1464,7 +1557,7 @@ function renderRepairReports(detectionDone, interiorDone, docs){
       </div>
     `;
   };
-  return renderOne(detectionDone, '누수탐지', '#0891b2') + renderOne(interiorDone, '인테리어/복구', '#a16207');
+  return renderOne(detectionDone, '누수탐지', '#0891b2', 'detection') + renderOne(interiorDone, '인테리어/복구', '#a16207', 'interior');
 }
 
 // 배정 취소
