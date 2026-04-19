@@ -1467,9 +1467,10 @@ async function loadPartnerHome(){
     <div class="stat-card green"><div class="stat-label">수리완료</div><div class="stat-value">${summary?.cnt_repair_done||0}</div></div>
   `;
 
-  // 진행 중인 배정 목록
+  // 진행 중인 배정 목록 (본인 회사만)
   const { data: assigns } = await sb.from('partner_web_assignment_list_v')
     .select('*')
+    .eq('partner_company_id', curUser.company_id)
     .in('assignment_status',['requested','accepted'])
     .order('requested_at',{ascending:false});
 
@@ -1501,6 +1502,7 @@ async function loadPartnerAssignments(){
 
   const { data, error } = await sb.from('partner_web_assignment_list_v')
     .select('*')
+    .eq('partner_company_id', curUser.company_id)
     .order('requested_at',{ascending:false});
 
   if(error){ document.getElementById('pAssignmentList').innerHTML=`<div style="color:var(--red);padding:20px">오류: ${error.message}</div>`; return; }
