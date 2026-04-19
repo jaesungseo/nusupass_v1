@@ -165,9 +165,49 @@ select.form-control{cursor:pointer}
 .tl-meta{font-size:11px;color:var(--muted);margin-top:2px}
 
 @media(max-width:768px){
+  /* 모바일: 사이드바를 상단 가로 바로 전환 */
   .app{grid-template-columns:1fr}
-  .sidebar{display:none}
+  .sidebar{
+    position:sticky;top:0;z-index:50;
+    height:auto;max-height:none;
+    width:100%;
+    display:flex;flex-direction:column;
+    box-shadow:0 2px 8px rgba(0,0,0,.15);
+  }
+  .sb-brand{padding:10px 14px;display:flex;justify-content:space-between;align-items:center;border-bottom:0}
+  .sb-brand h1{font-size:15px}
+  .sb-brand p{display:none}
+  .sb-user{padding:8px 14px;border-top:1px solid rgba(255,255,255,.07)}
+  .sb-user-avatar{width:26px;height:26px;font-size:11px}
+  .sb-user-name{font-size:12px}
+  .sb-user-role{font-size:9px}
+  .sb-nav{
+    flex-direction:row;
+    gap:4px;
+    padding:8px 12px;
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+  }
+  .sb-nav::-webkit-scrollbar{display:none}
+  .sb-group{display:none}   /* 모바일에선 그룹명 생략 */
+  .sb-btn{
+    flex-shrink:0;
+    padding:8px 12px;
+    font-size:12px;
+    white-space:nowrap;
+  }
+  .sb-btn svg{width:13px;height:13px}
+  .sb-footer{
+    padding:8px 14px;
+    border-top:1px solid rgba(255,255,255,.07);
+  }
+  .sb-logout{padding:6px;font-size:11px}
   .content{padding:16px}
+
+  /* 모바일: 모달 패딩 축소 */
+  .modal-overlay{padding:12px}
+  .modal{padding:18px}
 }
 
 /* ── 보험자료 탭 스타일 ── */
