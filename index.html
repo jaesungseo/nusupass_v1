@@ -1899,14 +1899,19 @@ function wdRenderGallery(stage){
   const counter = document.getElementById(`wd_count_${stage}`);
   const items = wdPhotos[stage];
   counter.textContent = `${items.length}장`;
-  gallery.innerHTML = items.map(p => `
-    <div class="wd-photo-thumb ${p.status||''}" data-id="${p.id}">
-      <img src="${p.previewUrl}" alt=""/>
-      ${p.status !== 'uploaded' && p.status !== 'uploading' ? 
-        `<button type="button" class="wd-photo-del" onclick="wdRemovePhoto('${stage}',${p.id})" title="삭제">×</button>` 
-        : ''}
-    </div>
-  `).join('');
+  gallery.innerHTML = items.map(p => {
+    const titleAttr = p.status === 'failed' && p.lastError 
+      ? ` title="업로드 실패: ${p.lastError.replace(/"/g,'&quot;')}"` 
+      : '';
+    return `
+      <div class="wd-photo-thumb ${p.status||''}" data-id="${p.id}"${titleAttr}>
+        <img src="${p.previewUrl}" alt=""/>
+        ${p.status !== 'uploaded' && p.status !== 'uploading' ? 
+          `<button type="button" class="wd-photo-del" onclick="wdRemovePhoto('${stage}',${p.id})" title="삭제">×</button>` 
+          : ''}
+      </div>
+    `;
+  }).join('');
 }
 
 // 파일 추가 (input change 핸들러)
@@ -1940,35 +1945,43 @@ function wdRemovePhoto(stage, id){
 }
 
 // ─── 클라이언트 사진 리사이즈 + 압축 ───
-// 이미지 파일을 받아 1600px 장변 + JPEG 80% 로 변환 (EXIF 회전 자동 적용)
-function wdCompressImage(file, maxSide = 1600, quality = 0.8) {
-  return new Promise((resolve, reject) => {
-    // createImageBitmap은 EXIF 회전을 자동 처리 (imageOrientation: 'from-image')
-    createImageBitmap(file, { imageOrientation: 'from-image' })
-      .then(bitmap => {
-        let w = bitmap.width, h = bitmap.height;
-        const longest = Math.max(w, h);
-        if(longest > maxSide){
-          const ratio = maxSide / longest;
-          w = Math.round(w * ratio);
-          h = Math.round(h * ratio);
-        }
-        const canvas = document.createElement('canvas');
-        canvas.width = w; canvas.height = h;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(bitmap, 0, 0, w, h);
-        bitmap.close && bitmap.close();
-        canvas.toBlob(blob => {
-          if(!blob) return reject(new Error('이미지 변환 실패'));
-          resolve(blob);
-        }, 'image/jpeg', quality);
-      })
-      .catch(err => {
-        // createImageBitmap 실패 시 원본 그대로 반환 (진행은 시켜야 함)
-        console.warn('리사이즈 실패, 원본 사용:', err);
-        resolve(file);
-      });
-  });
+// 이미지 파일을 받아 maxSide 픽셀 장변 + JPEG quality 로 변환 (EXIF 회전 자동 적용)
+// 실패 시 원본 그대로 반환
+async function wdCompressImage(file, maxSide = 1600, quality = 0.8) {
+  try {
+    const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+    let w = bitmap.width, h = bitmap.height;
+    const longest = Math.max(w, h);
+    if(longest > maxSide){
+      const ratio = maxSide / longest;
+      w = Math.round(w * ratio);
+      h = Math.round(h * ratio);
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    bitmap.close && bitmap.close();
+    const blob = await new Promise((resolve, reject) => {
+      canvas.toBlob(b => b ? resolve(b) : reject(new Error('canvas toBlob 실패')), 'image/jpeg', quality);
+    });
+    console.log(`[압축] ${file.name}: ${(file.size/1024).toFixed(0)}KB → ${(blob.size/1024).toFixed(0)}KB (${w}x${h}, q=${quality})`);
+    return blob;
+  } catch(err) {
+    console.warn('[압축] 실패, 원본 사용:', file.name, err);
+    return file;
+  }
+}
+
+// AbortController 기반 타임아웃 Promise.race 래퍼
+function wdWithTimeout(promise, ms, controller){
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => {
+      controller && controller.abort && controller.abort();
+      reject(new Error(`timeout after ${ms}ms`));
+    }, ms))
+  ]);
 }
 
 // ─── 병렬 업로드 헬퍼 (동시 N개 워커 풀) ───
@@ -2081,10 +2094,16 @@ async function submitWorkDone(){
   if(!isReal){ toast('[MOCK] 수리완료 보고서 제출 완료 (실제 저장 안 됨)','i'); closeModal('workDoneModal'); return; }
 
   // ─── 사진 파일 수집 (N장 × 3단계) ───
-  const photoItems = [];  // { stage, photoObj, file, path }
+  // 이미 성공적으로 업로드된 사진(status='uploaded')은 제외 (재제출 시 중복 방지)
+  const photoItems = [];  // { stage, photoObj, file }
+  const alreadyUploaded = [];  // 이미 업로드된 사진 (meta INSERT는 여전히 필요)
   for(const stage of ['before','during','after']){
     for(const p of wdPhotos[stage]){
-      photoItems.push({ stage, photoObj: p, file: p.file });
+      if(p.status === 'uploaded' && p.uploadedPath){
+        alreadyUploaded.push({ stage, path: p.uploadedPath, photoObj: p });
+      } else {
+        photoItems.push({ stage, photoObj: p, file: p.file });
+      }
     }
   }
 
@@ -2103,44 +2122,88 @@ async function submitWorkDone(){
   };
 
   try {
-    // ─── 사진 리사이즈 + 병렬 업로드 파이프라인 ───
-    const uploadedMeta = [];  // { stage, path }
+    // ─── 사진 리사이즈 + 병렬 업로드 (병렬 3 + 개별 2회 자동 재시도 + 90초 타임아웃) ───
+    const uploadedMeta = [];  // { stage, path, photoObj }
+    const failedItems = [];   // 자동 재시도 후에도 실패한 것들
     if(photoItems.length > 0){
       progWrap.style.display = 'block';
       setProgress(0, photoItems.length, `사진 처리 중 0/${photoItems.length}…`);
       setWdSubmitting(true, `사진 업로드 중… (${photoItems.length}장)`);
 
-      // 각 사진에 대해 "리사이즈 → 업로드" 태스크 함수 정의
-      const tasks = photoItems.map((item, i) => async () => {
-        // 썸네일 상태: uploading
+      // 개별 업로드 함수 (재시도 내장)
+      const uploadOne = async (item, attempt = 1) => {
         item.photoObj.status = 'uploading';
         wdRenderGallery(item.stage);
 
-        try {
-          // 1) 클라이언트 리사이즈 + 압축
-          const compressed = await wdCompressImage(item.file, 1600, 0.8);
-          // 2) 업로드
-          const ts = Date.now() + '_' + i;
-          const path = `${selectedAssignmentId}/${item.stage}_${ts}.jpg`;
-          const { error: upErr } = await sb.storage
-            .from('partner-work')
-            .upload(path, compressed, { upsert: true, contentType: 'image/jpeg' });
-          if(upErr) throw upErr;
-          uploadedMeta.push({ stage: item.stage, path });
-          item.photoObj.status = 'uploaded';
-        } catch(e) {
-          item.photoObj.status = 'failed';
-          throw e;
-        } finally {
-          wdRenderGallery(item.stage);
-        }
-      });
+        // 재시도마다 압축 강도를 높임 (용량↓)
+        const maxSide = attempt === 1 ? 1600 : (attempt === 2 ? 1200 : 900);
+        const quality = attempt === 1 ? 0.8 : (attempt === 2 ? 0.7 : 0.6);
 
-      // 동시 6장씩 병렬 업로드 (HTTP/1.1 안전 상한)
-      await wdParallelUpload(tasks, 6, (done, total) => {
+        try {
+          const compressed = await wdCompressImage(item.file, maxSide, quality);
+          const ts = Date.now() + '_' + item.photoObj.id;
+          const path = `${selectedAssignmentId}/${item.stage}_${ts}.jpg`;
+
+          // 90초 타임아웃으로 업로드
+          await wdWithTimeout(
+            sb.storage.from('partner-work')
+              .upload(path, compressed, { upsert: true, contentType: 'image/jpeg' })
+              .then(({ error }) => { if(error) throw error; }),
+            90000
+          );
+
+          uploadedMeta.push({ stage: item.stage, path, photoObj: item.photoObj });
+          item.photoObj.status = 'uploaded';
+          item.photoObj.uploadedPath = path;  // 재시도 시 중복 업로드 방지
+          wdRenderGallery(item.stage);
+          console.log(`[업로드 성공] ${item.stage} #${item.photoObj.id} (${attempt}회차)`);
+          return true;
+        } catch(e) {
+          const msg = e.message || String(e);
+          console.warn(`[업로드 실패] ${item.stage} #${item.photoObj.id} ${attempt}회차:`, msg);
+          // 2회차까지 자동 재시도 (네트워크 일시 불안정 대응)
+          if(attempt < 2){
+            // 짧게 대기 후 재시도
+            await new Promise(r => setTimeout(r, 500 * attempt));
+            return uploadOne(item, attempt + 1);
+          }
+          item.photoObj.status = 'failed';
+          item.photoObj.lastError = msg;
+          wdRenderGallery(item.stage);
+          return false;
+        }
+      };
+
+      // 병렬 3개씩 처리 (모바일 네트워크 안전 상한)
+      const tasks = photoItems.map(item => async () => {
+        await uploadOne(item, 1);
+      });
+      await wdParallelUpload(tasks, 3, (done, total) => {
         setProgress(done, total, `사진 업로드 ${done}/${total}…`);
         setWdSubmitting(true, `사진 업로드 ${done}/${total}…`);
       });
+
+      // 실패한 것 집계
+      for(const item of photoItems){
+        if(item.photoObj.status === 'failed') failedItems.push(item);
+      }
+
+      // 전부 실패한 경우: 중단. 일부만 실패한 경우: 사용자에게 선택권.
+      if(failedItems.length > 0){
+        progWrap.style.display = 'none';
+        setWdSubmitting(false);
+        const succeeded = photoItems.length - failedItems.length;
+        const msg = succeeded === 0
+          ? `모든 사진 업로드 실패 (${failedItems.length}장).\n네트워크 상태를 확인하고 "보고서 제출" 버튼을 다시 눌러주세요.\n실패한 사진만 자동 재시도됩니다.`
+          : `${succeeded}장 업로드 성공, ${failedItems.length}장 실패.\n\n[확인] = 실패한 사진 없이 보고서만 먼저 제출\n[취소] = 네트워크 상태 확인 후 다시 제출 (실패 사진만 재시도됨)`;
+        const ok = confirm(msg);
+        if(!ok){
+          // 사용자가 재시도 선택 → 함수 종료 (실패 썸네일은 그대로 남아있음, 다시 제출 버튼 누르면 실패 사진만 재시도)
+          return;
+        }
+        // 사용자가 "확인" = 실패 사진 포기하고 성공분만 저장하기로 함
+        console.log(`[부분 제출] 성공 ${succeeded}장, 포기 ${failedItems.length}장`);
+      }
     }
 
     // ─── RPC 호출 (보고서 본문 저장) ───
@@ -2171,14 +2234,21 @@ async function submitWorkDone(){
       return;
     }
 
-    // ─── 사진 메타 INSERT (case_documents, 병렬) ───
-    if(uploadedMeta.length){
+    // ─── 사진 메타 INSERT (case_documents) ───
+    // uploadedMeta (이번 제출에서 올린 것) + alreadyUploaded (이전 재시도 때 올려둔 것)
+    const allMeta = [...uploadedMeta, ...alreadyUploaded];
+    if(allMeta.length){
       setWdSubmitting(true, '사진 정보 등록 중…');
       progText.textContent = '사진 정보 등록 중…';
       const { data: pa } = await sb.from('partner_assignments').select('case_id').eq('id',selectedAssignmentId).maybeSingle();
       if(pa?.case_id){
-        // INSERT를 bulk로 한 번에 (훨씬 빠름)
-        const rows = uploadedMeta.map(m => ({
+        // 재제출 시 중복 방지: 이 배정의 기존 repair_photo 메타 먼저 삭제
+        await sb.from('case_documents')
+          .delete()
+          .eq('assignment_id', selectedAssignmentId)
+          .like('document_type', 'repair_photo_%');
+        // 전체 bulk INSERT
+        const rows = allMeta.map(m => ({
           case_id: pa.case_id,
           assignment_id: selectedAssignmentId,
           document_type: `repair_photo_${m.stage}`,
@@ -2194,7 +2264,7 @@ async function submitWorkDone(){
 
     progWrap.style.display = 'none';
     setWdSubmitting(false);
-    toast(`수리완료 보고서 제출 완료! (사진 ${uploadedMeta.length}장) 수고하셨습니다.`,'s');
+    toast(`수리완료 보고서 제출 완료! (사진 ${allMeta.length}장) 수고하셨습니다.`,'s');
     closeModal('workDoneModal');
     loadPartnerAssignments();
     loadPartnerHome();
