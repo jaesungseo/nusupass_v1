@@ -453,14 +453,10 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
           <select class="form-control" style="width:auto" id="caseStatusFilter" onchange="filterCases()">
             <option value="">전체 상태</option>
             <option value="접수">접수</option>
-            <option value="검토중">검토중</option>
             <option value="파트너배정중">파트너배정중</option>
             <option value="배정완료">배정완료</option>
-            <option value="방문중">방문중</option>
-            <option value="방문완료">방문완료</option>
             <option value="수리완료">수리완료</option>
-            <option value="보험청구중">보험청구중</option>
-            <option value="완료">완료</option>
+            <option value="거절">거절</option>
           </select>
         </div>
         <div class="table-wrap">
@@ -842,17 +838,20 @@ function purposeStatusBadge(needs, assignStatus, workStatus){
   }
   return `<span style="color:var(--muted);font-size:11px">-</span>`;
 }
+// v5.6 현재 시스템이 실제 세팅하는 값: 접수 / 파트너배정중 / 배정완료 / 수리완료 / 거절
+// v5.7 예정: 방문중, 방문완료 (work_status 연동), 보험청구중/완료 (보험자료 탭 연동)
 const STATUS_BADGE = {
   '접수':'badge-blue',
-  '검토중':'badge-amber',
   '파트너배정중':'badge-amber',
   '배정완료':'badge-teal',
+  '수리완료':'badge-green',
+  '거절':'badge-red',
+  // 아래는 v5.7에서 활성화 예정 — 혹시 레거시 데이터가 있으면 표시용으로만 유지
+  '검토중':'badge-amber',
   '방문중':'badge-blue',
   '방문완료':'badge-teal',
-  '수리완료':'badge-green',
   '보험청구중':'badge-blue',
-  '완료':'badge-gray',
-  '거절':'badge-red'
+  '완료':'badge-gray'
 };
 function statusBadge(s){
   const cls = STATUS_BADGE[s] || 'badge-gray';
