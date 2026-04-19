@@ -164,42 +164,10 @@ select.form-control{cursor:pointer}
 .tl-title{font-size:13px;font-weight:700}
 .tl-meta{font-size:11px;color:var(--muted);margin-top:2px}
 
-/* ═══════ v5.5 Phase 3: 모바일 햄버거 메뉴 ═══════ */
-.mobile-menu-btn {
-  display: none;
-  position: fixed; top: 12px; left: 12px;
-  z-index: 200;
-  width: 44px; height: 44px;
-  background: var(--nav); color: white;
-  border: none; border-radius: 8px;
-  align-items: center; justify-content: center;
-  cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-}
-.sidebar-overlay {
-  display: none;
-  position: fixed; inset: 0;
-  background: rgba(0,0,0,0.4);
-  z-index: 150;
-}
-.sidebar-overlay.open { display: block; }
-
 @media(max-width:768px){
   .app{grid-template-columns:1fr}
-  .sidebar{
-    display:flex !important;
-    position: fixed; top: 0; left: 0;
-    height: 100vh; width: 260px;
-    z-index: 180;
-    transform: translateX(-100%);
-    transition: transform 0.3s ease;
-  }
-  .sidebar.open { transform: translateX(0); }
-  .mobile-menu-btn { display: flex; }
-  .content{padding:16px;padding-top:56px;margin-left:0 !important}
-}
-@media print {
-  .mobile-menu-btn, .sidebar-overlay { display: none !important; }
+  .sidebar{display:none}
+  .content{padding:16px}
 }
 
 /* ── 보험자료 탭 스타일 ── */
@@ -296,252 +264,9 @@ select.form-control{cursor:pointer}
 /* ── v5 추가: Step bar 보조 라벨 ── */
 .ins-step-sub{font-size:10px;color:var(--subtle);margin-top:2px}
 
-/* ═══════════════════════════════════════════════════════════════
-   v5.4.2 Phase 3: 손해사정보고서 전용 스타일
-   ═══════════════════════════════════════════════════════════════ */
-.report-doc {
-  background: white;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 40px 50px;
-  font-family: 'Malgun Gothic', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  color: #222;
-  font-size: 12px;
-  line-height: 1.7;
-  max-width: 820px;
-  margin: 0 auto;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.04);
-}
-.report-section { margin-bottom: 28px; }
-.report-section-title {
-  font-size: 15px; font-weight: 900;
-  color: #1e40af;
-  padding: 8px 0 6px;
-  border-bottom: 2px solid #1e40af;
-  margin-bottom: 14px;
-}
-.report-subsection { margin-top: 14px; margin-bottom: 14px; }
-.report-subsection-title {
-  font-size: 13px; font-weight: 700;
-  color: #1e3a8a;
-  margin-bottom: 8px;
-}
-.report-plain-line {
-  padding: 10px 14px; font-size: 12px; color: var(--muted);
-}
-
-/* 표지 스타일 */
-.report-cover { 
-  min-height: 900px; 
-  position: relative;
-  padding-bottom: 120px;
-}
-.report-company-header { 
-  border-bottom: 2px solid #1e40af; 
-  padding-bottom: 12px; 
-  margin-bottom: 24px;
-}
-.report-company-name {
-  font-size: 22px; font-weight: 900; color: #1e40af;
-}
-.report-company-sub {
-  font-size: 11px; color: #666; margin-top: 4px;
-}
-.report-company-en {
-  font-size: 10px; color: #999; font-style: italic;
-}
-.report-meta-line {
-  display: flex; justify-content: space-between;
-  font-size: 12px; margin: 24px 0 18px;
-}
-.report-meta-table {
-  width: 100%; border-collapse: collapse; 
-  margin-bottom: 30px; font-size: 13px;
-}
-.report-meta-table td {
-  padding: 10px 12px; border: none;
-}
-.report-meta-table td.lbl {
-  width: 80px; font-weight: 700; letter-spacing: 2px;
-}
-.report-intro {
-  padding: 16px 20px; background: #f9fafb;
-  border-left: 3px solid #1e40af;
-  border-radius: 4px; margin: 20px 0;
-  font-size: 12.5px; line-height: 1.9;
-}
-.report-signatures {
-  margin-top: 40px; padding: 16px 20px;
-  font-size: 12px; line-height: 1.9;
-}
-.report-ceo-stamp {
-  position: absolute; bottom: 40px; right: 40px;
-  text-align: right; font-size: 13px; line-height: 1.8;
-}
-.report-stamp-img {
-  width: 44px; height: 44px;
-  object-fit: contain; margin: 0 6px;
-  vertical-align: middle;
-}
-
-/* 테이블 공통 */
-.report-kv-table, .report-num-table, .report-three-col-table {
-  width: 100%; border-collapse: collapse;
-  font-size: 12px; margin-bottom: 10px;
-}
-.report-kv-table td, .report-num-table td, .report-three-col-table td,
-.report-num-table th, .report-three-col-table th {
-  padding: 8px 12px; border: 1px solid #cbd5e1;
-  vertical-align: top;
-}
-.report-kv-table td.lbl, 
-.report-three-col-table td.lbl,
-.report-num-table td.lbl {
-  background: #f1f5f9; font-weight: 700;
-  width: 22%; white-space: nowrap;
-}
-.report-num-table { text-align: center; }
-.report-num-table th {
-  background: #1e40af; color: white; 
-  font-weight: 700; font-size: 11.5px;
-}
-.report-num-table .total-row { background: #fefce8; }
-.report-three-col-table th {
-  background: #f1f5f9; font-weight: 700;
-  font-size: 12px;
-}
-.report-three-col-table td:last-child { text-align: center; }
-.report-unit-label {
-  font-size: 11px; text-align: right;
-  margin: 8px 0 4px; color: #666;
-}
-
-/* 편집 가능 영역 (노란 배경) */
-.report-editable, .report-editable-input {
-  width: 100%;
-  background: #fef9c3 !important;  /* 연한 노란 */
-  border: 1px dashed #eab308;
-  padding: 6px 8px; font-size: 12px;
-  font-family: inherit;
-  border-radius: 3px;
-  line-height: 1.6;
-  box-sizing: border-box;
-}
-.report-editable-multi { 
-  resize: vertical; min-height: 60px; 
-}
-.report-editable:focus, .report-editable-input:focus {
-  outline: 2px solid #eab308; background: #fffdf0 !important;
-}
-
-/* 사진 그룹 */
-.report-photo-group { 
-  margin-bottom: 14px; 
-  page-break-inside: avoid;
-}
-.report-photo-label {
-  font-size: 12px; font-weight: 700;
-  color: #1e40af; margin-bottom: 6px;
-}
-.report-photo-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 8px;
-}
-.report-photo {
-  width: 100%; aspect-ratio: 4/3;
-  object-fit: cover; border: 1px solid #cbd5e1;
-  border-radius: 4px;
-}
-.report-photo-empty {
-  padding: 16px; text-align: center;
-  color: #94a3b8; font-size: 11px;
-  border: 1px dashed #cbd5e1; border-radius: 4px;
-}
-.report-footer {
-  margin-top: 40px;
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   @media print: PDF 인쇄 모드
-   ═══════════════════════════════════════════════════════════════ */
-@media print {
-  /* 전역 — 인쇄 외 UI 숨김 */
-  @page { size: A4; margin: 15mm 12mm; }
-  body.printing-report * { visibility: hidden; }
-  body.printing-report #report-print,
-  body.printing-report #report-print * { visibility: visible; }
-  body.printing-report #report-print {
-    position: absolute; left: 0; top: 0; width: 100%;
-    margin: 0; padding: 0;
-    box-shadow: none; border: none;
-    max-width: none;
-  }
-
-  /* 보고서 본체 */
-  .report-doc {
-    box-shadow: none; border: none; border-radius: 0;
-    max-width: 100%; padding: 0;
-    font-size: 11px;
-  }
-  .report-section { 
-    margin-bottom: 18px;
-    page-break-inside: avoid;
-  }
-  .page-break-after { page-break-after: always; }
-  .report-cover { min-height: auto; padding-bottom: 60px; }
-
-  /* 편집 영역: 인쇄 시 배경 없애고 div처럼 보이게 */
-  .report-editable, .report-editable-input {
-    background: transparent !important;
-    border: none !important;
-    padding: 0 !important;
-    resize: none;
-    min-height: auto;
-    white-space: pre-wrap;
-    overflow: visible;
-    height: auto;
-  }
-  textarea.report-editable {
-    display: block;
-    height: auto !important;
-  }
-
-  /* 사진 인쇄 품질 */
-  .report-photo { 
-    max-height: 150px;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-  .report-photo-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
-
-  /* 색상 보존 */
-  .report-num-table th,
-  .report-kv-table td.lbl,
-  .report-three-col-table td.lbl,
-  .report-three-col-table th,
-  .report-num-table .total-row,
-  .report-section-title {
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-
-  .no-print { display: none !important; }
-}
-
 </style>
 </head>
 <body>
-
-<!-- ══ v5.5 Phase 3: 모바일 햄버거 버튼 + 오버레이 ══ -->
-<button id="mobile-menu-btn" class="mobile-menu-btn" onclick="toggleSidebar()" aria-label="메뉴">
-  <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-    <path d="M4 6h16M4 12h16M4 18h16"/>
-  </svg>
-</button>
-<div id="sidebar-overlay" class="sidebar-overlay" onclick="toggleSidebar()"></div>
 
 <!-- ══════════════════════════════════════
      설정 — 여기에 실제 Supabase 키를 넣으세요
@@ -608,10 +333,6 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
         <button class="sb-btn" onclick="go('insurance')">
           <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
           보험자료 탭
-        </button>
-        <button class="sb-btn" onclick="go('company')">
-          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0H5m14 0h2m-2 0v-4a2 2 0 00-2-2h-2a2 2 0 00-2 2v4m-4 0V11a2 2 0 00-2-2H7a2 2 0 00-2 2v10m4 0h4"/></svg>
-          회사설정
         </button>
       </div>
       <!-- 파트너 메뉴 -->
@@ -688,28 +409,30 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
           <label class="form-label">지역구분</label>
           <input class="form-control" id="ic_region" placeholder="강남구"/>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-          <div class="form-group">
-            <label class="form-label">서비스 범위</label>
-            <select class="form-control" id="ic_scope">
-              <option value="INSURANCE_ONLY">보험처리만</option>
-              <option value="INSURANCE_DETECTION">보험+탐지</option>
-              <option value="INSURANCE_DETECTION_RESTORE">보험+탐지+복구</option>
-              <option value="UNSURE">미정</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">보험 가입 여부</label>
-            <select class="form-control" id="ic_insurance">
-              <option value="yes">예</option>
-              <option value="no">아니오</option>
-              <option value="unknown">모름</option>
-            </select>
+        <div class="form-group">
+          <label class="form-label">필요 업종 * <span style="font-size:11px;font-weight:400;color:var(--muted)">(최소 1개 선택)</span></label>
+          <div style="display:flex;gap:20px;padding:10px 0">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px">
+              <input type="checkbox" id="ic_needs_detection" style="width:18px;height:18px;cursor:pointer"/>
+              🔍 누수탐지
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px">
+              <input type="checkbox" id="ic_needs_interior" style="width:18px;height:18px;cursor:pointer"/>
+              🏠 인테리어/복구
+            </label>
           </div>
         </div>
         <div class="form-group">
-          <label class="form-label">누수 증상</label>
-          <textarea class="form-control" id="ic_symptom" rows="3" placeholder="천장에서 물이 떨어짐, 벽에 곰팡이 발생 등…"></textarea>
+          <label class="form-label">보험 가입 여부</label>
+          <select class="form-control" id="ic_insurance">
+            <option value="unknown">모름</option>
+            <option value="yes">예</option>
+            <option value="no">아니오</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">누수 증상 / 사고 내용</label>
+          <textarea class="form-control" id="ic_symptom" rows="3" placeholder="예) 천장에서 물이 떨어짐, 아래층 피해 발생, 벽에 곰팡이 등…"></textarea>
         </div>
         <button class="btn btn-primary" onclick="submitIntake()" style="width:100%;justify-content:center">접수 등록</button>
       </div>
@@ -747,15 +470,16 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
                 <th>접수번호</th>
                 <th>고객명</th>
                 <th>지역</th>
-                <th>서비스</th>
-                <th>상태</th>
-                <th>파트너</th>
+                <th>보험</th>
+                <th>전체상태</th>
+                <th>탐지</th>
+                <th>인테리어</th>
                 <th>접수일</th>
                 <th></th>
               </tr>
             </thead>
             <tbody id="caseListBody">
-              <tr><td colspan="8" class="loading"><span class="spinner"></span> 로딩 중…</td></tr>
+              <tr><td colspan="9" class="loading"><span class="spinner"></span> 로딩 중…</td></tr>
             </tbody>
           </table>
         </div>
@@ -786,116 +510,6 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
         <div class="empty">
           <div class="empty-icon">🛡️</div>
           <div class="empty-text">위에서 사건을 선택하거나, 접수 목록에서 "보험자료" 버튼을 클릭하세요</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ───────────────── 관리자: 회사설정 ───────────────── -->
-    <div class="screen" id="screen-company">
-      <div class="page-header">
-        <div>
-          <div class="page-title">회사설정</div>
-          <div class="page-sub">보고서에 사용되는 회사 정보 및 직인</div>
-        </div>
-        <button class="btn btn-primary" onclick="saveCompanySettings()">💾 저장</button>
-      </div>
-
-      <div class="card" style="margin-bottom:16px">
-        <div style="font-size:14px;font-weight:900;margin-bottom:14px">🏢 회사 기본정보</div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">회사명 (한글)</label>
-            <input class="form-control" id="co-name" placeholder="예: 누수패스손해사정(주)">
-          </div>
-          <div class="form-group">
-            <label class="form-label">회사명 (영문)</label>
-            <input class="form-control" id="co-name-en" placeholder="예: NUSUPASS ADJUSTERS CO.,LTD.">
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">사업자번호</label>
-            <input class="form-control" id="co-biz" placeholder="000-00-00000">
-          </div>
-          <div class="form-group">
-            <label class="form-label">대표자명</label>
-            <input class="form-control" id="co-rep" placeholder="예: 서재성">
-          </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">주소</label>
-          <input class="form-control" id="co-addr" placeholder="예: 경기도 용인시 수지구 수풍로 38">
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">대표 전화번호</label>
-            <input class="form-control" id="co-phone" placeholder="예: 010-4385-4005">
-          </div>
-          <div class="form-group">
-            <label class="form-label">팩스번호</label>
-            <input class="form-control" id="co-fax" placeholder="예: 070-0000-0000 (선택)">
-          </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">이메일</label>
-          <input class="form-control" id="co-email" placeholder="예: contact@nusupass.com (선택)" type="email">
-        </div>
-      </div>
-
-      <div class="card" style="margin-bottom:16px">
-        <div style="font-size:14px;font-weight:900;margin-bottom:14px">👤 손해사정사 · 조사자 정보</div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">손해사정사 이름</label>
-            <input class="form-control" id="co-adj-name" placeholder="예: 서재성">
-          </div>
-          <div class="form-group">
-            <label class="form-label">손해사정사 등록번호</label>
-            <input class="form-control" id="co-adj-no" placeholder="예: 손사 제 000000000호">
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">조사자 이름</label>
-            <input class="form-control" id="co-inv-name" placeholder="예: 서재성">
-          </div>
-          <div class="form-group">
-            <label class="form-label">조사자 등록번호</label>
-            <input class="form-control" id="co-inv-no" placeholder="예: AP 0000000">
-          </div>
-        </div>
-      </div>
-
-      <div class="card" style="margin-bottom:16px">
-        <div style="font-size:14px;font-weight:900;margin-bottom:6px">🔴 직인 이미지</div>
-        <div style="font-size:12px;color:var(--muted);margin-bottom:14px">보고서 표지에 삽입되는 대표자 직인. PNG 권장 (배경 투명).</div>
-        <div style="display:flex;gap:20px;align-items:flex-start">
-          <div id="co-stamp-preview" 
-               style="width:140px;height:140px;border:2px dashed var(--line);border-radius:8px;display:flex;align-items:center;justify-content:center;background:#fafafa;overflow:hidden;flex-shrink:0">
-            <div style="font-size:11px;color:var(--muted);text-align:center">직인<br>미등록</div>
-          </div>
-          <div style="flex:1">
-            <input type="file" id="co-stamp-file" accept="image/png,image/jpeg,image/webp,image/svg+xml" 
-                   style="display:none" onchange="onCompanyStampFile(this.files[0])">
-            <button class="btn btn-ghost btn-sm" onclick="document.getElementById('co-stamp-file').click()" style="margin-bottom:8px">
-              📤 직인 이미지 업로드
-            </button>
-            <button class="btn btn-ghost btn-sm" onclick="removeCompanyStamp()" id="co-stamp-remove" style="display:none;margin-left:6px">
-              🗑 삭제
-            </button>
-            <div style="font-size:11px;color:var(--muted);line-height:1.6;margin-top:4px">
-              · 권장: 정사각형 PNG (배경 투명)<br>
-              · 크기: 가로세로 300~500px 권장<br>
-              · 최대 5MB, png/jpg/webp/svg 지원
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="card" style="background:#fef3c7;border-color:#fde68a">
-        <div style="font-size:12px;color:#92400e;line-height:1.7">
-          💡 <b>팁:</b> 저장된 회사정보와 직인은 모든 손해사정보고서 표지와 푸터에 자동 삽입됩니다. 
-          보고서 출력 전에 직인이 올바르게 등록되어 있는지 확인하세요.
         </div>
       </div>
     </div>
@@ -936,7 +550,7 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 
 <!-- ── 접수 상세 모달 ── -->
 <div class="modal-overlay" id="caseDetailModal">
-  <div class="modal">
+  <div class="modal" style="max-width:640px">
     <div class="modal-header">
       <div class="modal-title" id="cdModalTitle">접수 상세</div>
       <button class="modal-close" onclick="closeModal('caseDetailModal')">✕</button>
@@ -944,7 +558,6 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
     <div id="caseDetailBody"></div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('caseDetailModal')">닫기</button>
-      <button class="btn btn-primary" id="assignBtn" onclick="openAssignModal()">파트너 배정</button>
     </div>
   </div>
 </div>
@@ -953,9 +566,10 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 <div class="modal-overlay" id="assignModal">
   <div class="modal">
     <div class="modal-header">
-      <div class="modal-title">파트너 배정</div>
+      <div class="modal-title" id="assignModalTitle">파트너 배정</div>
       <button class="modal-close" onclick="closeModal('assignModal')">✕</button>
     </div>
+    <div id="assignModalPurposeBadge" style="margin-bottom:12px"></div>
     <div class="form-group">
       <label class="form-label">파트너 업체 선택</label>
       <select class="form-control" id="assignCompanySelect">
@@ -993,141 +607,152 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
   </div>
 </div>
 
-<!-- ── 수리완료 보고서 모달 ── -->
+<!-- ── 수리완료 보고서 모달 (purpose-aware) ── -->
 <div class="modal-overlay" id="workDoneModal">
-  <div class="modal">
+  <div class="modal" style="max-width:600px">
     <div class="modal-header">
-      <div class="modal-title">수리완료 보고서</div>
+      <div class="modal-title" id="wdModalTitle">수리완료 보고서</div>
       <button class="modal-close" onclick="closeModal('workDoneModal')">✕</button>
     </div>
-    <div style="margin-bottom:16px;padding:12px;background:var(--amber-soft);border-radius:8px;font-size:12px;color:var(--amber)">
-      📸 사진은 보험 청구 시 핵심 증거입니다. 꼭 3단계 모두 촬영해 주세요.
+    <div id="wdPurposeBadge" style="margin-bottom:12px"></div>
+    <div style="margin-bottom:16px;padding:10px 12px;background:var(--amber-soft);border-radius:8px;font-size:12px;color:var(--amber);line-height:1.5">
+      📸 사진은 보험 청구 시 핵심 증거입니다. 3단계(작업 전/중/후) 모두 촬영해 주세요.
     </div>
-    
-    <!-- v5.5 ★ 사고일시 파악 섹션 (보험금 지급 판정의 핵심 정보) -->
-    <div style="padding:14px;background:var(--primary-soft);border-radius:8px;margin-bottom:16px;border:1px solid var(--primary)">
-      <div style="font-size:13px;font-weight:700;margin-bottom:6px;color:var(--primary)">
-        🕐 사고일시 파악 <span style="color:#dc2626">*</span>
-      </div>
-      <div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.6">
-        💡 누수가 <b>최초 발생한 시점</b>을 현장에서 물어봐 주세요.<br>
-        방문일·수리일이 아닌, <b>누수가 처음 새기 시작한 날</b>입니다.<br>
-        보험금 지급 여부를 결정하는 가장 중요한 정보입니다.
-      </div>
-      
+
+    <!-- ── 공통: 사고 정보 ── -->
+    <div style="margin-bottom:14px;padding:10px;background:var(--bg);border-radius:8px">
+      <div style="font-size:12px;font-weight:800;margin-bottom:8px;color:var(--muted)">📋 사고 정보</div>
       <div class="form-group" style="margin-bottom:10px">
-        <label class="form-label" style="font-size:11px">사고일시 <span style="color:#dc2626">*</span></label>
-        <input class="form-control" id="wd_accident_site_at" type="datetime-local" style="font-size:12px"/>
+        <label class="form-label" style="font-size:12px">사고 일시 <span style="color:var(--red)">*</span></label>
+        <input class="form-control" id="wd_accident_dt" type="datetime-local"/>
       </div>
-      
-      <div class="form-group" style="margin-bottom:10px">
-        <label class="form-label" style="font-size:11px">파악 방법 (복수 선택 가능) <span style="color:#dc2626">*</span></label>
-        <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px">
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
-            <input type="checkbox" name="wd_acc_src" value="victim_statement"> 
-            피해세대 주민에게 직접 질문
-          </label>
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
-            <input type="checkbox" name="wd_acc_src" value="complaint_log"> 
-            관리사무소 민원 접수일 확인
-          </label>
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
-            <input type="checkbox" name="wd_acc_src" value="insured_statement"> 
-            피보험자 진술
-          </label>
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
-            <input type="checkbox" name="wd_acc_src" value="partner_estimate"> 
-            현장 관찰로 추정 (얼룩 크기 등)
-          </label>
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
-            <input type="checkbox" name="wd_acc_src" value="unknown"> 
-            정확한 시점 특정 불가 (대략치만 입력)
-          </label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label" style="font-size:12px">가해 세대</label>
+          <input class="form-control" id="wd_attacker" placeholder="예: 502호"/>
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label" style="font-size:12px">피해 세대</label>
+          <input class="form-control" id="wd_victim" placeholder="예: 402호"/>
         </div>
       </div>
-      
-      <div class="form-group" style="margin:0">
-        <label class="form-label" style="font-size:11px">파악 메모 <span style="color:var(--muted);font-weight:400">(누구에게 어떻게 들었는지)</span></label>
-        <textarea class="form-control" id="wd_accident_note" rows="2" 
-          placeholder="예: 피해세대 (1502호) 김○○님 진술 — '8월 15일 저녁 천장에서 물 떨어지기 시작'"
-          style="font-size:12px"></textarea>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label" style="font-size:12px">누수 부위</label>
+          <select class="form-control" id="wd_leak_area">
+            <option value="">선택</option>
+            <option>주방</option><option>욕실</option><option>보일러실</option>
+            <option>다용도실</option><option>베란다</option><option>거실</option>
+            <option>침실</option><option>공용배관</option><option>기타</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label" style="font-size:12px">누수 원인</label>
+          <input class="form-control" id="wd_leak_cause" placeholder="예: 배관 노후, 실리콘 크랙 등"/>
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label" style="font-size:12px">사고 일시 비고</label>
+        <input class="form-control" id="wd_accident_note" placeholder="예: 고객 진술 기준, 피해세대 접수일 등"/>
       </div>
     </div>
-    
-    <!-- 가해/피해세대 동·호수 -->
-    <div style="padding:14px;background:var(--bg);border-radius:8px;margin-bottom:16px">
-      <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--primary)">📋 사고 기본 정보</div>
-      <!-- v5.4.1 하위호환: wd_accident_at 필드는 숨김 유지 (구 코드 참조 안전망) -->
-      <input type="hidden" id="wd_accident_at"/>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        <div class="form-group" style="margin:0">
-          <label class="form-label" style="font-size:11px">가해세대 동·호수 <span style="color:#dc2626">*</span></label>
-          <input class="form-control" id="wd_attacker_unit" placeholder="예: 104동 1203호" style="font-size:12px"/>
+
+    <!-- ── 🔍 누수탐지 전용 필드 ── -->
+    <div id="wd_detection_fields" style="display:none;margin-bottom:14px;padding:10px;background:#ecfeff;border-radius:8px;border:1px solid #0891b222">
+      <div style="font-size:12px;font-weight:800;margin-bottom:8px;color:#0891b2">🔍 누수탐지 상세</div>
+      <div class="form-group" style="margin-bottom:10px">
+        <label class="form-label" style="font-size:12px">누수 상세 부위 <span style="color:var(--red)">*</span></label>
+        <input class="form-control" id="wd_leak_detail_part" placeholder="예: 주방 싱크대 하부 온수배관 엘보 부위"/>
+      </div>
+      <div class="form-group" style="margin-bottom:10px">
+        <label class="form-label" style="font-size:12px">사용 탐지 장비 (복수 선택 가능)</label>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;padding:4px 0;font-size:12px">
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_detection_tool" value="열화상카메라"/>열화상카메라</label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_detection_tool" value="청음봉"/>청음봉</label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_detection_tool" value="가스추적기"/>가스추적기</label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_detection_tool" value="내시경"/>내시경</label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_detection_tool" value="수압테스트"/>수압테스트</label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_detection_tool" value="기타"/>기타</label>
         </div>
-        <div class="form-group" style="margin:0">
-          <label class="form-label" style="font-size:11px">피해세대 동·호수 <span style="color:#dc2626">*</span></label>
-          <input class="form-control" id="wd_victim_unit" placeholder="예: 104동 1103호" style="font-size:12px"/>
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label" style="font-size:12px">탐지 횟수 <span style="color:var(--red)">*</span></label>
+        <input class="form-control" id="wd_detection_count" type="number" min="1" max="20" placeholder="예: 1"/>
+      </div>
+    </div>
+
+    <!-- ── 🏠 인테리어 전용 필드 ── -->
+    <div id="wd_interior_fields" style="display:none;margin-bottom:14px;padding:10px;background:#fefce8;border-radius:8px;border:1px solid #a1620722">
+      <div style="font-size:12px;font-weight:800;margin-bottom:8px;color:#a16207">🏠 인테리어/복구 상세</div>
+      <div class="form-group" style="margin-bottom:10px">
+        <label class="form-label" style="font-size:12px">작업 범위 (복수 선택 가능) <span style="color:var(--red)">*</span></label>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;padding:4px 0;font-size:12px">
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_interior_scope" value="도배"/>도배</label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_interior_scope" value="장판"/>장판</label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_interior_scope" value="타일"/>타일</label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_interior_scope" value="방수"/>방수</label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_interior_scope" value="페인트"/>페인트</label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_interior_scope" value="천장"/>천장</label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_interior_scope" value="목공"/>목공</label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_interior_scope" value="철거"/>철거</label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="wd_interior_scope" value="기타"/>기타</label>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:80px 1fr 1fr;gap:8px;margin-bottom:0">
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label" style="font-size:12px">인원 <span style="color:var(--red)">*</span></label>
+          <input class="form-control" id="wd_worker_count" type="number" min="1" max="99" placeholder="2"/>
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label" style="font-size:12px">착공일 <span style="color:var(--red)">*</span></label>
+          <input class="form-control" id="wd_start_date" type="date"/>
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label" style="font-size:12px">완공일 <span style="color:var(--red)">*</span></label>
+          <input class="form-control" id="wd_end_date" type="date"/>
         </div>
       </div>
     </div>
 
-    <!-- v5.4.1 신규: 누수소견서 (구조화) -->
-    <div style="padding:14px;background:var(--primary-soft);border-radius:8px;margin-bottom:16px">
-      <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--primary)">🔍 누수 소견서</div>
-      <div class="form-group" style="margin-bottom:10px">
-        <label class="form-label" style="font-size:11px">누수 부위 <span style="color:#dc2626">*</span></label>
-        <div style="display:flex;gap:10px;margin-top:4px">
-          <label style="display:flex;align-items:center;gap:6px;padding:8px 14px;border:1px solid var(--line);border-radius:6px;cursor:pointer;flex:1;background:white">
-            <input type="radio" name="wd_leak_area" value="전유부"> <span style="font-size:12px;font-weight:600">전유부</span>
-          </label>
-          <label style="display:flex;align-items:center;gap:6px;padding:8px 14px;border:1px solid var(--line);border-radius:6px;cursor:pointer;flex:1;background:white">
-            <input type="radio" name="wd_leak_area" value="공용부"> <span style="font-size:12px;font-weight:600">공용부</span>
-          </label>
-          <label style="display:flex;align-items:center;gap:6px;padding:8px 14px;border:1px solid var(--line);border-radius:6px;cursor:pointer;flex:1;background:white">
-            <input type="radio" name="wd_leak_area" value="미상"> <span style="font-size:12px;font-weight:600">미상</span>
-          </label>
+    <!-- ── 공통: 사진 3단계 ── -->
+    <div style="margin-bottom:14px">
+      <div style="font-size:12px;font-weight:800;margin-bottom:8px;color:var(--muted)">📸 현장 사진 (3단계 필수)</div>
+      <div class="form-group">
+        <div class="step-header"><div class="step-num">1</div><div class="step-label">작업 전</div></div>
+        <div class="photo-upload-area" onclick="document.getElementById('photo_before').click()">
+          <div id="photo_before_label">📷 클릭하여 사진 업로드</div>
+          <img id="photo_before_preview" class="photo-preview" style="display:none"/>
+          <input type="file" id="photo_before" accept="image/*" onchange="previewPhoto(this,'photo_before_preview','photo_before_label')"/>
         </div>
       </div>
-      <div class="form-group" style="margin:0">
-        <label class="form-label" style="font-size:11px">누수 원인 <span style="color:#dc2626">*</span></label>
-        <textarea class="form-control" id="wd_leak_cause" rows="3" 
-          placeholder="예: 세탁실 전용배관(하수관) 노후화로 인한 피팅 이탈. 관로 부식 관찰됨." 
-          style="font-size:12px"></textarea>
+      <div class="form-group">
+        <div class="step-header"><div class="step-num">2</div><div class="step-label">작업 중</div></div>
+        <div class="photo-upload-area" onclick="document.getElementById('photo_during').click()">
+          <div id="photo_during_label">📷 클릭하여 사진 업로드</div>
+          <img id="photo_during_preview" class="photo-preview" style="display:none"/>
+          <input type="file" id="photo_during" accept="image/*" onchange="previewPhoto(this,'photo_during_preview','photo_during_label')"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <div class="step-header"><div class="step-num">3</div><div class="step-label">작업 후</div></div>
+        <div class="photo-upload-area" onclick="document.getElementById('photo_after').click()">
+          <div id="photo_after_label">📷 클릭하여 사진 업로드</div>
+          <img id="photo_after_preview" class="photo-preview" style="display:none"/>
+          <input type="file" id="photo_after" accept="image/*" onchange="previewPhoto(this,'photo_after_preview','photo_after_label')"/>
+        </div>
       </div>
     </div>
 
+    <!-- ── 공통: 금액 / 의견 ── -->
     <div class="form-group">
-      <div class="step-header"><div class="step-num">1</div><div class="step-label">작업 전 현장 사진 <span style="font-size:11px;color:var(--muted);font-weight:400">2장 이상 권장</span></div></div>
-      <div class="photo-upload-area" onclick="document.getElementById('photo_before').click()">
-        <div id="photo_before_label">📷 클릭하여 사진 업로드 (여러 장 가능)</div>
-        <div id="photo_before_previews" style="display:flex;flex-wrap:wrap;gap:6px"></div>
-        <input type="file" id="photo_before" accept="image/*" multiple onchange="previewMultiPhotos(this,'photo_before_previews','photo_before_label')"/>
-      </div>
-    </div>
-    <div class="form-group">
-      <div class="step-header"><div class="step-num">2</div><div class="step-label">작업 중 현장 사진 <span style="font-size:11px;color:var(--muted);font-weight:400">2장 이상 권장</span></div></div>
-      <div class="photo-upload-area" onclick="document.getElementById('photo_during').click()">
-        <div id="photo_during_label">📷 클릭하여 사진 업로드 (여러 장 가능)</div>
-        <div id="photo_during_previews" style="display:flex;flex-wrap:wrap;gap:6px"></div>
-        <input type="file" id="photo_during" accept="image/*" multiple onchange="previewMultiPhotos(this,'photo_during_previews','photo_during_label')"/>
-      </div>
-    </div>
-    <div class="form-group">
-      <div class="step-header"><div class="step-num">3</div><div class="step-label">작업 후 현장 사진 <span style="font-size:11px;color:var(--muted);font-weight:400">2장 이상 권장</span></div></div>
-      <div class="photo-upload-area" onclick="document.getElementById('photo_after').click()">
-        <div id="photo_after_label">📷 클릭하여 사진 업로드 (여러 장 가능)</div>
-        <div id="photo_after_previews" style="display:flex;flex-wrap:wrap;gap:6px"></div>
-        <input type="file" id="photo_after" accept="image/*" multiple onchange="previewMultiPhotos(this,'photo_after_previews','photo_after_label')"/>
-      </div>
-    </div>
-    <div class="form-group">
-      <label class="form-label">수리 금액 (원)</label>
+      <label class="form-label">견적/수리 금액 (원) <span style="color:var(--red)">*</span></label>
       <input class="form-control" id="wd_cost" type="number" placeholder="예: 350000"/>
     </div>
     <div class="form-group">
-      <label class="form-label">기타 소견 <span style="font-size:10px;color:var(--muted);font-weight:400">(선택 — 누수 원인 외 특이사항)</span></label>
-      <textarea class="form-control" id="wd_opinion" rows="3" placeholder="수리 내용, 추후 조치 필요사항 등 선택적으로 기재…"></textarea>
+      <label class="form-label">기타 의견 / 소견 <span style="color:var(--red)">*</span></label>
+      <textarea class="form-control" id="wd_opinion" rows="3" placeholder="누수 원인, 작업 내용, 특이사항 등 상세히 기재…"></textarea>
     </div>
+
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('workDoneModal')">취소</button>
       <button class="btn btn-success" onclick="submitWorkDone()">보고서 제출</button>
@@ -1181,6 +806,42 @@ const SERVICE_SCOPE_LABELS = {
   INSURANCE_DETECTION_RESTORE:'보험+탐지+복구',
   UNSURE:'미정'
 };
+const PURPOSE_LABELS = {
+  detection: '🔍 누수탐지',
+  interior:  '🏠 인테리어/복구'
+};
+const PURPOSE_LABELS_SHORT = {
+  detection: '탐지',
+  interior:  '인테리어'
+};
+const INSURANCE_LABELS = { yes:'가입', no:'미가입', unknown:'모름' };
+const CANCEL_REASON_PRESETS = [
+  '고객 요청',
+  '중복 배정',
+  '업체 변경',
+  '케이스 종결',
+  '기타'
+];
+
+// purpose별 진행 상태 배지 (목록 화면용)
+//   - needs_*=false → '—' (해당 업종 불필요)
+//   - needs_*=true + 배정 없음 → '⏳ 미배정'
+//   - assignment_status/work_status 조합으로 세부 표시
+function purposeStatusBadge(needs, assignStatus, workStatus){
+  if(!needs) return `<span style="color:var(--muted);font-size:11px">—</span>`;
+  if(!assignStatus) return `<span class="badge badge-gray" style="font-size:10px">⏳ 미배정</span>`;
+  if(assignStatus==='requested') return `<span class="badge badge-amber" style="font-size:10px">🔴 요청중</span>`;
+  if(assignStatus==='rejected') return `<span class="badge badge-red" style="font-size:10px">❌ 거절</span>`;
+  if(assignStatus==='expired') return `<span class="badge badge-gray" style="font-size:10px">⌛ 만료</span>`;
+  if(assignStatus==='cancelled') return `<span class="badge badge-gray" style="font-size:10px">✕ 취소</span>`;
+  if(assignStatus==='accepted'){
+    if(workStatus==='repair_done') return `<span class="badge badge-green" style="font-size:10px">✅ 완료</span>`;
+    if(workStatus==='visiting') return `<span class="badge badge-blue" style="font-size:10px">🔵 방문중</span>`;
+    if(workStatus==='visit_done') return `<span class="badge badge-teal" style="font-size:10px">🟢 방문완료</span>`;
+    return `<span class="badge badge-teal" style="font-size:10px">🟡 수락</span>`;
+  }
+  return `<span style="color:var(--muted);font-size:11px">-</span>`;
+}
 const STATUS_BADGE = {
   '접수':'badge-blue',
   '검토중':'badge-amber',
@@ -1236,56 +897,35 @@ document.addEventListener('keydown', e=>{ if(e.key==='Enter'&&document.getElemen
 async function resolveRole(uid, email){
   console.log('[resolveRole] uid:', uid, 'email:', email);
 
-  // v5.5 Phase 4 ★ 병렬 체크 + 역할 충돌 이중 방어
-  // 기존: admin_users 먼저 확인 → partner_users 순차 (한 쪽이 먼저 매칭되면 거기서 확정)
-  // 신규: 두 테이블 동시 조회 → 양쪽 모두 매칭되면 "충돌" 감지 → 자동 로그아웃
-  //       (DB 트리거 v5_4_3_prevent_role_conflict를 보완하는 클라이언트 방어선)
-  const [admRes, puRes] = await Promise.all([
-    sb.from('admin_users')
-      .select('id,name,role_code,is_active')
-      .eq('id', uid).maybeSingle(),
-    sb.from('partner_users')
-      .select('id,name,partner_company_id,is_active')
-      .eq('auth_user_id', uid).maybeSingle(),
-  ]);
+  // 1) admin_users 확인
+  const { data: adm, error: admErr } = await sb.from('admin_users')
+    .select('id,name,role_code')
+    .eq('id', uid)
+    .eq('is_active', true)
+    .maybeSingle();
+  console.log('[admin_users] data:', adm, 'error:', admErr);
 
-  console.log('[admin_users] data:', admRes.data, 'error:', admRes.error);
-  console.log('[partner_users] data:', puRes.data, 'error:', puRes.error);
-
-  const isAdmin   = !!(admRes.data && admRes.data.is_active);
-  const isPartner = !!(puRes.data && puRes.data.is_active);
-
-  // 양쪽 모두 매칭 → 역할 충돌 (DB 트리거 실패 가능성) → 즉시 로그아웃
-  if (isAdmin && isPartner) {
-    console.error('[SECURITY] 역할 충돌 감지 (admin AND partner):', uid, email);
-    toast('역할 충돌이 감지되어 자동 로그아웃되었습니다. 관리자에게 문의하세요.', 'e');
-    await sb.auth.signOut();
-    document.getElementById('mainApp').style.display='none';
-    document.getElementById('loginPage').style.display='block';
-    setTimeout(() => location.reload(), 2000);
-    return;
+  if(adm && !admErr){
+    curRole='admin';
+    curUser={id:uid, email, name:adm.name, role_code:adm.role_code};
+    showApp(); return;
   }
 
-  if (isAdmin) {
-    curRole = 'admin';
-    curUser = { id:uid, email, name: admRes.data.name, role_code: admRes.data.role_code };
-    showApp();
-    return;
+  // 2) partner_users 확인
+  const { data: pu, error: puErr } = await sb.from('partner_users')
+    .select('id,name,partner_company_id')
+    .eq('auth_user_id', uid)
+    .eq('is_active', true)
+    .maybeSingle();
+  console.log('[partner_users] data:', pu, 'error:', puErr);
+
+  if(pu && !puErr){
+    curRole='partner';
+    curUser={id:uid, email, name:pu.name, partner_user_id:pu.id, company_id:pu.partner_company_id};
+    showApp(); return;
   }
 
-  if (isPartner) {
-    curRole = 'partner';
-    curUser = {
-      id: uid, email,
-      name: puRes.data.name,
-      partner_user_id: puRes.data.id,
-      company_id: puRes.data.partner_company_id,
-    };
-    showApp();
-    return;
-  }
-
-  // 둘 다 없음 → 권한 없음
+  // 3) 둘 다 없음
   console.log('[resolveRole] 역할 없음 → 로그아웃');
   toast('등록된 관리자/파트너 계정이 아닙니다.','e');
   await sb.auth.signOut();
@@ -1322,28 +962,6 @@ function showApp(){
 })();
 
 // ══════════════════════════════════════════════════════════
-// v5.5 Phase 3: 모바일 햄버거 메뉴
-// ══════════════════════════════════════════════════════════
-function toggleSidebar() {
-  const sbEl = document.querySelector('.sidebar');
-  const ov = document.getElementById('sidebar-overlay');
-  if (!sbEl || !ov) return;
-  const isOpen = sbEl.classList.toggle('open');
-  ov.classList.toggle('open', isOpen);
-}
-
-// 모바일: 메뉴 항목 클릭 시 자동 닫기
-document.addEventListener('click', (e) => {
-  if (window.innerWidth <= 768 && 
-      (e.target.closest('.sb-btn') || e.target.closest('.sb-logout'))) {
-    setTimeout(() => {
-      document.querySelector('.sidebar')?.classList.remove('open');
-      document.getElementById('sidebar-overlay')?.classList.remove('open');
-    }, 100);
-  }
-});
-
-// ══════════════════════════════════════════════════════════
 // 화면 라우팅
 // ══════════════════════════════════════════════════════════
 function go(screen){
@@ -1359,7 +977,6 @@ function go(screen){
   if(screen==='caseList') loadCaseList();
   if(screen==='pHome') loadPartnerHome();
   if(screen==='pAssignments') loadPartnerAssignments();
-  if(screen==='company') loadCompanySettings();
   if(screen==='insurance'){
     if(typeof loadInsuranceCaseSelector==='function'){
       loadInsuranceCaseSelector().catch(e=>{
@@ -1452,14 +1069,26 @@ async function submitIntake(){
   const phone=document.getElementById('ic_phone').value.trim();
   const address=document.getElementById('ic_address').value.trim();
   const region=document.getElementById('ic_region').value.trim();
-  const scope=document.getElementById('ic_scope').value;
+  const needsDetection=document.getElementById('ic_needs_detection').checked;
+  const needsInterior=document.getElementById('ic_needs_interior').checked;
   const insurance=document.getElementById('ic_insurance').value;
   const symptom=document.getElementById('ic_symptom').value.trim();
   if(!name||!phone||!address){toast('고객명, 연락처, 주소는 필수입니다.','e'); return;}
+  if(!needsDetection && !needsInterior){
+    toast('필요 업종을 1개 이상 선택해 주세요. (누수탐지 또는 인테리어/복구)','e');
+    return;
+  }
+
+  // needs_* → service_scope 자동 매핑 (기존 CHECK 제약 호환)
+  const scope = needsInterior ? 'INSURANCE_DETECTION_RESTORE'
+              : needsDetection ? 'INSURANCE_DETECTION'
+              : 'UNSURE';
 
   if(!isReal){
     toast(`[MOCK] ${name} 접수 완료 (실제 저장 안 됨)`,'i');
     ['ic_name','ic_phone','ic_address','ic_region','ic_symptom'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('ic_needs_detection').checked=false;
+    document.getElementById('ic_needs_interior').checked=false;
     return;
   }
 
@@ -1469,7 +1098,10 @@ async function submitIntake(){
     address_full:address,
     address_region:region||null,
     service_scope:scope,
-    insurance_known:insurance,
+    needs_detection:needsDetection,
+    needs_interior:needsInterior,
+    insurance_known:insurance,         // 구 컬럼 (v5.7에서 제거 예정)
+    insurance_subscribed:insurance,    // 신 컬럼
     leak_symptom:symptom||null,
     intake_type:'manual',
     consent_privacy:true,
@@ -1481,6 +1113,8 @@ async function submitIntake(){
   if(error){ toast('접수 실패: '+error.message,'e'); return; }
   toast(`${name} 고객 접수 완료!`,'s');
   ['ic_name','ic_phone','ic_address','ic_region','ic_symptom'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('ic_needs_detection').checked=false;
+  document.getElementById('ic_needs_interior').checked=false;
   go('caseList');
 }
 
@@ -1502,7 +1136,7 @@ async function loadCaseList(){
 
 function renderCaseList(cases){
   if(!cases.length){
-    document.getElementById('caseListBody').innerHTML='<tr><td colspan="8"><div class="empty"><div class="empty-icon">📋</div><div class="empty-text">접수건이 없습니다</div></div></td></tr>';
+    document.getElementById('caseListBody').innerHTML='<tr><td colspan="9"><div class="empty"><div class="empty-icon">📋</div><div class="empty-text">접수건이 없습니다</div></div></td></tr>';
     return;
   }
   document.getElementById('caseListBody').innerHTML = cases.map(c=>`
@@ -1510,13 +1144,16 @@ function renderCaseList(cases){
       <td><span style="font-family:'JetBrains Mono',monospace;font-size:12px">${c.case_no||'-'}</span></td>
       <td><strong>${c.customer_name}</strong></td>
       <td>${c.address_region||'-'}</td>
-      <td><span style="font-size:12px">${SERVICE_SCOPE_LABELS[c.service_scope]||c.service_scope||'-'}</span></td>
+      <td style="font-size:11px;color:var(--muted)">${INSURANCE_LABELS[c.insurance_subscribed]||'-'}</td>
       <td>${statusBadge(c.display_status)}</td>
-      <td style="font-size:12px;color:var(--muted)">${c.current_partner_name||'-'}</td>
+      <td>${purposeStatusBadge(c.needs_detection, c.detection_status, c.detection_work_status)}
+          ${c.needs_detection && c.detection_partner_name ? `<div style="font-size:10px;color:var(--muted);margin-top:2px">${c.detection_partner_name}</div>` : ''}</td>
+      <td>${purposeStatusBadge(c.needs_interior, c.interior_status, c.interior_work_status)}
+          ${c.needs_interior && c.interior_partner_name ? `<div style="font-size:10px;color:var(--muted);margin-top:2px">${c.interior_partner_name}</div>` : ''}</td>
       <td style="font-size:12px;color:var(--muted)">${fmtDate(c.created_at)}</td>
       <td style="display:flex;gap:6px">
         <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openCaseDetail('${c.id}')">상세</button>
-        ${c.current_work_status==='repair_done'?`<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openInsuranceTab('${c.id}','${c.case_no}')">보험자료</button>`:''}
+        ${(c.detection_work_status==='repair_done' || c.interior_work_status==='repair_done') ? `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openInsuranceTab('${c.id}','${c.case_no}')">보험자료</button>` : ''}
       </td>
     </tr>
   `).join('');
@@ -1526,7 +1163,7 @@ function filterCases(){
   const kw = document.getElementById('caseSearch').value.toLowerCase();
   const st = document.getElementById('caseStatusFilter').value;
   const filtered = allCases.filter(c=>{
-    const match = !kw || [c.case_no,c.customer_name,c.address_region,c.current_partner_name].some(v=>(v||'').toLowerCase().includes(kw));
+    const match = !kw || [c.case_no,c.customer_name,c.address_region,c.detection_partner_name,c.interior_partner_name].some(v=>(v||'').toLowerCase().includes(kw));
     const stMatch = !st || c.display_status===st;
     return match && stMatch;
   });
@@ -1535,7 +1172,7 @@ function filterCases(){
 
 function renderCaseListMock(){
   document.getElementById('caseListSub').textContent='MOCK 모드';
-  document.getElementById('caseListBody').innerHTML='<tr><td colspan="8"><div class="empty"><div class="empty-icon">🔑</div><div class="empty-text">실제 Supabase 키 필요</div></div></td></tr>';
+  document.getElementById('caseListBody').innerHTML='<tr><td colspan="9"><div class="empty"><div class="empty-icon">🔑</div><div class="empty-text">실제 Supabase 키 필요</div></div></td></tr>';
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1553,38 +1190,42 @@ async function openCaseDetail(caseId){
 
   document.getElementById('cdModalTitle').textContent=`접수 상세 — ${data.case_no}`;
 
-  // 배정 이력
+  // purpose별 배정 이력 (assignment_purpose 필드 사용)
   const { data: assigns } = await sb.from('partner_assignments')
-    .select('id,assignment_status,work_status,requested_at,partner_companies(company_name)')
+    .select('id,assignment_status,assignment_purpose,work_status,requested_at,responded_at,partner_company_id,partner_companies(company_name,specialties)')
     .eq('case_id',caseId)
     .order('created_at',{ascending:false});
+
+  const detectionAssigns = (assigns||[]).filter(a=>a.assignment_purpose==='detection');
+  const interiorAssigns  = (assigns||[]).filter(a=>a.assignment_purpose==='interior');
+
+  // 각 purpose의 active 배정 (requested/accepted)
+  const activeDetection = detectionAssigns.find(a=>['requested','accepted'].includes(a.assignment_status));
+  const activeInterior  = interiorAssigns.find(a=>['requested','accepted'].includes(a.assignment_status));
 
   // 메모
   const { data: notes } = await sb.from('case_notes').select('content,created_at').eq('case_id',caseId).order('created_at',{ascending:false}).limit(3);
 
-  // 수리완료 보고서 (repair_done 상태인 배정에서)
-  const repairAssign = assigns?.find(a=>a.work_status==='repair_done');
-  let repairReport = null;
+  // 수리완료 보고서 (purpose별)
+  const detectionDone = detectionAssigns.find(a=>a.work_status==='repair_done');
+  const interiorDone  = interiorAssigns.find(a=>a.work_status==='repair_done');
+
+  // 첨부 사진 (케이스 전체)
   let repairDocs = null;
-  if(repairAssign){
-    const { data: rd } = await sb.from('partner_assignments')
-      .select('repair_cost,repair_opinion,work_done_at,updated_at')
-      .eq('id', repairAssign.id)
-      .maybeSingle();
-    repairReport = rd;
+  if(detectionDone || interiorDone){
     const { data: docs } = await sb.from('case_documents')
-      .select('document_type,file_url,file_name')
+      .select('document_type,file_url,file_name,assignment_id')
       .eq('case_id', caseId)
       .in('document_type',['repair_photo_before','repair_photo_during','repair_photo_after'])
       .order('created_at');
     repairDocs = docs;
 
-    // v5: file_url이 경로면 signed URL로 변환 (http로 시작하면 레거시 publicUrl — 그대로 사용)
+    // 경로면 signed URL로 변환
     if(repairDocs && repairDocs.length){
       for(const d of repairDocs){
         if(d.file_url && !d.file_url.startsWith('http')){
           const { data: su } = await sb.storage.from('partner-work')
-            .createSignedUrl(d.file_url, 3600);  // 1시간 유효
+            .createSignedUrl(d.file_url, 3600);
           if(su?.signedUrl) d.file_url = su.signedUrl;
         }
       }
@@ -1594,93 +1235,189 @@ async function openCaseDetail(caseId){
   document.getElementById('caseDetailBody').innerHTML=`
     <div class="detail-grid" style="margin-bottom:16px">
       <div class="detail-item"><label>접수번호</label><span style="font-family:'JetBrains Mono',monospace">${data.case_no||'-'}</span></div>
-      <div class="detail-item"><label>접수 상태</label>${statusBadge(data.display_status)}</div>
+      <div class="detail-item"><label>전체 상태</label>${statusBadge(data.display_status)}</div>
       <div class="detail-item"><label>고객명</label><span>${data.customer_name}</span></div>
       <div class="detail-item"><label>연락처</label><span>${data.customer_phone}</span></div>
       <div class="detail-item full"><label>주소</label><span>${data.address_full||'-'}</span></div>
-      <div class="detail-item"><label>서비스 범위</label><span>${SERVICE_SCOPE_LABELS[data.service_scope]||'-'}</span></div>
-      <div class="detail-item"><label>보험 여부</label><span>${data.insurance_known||'-'}</span></div>
+      <div class="detail-item"><label>필요 업종</label><span>${[data.needs_detection&&'🔍 누수탐지', data.needs_interior&&'🏠 인테리어/복구'].filter(Boolean).join(', ')||'-'}</span></div>
+      <div class="detail-item"><label>보험 가입</label><span>${INSURANCE_LABELS[data.insurance_subscribed]||INSURANCE_LABELS[data.insurance_known]||'-'}</span></div>
       <div class="detail-item full"><label>누수 증상</label><span>${data.leak_symptom||'-'}</span></div>
       <div class="detail-item"><label>접수일</label><span>${fmtDateTime(data.created_at)}</span></div>
       <div class="detail-item"><label>최종 수정</label><span>${fmtDateTime(data.updated_at)}</span></div>
     </div>
 
-    ${assigns&&assigns.length?`
-    <div style="margin-bottom:16px">
-      <div style="font-size:13px;font-weight:900;margin-bottom:10px">배정 이력</div>
-      ${assigns.map(a=>`
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)">
-          <div>
-            <span style="font-size:13px;font-weight:700">${a.partner_companies?.company_name||'-'}</span>
-            <span style="font-size:11px;color:var(--muted);margin-left:6px">${fmtDate(a.requested_at)}</span>
-          </div>
-          <div style="display:flex;gap:6px;align-items:center">
-            ${statusBadge(a.assignment_status)}
-            ${a.work_status?wsBadge(a.work_status):''}
-          </div>
-        </div>
-      `).join('')}
-    </div>`:``}
+    ${renderPurposeSection('detection', data.needs_detection, activeDetection, detectionAssigns)}
+    ${renderPurposeSection('interior',  data.needs_interior,  activeInterior,  interiorAssigns)}
 
     ${notes&&notes.length?`
-    <div>
-      <div style="font-size:13px;font-weight:900;margin-bottom:10px">최근 메모</div>
+    <div style="margin-top:16px">
+      <div style="font-size:13px;font-weight:900;margin-bottom:10px">📝 최근 메모</div>
       ${notes.map(n=>`<div style="padding:8px;background:var(--bg);border-radius:6px;font-size:12px;margin-bottom:6px">${n.content}<span style="color:var(--muted);margin-left:6px">${fmtDate(n.created_at)}</span></div>`).join('')}
     </div>`:``}
 
-    ${repairReport ? `
-    <div style="margin-top:4px">
-      <div style="font-size:13px;font-weight:900;margin-bottom:10px;color:var(--green)">✅ 수리완료 보고서</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-        <div style="padding:10px;background:var(--green-soft);border-radius:8px">
-          <div style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:3px">수리 금액</div>
-          <div style="font-size:16px;font-weight:900;color:var(--green)">${repairReport.repair_cost ? repairReport.repair_cost.toLocaleString()+'원' : '-'}</div>
-        </div>
-        <div style="padding:10px;background:var(--bg);border-radius:8px">
-          <div style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:3px">완료일시</div>
-          <div style="font-size:13px;font-weight:700">${fmtDate(repairReport.work_done_at)||fmtDate(repairReport.updated_at)}</div>
-        </div>
-      </div>
-      <div style="padding:12px;background:var(--bg);border-radius:8px;margin-bottom:12px">
-        <div style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:6px">누수 소견</div>
-        <div style="font-size:13px;line-height:1.6">${repairReport.repair_opinion||'-'}</div>
-      </div>
-      ${repairDocs&&repairDocs.length?`
-      <div>
-        <div style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:8px">현장 사진</div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
-          ${repairDocs.map(d=>`
-            <div style="border-radius:8px;overflow:hidden;border:1px solid var(--line)">
-              <div style="font-size:10px;color:var(--muted);padding:4px 6px;background:var(--bg)">${
-                d.document_type==='repair_photo_before'?'작업 전':
-                d.document_type==='repair_photo_during'?'작업 중':
-                d.document_type==='repair_photo_after'?'작업 후':d.document_type
-              }</div>
-              <a href="${d.file_url}" target="_blank">
-                <img src="${d.file_url}" style="width:100%;height:90px;object-fit:cover;display:block" onerror="this.parentElement.innerHTML='<div style=padding:20px;text-align:center;font-size:11px;color:var(--muted)>사진 로드 실패</div>'"/>
-              </a>
-            </div>
-          `).join('')}
-        </div>
-      </div>`:
-      `<div style="font-size:12px;color:var(--muted);text-align:center;padding:12px;background:var(--bg);border-radius:8px">📷 업로드된 사진이 없습니다</div>`}
-    </div>`:``}
+    ${(detectionDone||interiorDone) ? renderRepairReports(detectionDone, interiorDone, repairDocs) : ''}
   `;
-
-  // 이미 배정 중인지 확인 (accepted & repair 미완료)
-  const activeAssign = assigns?.find(a=>a.assignment_status==='accepted'&&a.work_status!=='repair_done');
-  document.getElementById('assignBtn').style.display = activeAssign ? 'none' : 'inline-flex';
 }
 
-async function openAssignModal(){
+// purpose별 섹션 렌더링 (탐지 또는 인테리어)
+function renderPurposeSection(purpose, needs, active, history){
+  if(!needs){
+    return `
+      <div style="margin-top:16px;padding:12px;background:var(--bg);border-radius:8px;border:1px dashed var(--line)">
+        <div style="font-size:12px;color:var(--muted)">${PURPOSE_LABELS[purpose]} — 이 접수건에는 불필요 (needs=false)</div>
+      </div>
+    `;
+  }
+
+  const headerColor = purpose==='detection' ? '#0891b2' : '#a16207';
+  const bgColor = purpose==='detection' ? '#ecfeff' : '#fefce8';
+
+  let body = '';
+  if(active){
+    const statusLabel = {requested:'응답대기',accepted:'수락(진행중)'}[active.assignment_status]||active.assignment_status;
+    const statusCls = {requested:'badge-amber',accepted:'badge-teal'}[active.assignment_status]||'badge-gray';
+    body = `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:white;border-radius:6px;margin-bottom:8px">
+        <div>
+          <div style="font-size:13px;font-weight:800">${active.partner_companies?.company_name||'-'}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${fmtDate(active.requested_at)} · ${active.partner_companies?.specialties||''}</div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span class="badge ${statusCls}">${statusLabel}</span>
+          ${active.work_status?wsBadge(active.work_status):''}
+          <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="cancelAssignment('${active.id}','${purpose}')">취소</button>
+        </div>
+      </div>
+    `;
+  } else {
+    body = `
+      <div style="padding:14px;background:white;border-radius:6px;text-align:center;margin-bottom:8px">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px">아직 배정된 파트너가 없습니다</div>
+        <button class="btn btn-primary btn-sm" onclick="openAssignModalFor('${purpose}')">${PURPOSE_LABELS[purpose]} 업체 배정</button>
+      </div>
+    `;
+  }
+
+  // 과거 이력 (cancelled/rejected/expired/repair_done 등)
+  const past = history.filter(a=>!active || a.id !== active.id);
+  let pastHtml = '';
+  if(past.length){
+    pastHtml = `
+      <details style="margin-top:6px">
+        <summary style="font-size:11px;color:var(--muted);cursor:pointer">과거 이력 ${past.length}건</summary>
+        <div style="margin-top:6px">
+          ${past.map(a=>{
+            const sLabel = {requested:'응답대기',accepted:'수락',rejected:'거절',expired:'만료',cancelled:'취소'}[a.assignment_status]||a.assignment_status;
+            return `
+              <div style="display:flex;justify-content:space-between;padding:6px;font-size:11px;color:var(--muted);border-bottom:1px dashed var(--line)">
+                <span>${a.partner_companies?.company_name||'-'} · ${fmtDate(a.requested_at)}</span>
+                <span>${sLabel}${a.work_status==='repair_done'?' · 수리완료':''}</span>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </details>
+    `;
+  }
+
+  return `
+    <div style="margin-top:16px;padding:12px;background:${bgColor};border-radius:8px;border:1px solid ${headerColor}22">
+      <div style="font-size:13px;font-weight:900;margin-bottom:10px;color:${headerColor}">${PURPOSE_LABELS[purpose]}</div>
+      ${body}
+      ${pastHtml}
+    </div>
+  `;
+}
+
+// 수리완료 보고서 렌더링 (purpose별 2개 가능)
+function renderRepairReports(detectionDone, interiorDone, docs){
+  const renderOne = (a, label, color) => {
+    if(!a) return '';
+    const myDocs = (docs||[]).filter(d=>d.assignment_id===a.id);
+    return `
+      <div style="margin-top:12px;padding:12px;background:var(--green-soft);border-radius:8px">
+        <div style="font-size:13px;font-weight:900;margin-bottom:10px;color:${color}">✅ ${label} 수리완료</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+          <div style="padding:8px;background:white;border-radius:6px">
+            <div style="font-size:10px;color:var(--muted);font-weight:700">업체</div>
+            <div style="font-size:12px;font-weight:700;margin-top:2px">${a.partner_companies?.company_name||'-'}</div>
+          </div>
+          <div style="padding:8px;background:white;border-radius:6px">
+            <div style="font-size:10px;color:var(--muted);font-weight:700">금액</div>
+            <div style="font-size:13px;font-weight:900;color:${color}">${a.repair_cost ? a.repair_cost.toLocaleString()+'원' : '-'}</div>
+          </div>
+        </div>
+        ${a.repair_opinion?`<div style="padding:8px;background:white;border-radius:6px;font-size:12px;line-height:1.5;margin-bottom:8px">${a.repair_opinion}</div>`:''}
+        ${myDocs.length?`
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+            ${myDocs.map(d=>`
+              <div style="border-radius:6px;overflow:hidden;border:1px solid var(--line);background:white">
+                <div style="font-size:9px;color:var(--muted);padding:2px 4px">${
+                  d.document_type==='repair_photo_before'?'전':
+                  d.document_type==='repair_photo_during'?'중':'후'
+                }</div>
+                <a href="${d.file_url}" target="_blank"><img src="${d.file_url}" style="width:100%;height:70px;object-fit:cover;display:block" onerror="this.style.display='none'"/></a>
+              </div>
+            `).join('')}
+          </div>
+        `:''}
+      </div>
+    `;
+  };
+  return renderOne(detectionDone, '누수탐지', '#0891b2') + renderOne(interiorDone, '인테리어/복구', '#a16207');
+}
+
+// 배정 취소
+async function cancelAssignment(assignmentId, purpose){
+  const reason = prompt(`${PURPOSE_LABELS[purpose]} 배정을 취소합니다.\n\n취소 사유를 입력하세요:\n(예: ${CANCEL_REASON_PRESETS.join(', ')})`);
+  if(reason===null) return;  // 취소
+  if(!reason.trim()){ toast('취소 사유는 필수입니다.','e'); return; }
+
+  if(!isReal){ toast('[MOCK] 배정 취소 처리','i'); return; }
+
+  const { error } = await sb.rpc('rpc_cancel_partner_assignment',{
+    p_assignment_id: assignmentId,
+    p_cancelled_by: 'admin',
+    p_reason: reason.trim()
+  });
+  if(error){ toast('취소 실패: '+error.message,'e'); return; }
+  toast(`${PURPOSE_LABELS[purpose]} 배정 취소 완료`,'s');
+  openCaseDetail(selectedCaseId);  // 상세 다시 로드
+  loadCaseList();
+}
+
+// 현재 배정 모달에서 선택된 purpose 추적 (전역)
+let assignPurpose = null;
+
+// purpose 지정하여 배정 모달 열기
+async function openAssignModalFor(purpose){
+  assignPurpose = purpose;
   closeModal('caseDetailModal');
+  document.getElementById('assignModalTitle').textContent = `${PURPOSE_LABELS[purpose]} 업체 배정`;
+  document.getElementById('assignModalPurposeBadge').innerHTML =
+    `<div style="padding:8px 12px;background:${purpose==='detection'?'#ecfeff':'#fefce8'};border-radius:6px;font-size:12px">
+       배정 용도: <strong>${PURPOSE_LABELS[purpose]}</strong> 전용 (해당 업종 등록 파트너만 표시됩니다)
+     </div>`;
   openModal('assignModal');
   document.getElementById('assignNote').value='';
 
   if(!isReal){ document.getElementById('assignCompanySelect').innerHTML='<option>MOCK 모드</option>'; return; }
 
-  const { data } = await sb.from('partner_companies').select('id,company_name').eq('is_active',true);
-  document.getElementById('assignCompanySelect').innerHTML = data?.map(c=>`<option value="${c.id}">${c.company_name}</option>`).join('')||'<option>없음</option>';
+  // specialty_codes에 purpose 포함된 업체만 로드
+  const { data, error } = await sb.from('partner_companies')
+    .select('id,company_name,specialties,specialty_codes,service_areas')
+    .eq('is_active', true)
+    .contains('specialty_codes', [purpose]);
+
+  if(error){ toast('업체 조회 실패: '+error.message,'e'); return; }
+
+  if(!data || !data.length){
+    document.getElementById('assignCompanySelect').innerHTML =
+      `<option value="">${PURPOSE_LABELS[purpose]} 업종 등록 업체 없음</option>`;
+    return;
+  }
+  document.getElementById('assignCompanySelect').innerHTML =
+    data.map(c=>`<option value="${c.id}">${c.company_name} — ${c.specialties} · ${c.service_areas||''}</option>`).join('');
 }
 
 async function submitAssign(){
@@ -1688,6 +1425,7 @@ async function submitAssign(){
   const note = document.getElementById('assignNote').value.trim();
   const hours = parseInt(document.getElementById('assignExpiry').value);
   if(!companyId){ toast('업체를 선택해 주세요.','e'); return; }
+  if(!assignPurpose){ toast('배정 용도가 설정되지 않았습니다. 다시 시도하세요.','e'); return; }
 
   if(!isReal){ toast('[MOCK] 배정 요청 전송 완료 (실제 저장 안 됨)','i'); closeModal('assignModal'); return; }
 
@@ -1695,12 +1433,15 @@ async function submitAssign(){
     p_case_id: selectedCaseId,
     p_partner_company_id: companyId,
     p_assigned_by: curUser.id,
+    p_assignment_purpose: assignPurpose,
     p_partner_note: note||null,
     p_expires_hours: hours
   });
   if(error){ toast('배정 실패: '+error.message,'e'); return; }
-  toast('파트너 배정 요청 전송 완료!','s');
+  toast(`${PURPOSE_LABELS[assignPurpose]} 배정 요청 전송 완료!`,'s');
   closeModal('assignModal');
+  // 상세 모달 다시 열고 목록도 갱신
+  openCaseDetail(selectedCaseId);
   loadCaseList();
 }
 
@@ -1794,15 +1535,17 @@ async function loadPartnerAssignments(){
 function partnerAssignCard(a){
   const isReq = a.assignment_status==='requested';
   const isAcc = a.assignment_status==='accepted';
-  const statusLabel = {requested:'응답대기',accepted:'수락',rejected:'거절',expired:'만료'}[a.assignment_status]||a.assignment_status;
-  const statusCls = {requested:'badge-amber',accepted:'badge-teal',rejected:'badge-red',expired:'badge-gray'}[a.assignment_status]||'badge-gray';
+  const statusLabel = {requested:'응답대기',accepted:'수락',rejected:'거절',expired:'만료',cancelled:'취소'}[a.assignment_status]||a.assignment_status;
+  const statusCls = {requested:'badge-amber',accepted:'badge-teal',rejected:'badge-red',expired:'badge-gray',cancelled:'badge-gray'}[a.assignment_status]||'badge-gray';
+  const purpose = a.assignment_purpose;
+  const purposeLabel = PURPOSE_LABELS[purpose] || purpose || '-';
 
   return `
     <div class="partner-card" onclick="openPartnerAssignDetail('${a.assignment_id}')">
       <div class="partner-card-header">
         <div>
           <div class="partner-card-no">${a.case_no||'-'}</div>
-          <div class="partner-card-title">${SERVICE_SCOPE_LABELS[a.service_scope]||a.service_scope||'-'}</div>
+          <div class="partner-card-title">${purposeLabel}</div>
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
           <span class="badge ${statusCls}">${statusLabel}</span>
@@ -1831,18 +1574,29 @@ async function openPartnerAssignDetail(assignmentId){
 
   const isReq = data.assignment_status==='requested';
   const isAcc = data.assignment_status==='accepted';
+  const purpose = data.assignment_purpose;
+
+  // 수리완료 모달에서 참조할 purpose 저장
+  window._activePurpose = purpose;
+
+  const purposeBg = purpose==='detection' ? '#ecfeff' : '#fefce8';
+  const purposeColor = purpose==='detection' ? '#0891b2' : '#a16207';
 
   document.getElementById('partnerAssignBody').innerHTML=`
+    <div style="padding:10px 12px;background:${purposeBg};border-radius:8px;margin-bottom:12px;border:1px solid ${purposeColor}22">
+      <div style="font-size:11px;color:var(--muted);font-weight:700">배정 용도</div>
+      <div style="font-size:14px;font-weight:900;color:${purposeColor};margin-top:2px">${PURPOSE_LABELS[purpose]||purpose||'-'}</div>
+    </div>
     <div class="detail-grid" style="margin-bottom:16px">
       <div class="detail-item"><label>접수번호</label><span style="font-family:'JetBrains Mono',monospace">${data.case_no||'-'}</span></div>
-      <div class="detail-item"><label>배정 상태</label><span class="badge ${isReq?'badge-amber':isAcc?'badge-teal':'badge-gray'}">${{requested:'응답대기',accepted:'수락',rejected:'거절',expired:'만료'}[data.assignment_status]||'-'}</span></div>
+      <div class="detail-item"><label>배정 상태</label><span class="badge ${isReq?'badge-amber':isAcc?'badge-teal':'badge-gray'}">${{requested:'응답대기',accepted:'수락',rejected:'거절',expired:'만료',cancelled:'취소'}[data.assignment_status]||'-'}</span></div>
       <div class="detail-item"><label>고객명</label><span>${isAcc?data.customer_name:'(수락 후 공개)'}</span></div>
       <div class="detail-item"><label>연락처</label><span>${isAcc?data.customer_phone:'(수락 후 공개)'}</span></div>
       <div class="detail-item full"><label>주소</label><span>${isAcc?data.address_full:'(수락 후 공개)'}</span></div>
-      <div class="detail-item"><label>서비스 범위</label><span>${SERVICE_SCOPE_LABELS[data.service_scope]||'-'}</span></div>
       <div class="detail-item full"><label>누수 증상</label><span>${data.leak_symptom||'-'}</span></div>
       ${data.partner_note?`<div class="detail-item full"><label>관리자 메모</label><span>${data.partner_note}</span></div>`:''}
       ${isAcc&&data.work_status?`<div class="detail-item"><label>작업 상태</label>${wsBadge(data.work_status)}</div>`:''}
+      ${isReq&&data.expires_at?`<div class="detail-item"><label>만료</label><span style="color:var(--red)">${fmtDateTime(data.expires_at)}</span></div>`:''}
     </div>
   `;
 
@@ -1855,7 +1609,7 @@ async function openPartnerAssignDetail(assignmentId){
     const ws = data.work_status;
     if(ws==='pending') footerHtml += `<button class="btn btn-primary" onclick="updateWorkStatus('visiting')">방문 시작</button>`;
     if(ws==='visiting') footerHtml += `<button class="btn btn-primary" onclick="updateWorkStatus('visit_done')">방문 완료</button>`;
-    if(ws==='visit_done') footerHtml += `<button class="btn btn-success" onclick="openWorkDoneModal()">수리완료 보고서 제출</button>`;
+    if(ws==='visit_done') footerHtml += `<button class="btn btn-success" onclick="openWorkDoneModal()">${PURPOSE_LABELS_SHORT[purpose]||''} 수리완료 보고서 제출</button>`;
     if(ws==='repair_done') footerHtml += `<span style="color:var(--green);font-weight:700;font-size:13px">✅ 수리완료 처리됨</span>`;
   }
   document.getElementById('partnerAssignFooter').innerHTML = footerHtml;
@@ -1891,188 +1645,149 @@ async function updateWorkStatus(newStatus){
 // ══════════════════════════════════════════════════════════
 // 파트너: 수리완료 보고서
 // ══════════════════════════════════════════════════════════
-async function openWorkDoneModal(){
+// 파트너가 수리완료 보고서를 작성 중인 배정의 purpose 추적
+let workDonePurpose = null;
+
+function openWorkDoneModal(){
+  // 배정 상세 모달에서 넘겨받은 purpose를 window 전역 변수로 저장해둠
+  workDonePurpose = window._activePurpose || null;
   closeModal('partnerAssignModal');
-  
-  // 기본 초기화
-  document.getElementById('wd_cost').value='';
-  document.getElementById('wd_opinion').value='';
-  document.getElementById('wd_accident_at').value='';  // 하위호환 hidden field
-  document.getElementById('wd_attacker_unit').value='';
-  document.getElementById('wd_victim_unit').value='';
-  document.getElementById('wd_leak_cause').value='';
-  document.querySelectorAll('input[name="wd_leak_area"]').forEach(r => r.checked=false);
-  
-  // v5.5 ★ 사고일시 파악 필드 초기화
-  document.getElementById('wd_accident_site_at').value='';
-  document.getElementById('wd_accident_note').value='';
-  document.querySelectorAll('input[name="wd_acc_src"]').forEach(c => c.checked=false);
-  
-  // 사진 input + 미리보기 초기화 (v5.4.1: 다중사진)
-  ['before','during','after'].forEach(k=>{
-    const inp = document.getElementById(`photo_${k}`);
-    if (inp) inp.value='';
-    const prev = document.getElementById(`photo_${k}_previews`);
-    if (prev) prev.innerHTML='';
-    const lbl = document.getElementById(`photo_${k}_label`);
-    if (lbl) lbl.textContent='📷 클릭하여 사진 업로드 (여러 장 가능)';
-  });
-  
-  // v5.4.1 + v5.5: 기존 보고서 있으면 prefill (파트너가 재제출하는 케이스)
-  if (isReal && selectedAssignmentId) {
-    try {
-      const { data } = await sb.from('partner_assignments')
-        .select('repair_cost, repair_opinion, accident_occurred_at, attacker_unit, victim_unit, leak_area_type, leak_cause, accident_datetime_at_site, accident_datetime_source, accident_datetime_note')
-        .eq('id', selectedAssignmentId).maybeSingle();
-      if (data) {
-        if (data.repair_cost)     document.getElementById('wd_cost').value = data.repair_cost;
-        if (data.repair_opinion)  document.getElementById('wd_opinion').value = data.repair_opinion;
-        if (data.accident_occurred_at) document.getElementById('wd_accident_at').value = data.accident_occurred_at.slice(0,16);
-        if (data.attacker_unit)   document.getElementById('wd_attacker_unit').value = data.attacker_unit;
-        if (data.victim_unit)     document.getElementById('wd_victim_unit').value = data.victim_unit;
-        if (data.leak_cause)      document.getElementById('wd_leak_cause').value = data.leak_cause;
-        if (data.leak_area_type) {
-          const r = document.querySelector(`input[name="wd_leak_area"][value="${data.leak_area_type}"]`);
-          if (r) r.checked = true;
-        }
-        // v5.5 신규 prefill
-        if (data.accident_datetime_at_site) {
-          document.getElementById('wd_accident_site_at').value = data.accident_datetime_at_site.slice(0,16);
-        }
-        if (data.accident_datetime_note) {
-          document.getElementById('wd_accident_note').value = data.accident_datetime_note;
-        }
-        if (data.accident_datetime_source) {
-          // text 필드(쉼표로 구분된 값들)를 체크박스에 매핑
-          const sources = String(data.accident_datetime_source).split(',').map(s => s.trim()).filter(Boolean);
-          sources.forEach(src => {
-            const c = document.querySelector(`input[name="wd_acc_src"][value="${src}"]`);
-            if (c) c.checked = true;
-          });
-        }
-      }
-    } catch (e) {
-      console.warn('[wd] prefill 실패:', e);
-    }
+
+  // 제목/뱃지 세팅
+  const titleText = workDonePurpose ? `${PURPOSE_LABELS[workDonePurpose]} 수리완료 보고서` : '수리완료 보고서';
+  document.getElementById('wdModalTitle').textContent = titleText;
+  if(workDonePurpose){
+    const bg = workDonePurpose==='detection' ? '#ecfeff' : '#fefce8';
+    document.getElementById('wdPurposeBadge').innerHTML =
+      `<div style="padding:8px 12px;background:${bg};border-radius:6px;font-size:12px">
+         배정 용도: <strong>${PURPOSE_LABELS[workDonePurpose]}</strong> — 해당 업종 전용 필드가 활성화됩니다
+       </div>`;
+  } else {
+    document.getElementById('wdPurposeBadge').innerHTML = '';
   }
-  
+
+  // purpose별 섹션 표시
+  document.getElementById('wd_detection_fields').style.display = (workDonePurpose==='detection') ? 'block' : 'none';
+  document.getElementById('wd_interior_fields').style.display  = (workDonePurpose==='interior')  ? 'block' : 'none';
+
+  // 모든 값 초기화
+  ['wd_cost','wd_opinion','wd_accident_dt','wd_accident_note','wd_attacker','wd_victim',
+   'wd_leak_area','wd_leak_cause','wd_leak_detail_part','wd_detection_count',
+   'wd_worker_count','wd_start_date','wd_end_date'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.value='';
+  });
+  document.querySelectorAll('.wd_detection_tool, .wd_interior_scope').forEach(cb=>cb.checked=false);
+  ['before','during','after'].forEach(k=>{
+    document.getElementById(`photo_${k}_preview`).style.display='none';
+    document.getElementById(`photo_${k}_label`).textContent='📷 클릭하여 사진 업로드';
+    document.getElementById(`photo_${k}`).value='';
+  });
+
   openModal('workDoneModal');
 }
 
-// v5.4.1: 다중 사진 미리보기 (2장 이상 지원)
-function previewMultiPhotos(input, previewsContainerId, labelId){
-  const files = Array.from(input.files || []);
-  const container = document.getElementById(previewsContainerId);
-  const label = document.getElementById(labelId);
-  if (!container) return;
-  container.innerHTML = '';
-  if (files.length === 0) {
-    if (label) label.textContent = '📷 클릭하여 사진 업로드 (여러 장 가능)';
-    return;
-  }
-  files.forEach(f => {
-    const img = document.createElement('img');
-    img.src = URL.createObjectURL(f);
-    img.style.cssText = 'width:70px;height:70px;object-fit:cover;border-radius:6px;border:1px solid var(--line)';
-    img.title = f.name;
-    container.appendChild(img);
-  });
-  if (label) label.textContent = `✅ ${files.length}장 선택됨`;
-}
-
-// 레거시 호환: previewPhoto는 남겨둠 (혹시 다른 곳에서 호출될 수 있음)
 function previewPhoto(input, previewId, labelId){
   const file = input.files[0];
   if(!file) return;
   const url = URL.createObjectURL(file);
   const img = document.getElementById(previewId);
-  if (img) { img.src=url; img.style.display='block'; }
-  const lbl = document.getElementById(labelId);
-  if (lbl) lbl.textContent='✅ '+file.name;
+  img.src=url; img.style.display='block';
+  document.getElementById(labelId).textContent='✅ '+file.name;
 }
 
 async function submitWorkDone(){
-  // v5.4.1 ★ 구조화 필드 수집
-  const cost          = parseInt(document.getElementById('wd_cost').value)||0;
-  const opinion       = document.getElementById('wd_opinion').value.trim();
-  const accidentAt    = document.getElementById('wd_accident_at').value || null;
-  const attackerUnit  = document.getElementById('wd_attacker_unit').value.trim();
-  const victimUnit    = document.getElementById('wd_victim_unit').value.trim();
-  const leakAreaEl    = document.querySelector('input[name="wd_leak_area"]:checked');
-  const leakAreaType  = leakAreaEl ? leakAreaEl.value : null;
-  const leakCause     = document.getElementById('wd_leak_cause').value.trim();
+  // ─── 공통 필드 수집 ───
+  const cost = parseInt(document.getElementById('wd_cost').value)||0;
+  const opinion = document.getElementById('wd_opinion').value.trim();
+  const accidentDtRaw = document.getElementById('wd_accident_dt').value;
+  const accidentDt = accidentDtRaw ? new Date(accidentDtRaw).toISOString() : null;
+  const accidentNote = document.getElementById('wd_accident_note').value.trim();
+  const attacker = document.getElementById('wd_attacker').value.trim();
+  const victim = document.getElementById('wd_victim').value.trim();
+  const leakArea = document.getElementById('wd_leak_area').value;
+  const leakCause = document.getElementById('wd_leak_cause').value.trim();
 
-  // v5.5 ★ 사고일시 파악 필드 수집
-  const accidentSiteAt   = document.getElementById('wd_accident_site_at').value || null;
-  const accidentNote     = document.getElementById('wd_accident_note').value.trim() || null;
-  const srcEls           = document.querySelectorAll('input[name="wd_acc_src"]:checked');
-  const accidentSources  = Array.from(srcEls).map(el => el.value);
-  // DB가 text 타입이므로 쉼표로 join (v5.5 명세서 배열 → 실제 DB는 text)
-  const accidentSourceText = accidentSources.length > 0 ? accidentSources.join(',') : null;
+  // ─── 공통 검증 ───
+  if(!cost || cost < 0){ toast('견적/수리 금액을 입력해 주세요.','e'); return; }
+  if(!opinion){ toast('기타 의견/소견을 입력해 주세요.','e'); return; }
+  if(!accidentDt){ toast('사고 일시를 입력해 주세요.','e'); return; }
 
-  // 필수값 검증
-  if (!attackerUnit)                 { toast('가해세대 동·호수를 입력해 주세요.','e'); return; }
-  if (!victimUnit)                   { toast('피해세대 동·호수를 입력해 주세요.','e'); return; }
-  if (!leakAreaType)                 { toast('누수 부위(전유부/공용부/미상)를 선택해 주세요.','e'); return; }
-  if (!leakCause)                    { toast('누수 원인을 입력해 주세요.','e'); return; }
-  // v5.5 ★ 사고일시 필수 검증
-  if (!accidentSiteAt)               { toast('사고일시를 입력해 주세요. (누수 최초 발생 시점)','e'); return; }
-  if (accidentSources.length === 0)  { toast('사고일시 파악 방법을 1개 이상 선택해 주세요.','e'); return; }
+  // ─── purpose별 필드 수집 + 검증 ───
+  let leakDetailPart = null, detectionTools = null, detectionCount = null;
+  let interiorScope = null, workerCount = null, startDate = null, endDate = null;
+
+  if(workDonePurpose === 'detection'){
+    leakDetailPart = document.getElementById('wd_leak_detail_part').value.trim();
+    detectionTools = Array.from(document.querySelectorAll('.wd_detection_tool:checked')).map(cb=>cb.value);
+    detectionCount = parseInt(document.getElementById('wd_detection_count').value)||null;
+    if(!leakDetailPart){ toast('누수 상세 부위는 필수입니다.','e'); return; }
+    if(!detectionCount || detectionCount < 1){ toast('탐지 횟수를 입력해 주세요.','e'); return; }
+    if(detectionTools.length === 0) detectionTools = null;
+  } else if(workDonePurpose === 'interior'){
+    interiorScope = Array.from(document.querySelectorAll('.wd_interior_scope:checked')).map(cb=>cb.value);
+    workerCount = parseInt(document.getElementById('wd_worker_count').value)||null;
+    startDate = document.getElementById('wd_start_date').value || null;
+    endDate = document.getElementById('wd_end_date').value || null;
+    if(interiorScope.length === 0){ toast('작업 범위를 1개 이상 선택해 주세요.','e'); return; }
+    if(!workerCount || workerCount < 1){ toast('투입 인원을 입력해 주세요.','e'); return; }
+    if(!startDate){ toast('착공일을 입력해 주세요.','e'); return; }
+    if(!endDate){ toast('완공일을 입력해 주세요.','e'); return; }
+    if(new Date(endDate) < new Date(startDate)){ toast('완공일이 착공일보다 빠를 수 없습니다.','e'); return; }
+  }
 
   if(!isReal){ toast('[MOCK] 수리완료 보고서 제출 완료 (실제 저장 안 됨)','i'); closeModal('workDoneModal'); return; }
 
-  // v5.4.1 ★ 다중 사진 Storage 업로드 (버킷: partner-work, private)
-  const uploadsByType = { before: [], during: [], after: [] };
+  // ─── Storage 업로드 ───
+  const uploads = {};
   for(const k of ['before','during','after']){
-    const files = Array.from(document.getElementById(`photo_${k}`).files || []);
-    for (let i = 0; i < files.length; i++) {
-      const f = files[i];
-      const ext = (f.name.split('.').pop() || 'jpg').toLowerCase();
-      const safeExt = ['jpg','jpeg','png','webp','heic'].includes(ext) ? ext : 'jpg';
-      const path = `${selectedAssignmentId}/${k}_${Date.now()}_${i}.${safeExt}`;
-      const { error: upErr } = await sb.storage.from('partner-work').upload(path, f, { upsert: true });
-      if (upErr) { toast(`사진(${k} ${i+1}번) 업로드 실패: `+upErr.message,'e'); return; }
-      uploadsByType[k].push({ path, name: f.name });
+    const file = document.getElementById(`photo_${k}`).files[0];
+    if(file){
+      const path = `${selectedAssignmentId}/${k}_${Date.now()}.jpg`;
+      const { error: upErr } = await sb.storage.from('partner-work').upload(path,file,{upsert:true});
+      if(upErr){ toast(`사진(${k}) 업로드 실패: `+upErr.message,'e'); return; }
+      uploads[k] = path;
     }
   }
 
-  // RPC: partner_assignments 업데이트 + 상태 전환 (v5.5: 사고일시 3개 신규 파라미터)
-  const { error: rpcErr } = await sb.rpc('rpc_submit_work_done', {
-    p_assignment_id:             selectedAssignmentId,
-    p_repair_cost:               cost,
-    p_repair_opinion:            opinion || null,
-    p_accident_occurred_at:      accidentAt,
-    p_attacker_unit:             attackerUnit,
-    p_victim_unit:               victimUnit,
-    p_leak_area_type:            leakAreaType,
-    p_leak_cause:                leakCause,
-    // v5.5 신규
-    p_accident_datetime_at_site: accidentSiteAt,
-    p_accident_datetime_source:  accidentSourceText,
-    p_accident_datetime_note:    accidentNote,
+  // ─── RPC 호출 (16-arg, purpose별 필드만 채움) ───
+  const { error } = await sb.rpc('rpc_submit_work_done',{
+    p_assignment_id: selectedAssignmentId,
+    p_repair_cost: cost,
+    p_repair_opinion: opinion,
+    p_accident_datetime_at_site: accidentDt,
+    p_accident_datetime_note: accidentNote || null,
+    p_attacker_unit: attacker || null,
+    p_victim_unit: victim || null,
+    p_leak_area_type: leakArea || null,
+    p_leak_cause: leakCause || null,
+    // detection 전용 (null이면 DEFAULT)
+    p_leak_detail_part: leakDetailPart,
+    p_detection_tools: detectionTools,
+    p_detection_count: detectionCount,
+    // interior 전용
+    p_interior_scope: interiorScope,
+    p_worker_count: workerCount,
+    p_construction_start_date: startDate,
+    p_construction_end_date: endDate
   });
-  if (rpcErr) { toast('보고서 제출 실패: '+rpcErr.message,'e'); return; }
+  if(error){ toast('보고서 제출 실패: '+error.message,'e'); return; }
 
-  // 사진 경로들을 case_documents에 batch 저장
-  const totalPhotos = uploadsByType.before.length + uploadsByType.during.length + uploadsByType.after.length;
-  if (totalPhotos > 0) {
-    const { data: pa } = await sb.from('partner_assignments').select('case_id').eq('id', selectedAssignmentId).maybeSingle();
-    if (pa?.case_id) {
-      const rows = [];
-      for (const [k, arr] of Object.entries(uploadsByType)) {
-        arr.forEach(u => rows.push({
+  // ─── 사진 메타 저장 ───
+  if(Object.keys(uploads).length){
+    const { data: pa } = await sb.from('partner_assignments').select('case_id').eq('id',selectedAssignmentId).maybeSingle();
+    if(pa?.case_id){
+      for(const [k,path] of Object.entries(uploads)){
+        const { error: docErr } = await sb.from('case_documents').insert({
           case_id: pa.case_id,
           assignment_id: selectedAssignmentId,
           document_type: `repair_photo_${k}`,
-          file_url: u.path,
-          file_name: u.name,
+          file_url: path,
+          file_name: `${k}.jpg`,
           uploaded_by_type: 'partner',
-          uploaded_by_role: 'partner',
-        }));
-      }
-      if (rows.length > 0) {
-        const { error: docErr } = await sb.from('case_documents').insert(rows);
-        if (docErr) console.error('사진 메타 batch 저장 실패:', docErr);
+          uploaded_by_role: 'partner'
+        });
+        if(docErr){ console.error(`사진 메타 저장 실패 (${k}):`, docErr); }
       }
     }
   }
@@ -2092,172 +1807,8 @@ document.querySelectorAll('.modal-overlay').forEach(el=>{
 document.addEventListener('keydown', e=>{
   if(e.key==='Escape') document.querySelectorAll('.modal-overlay.open').forEach(m=>m.classList.remove('open'));
 });
-
-// ══════════════════════════════════════════════════════════
-// v5.4: 회사설정 (company_settings)
-// ══════════════════════════════════════════════════════════
-let _companyRow = null;   // 메모리 상 현재 회사설정 레코드 (id 포함)
-
-async function loadCompanySettings(){
-  try {
-    const { data, error } = await sb.from('company_settings').select('*').limit(1).maybeSingle();
-    if (error) throw error;
-    _companyRow = data || { id: null };
-
-    // 폼 채우기
-    const fill = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
-    fill('co-name',      _companyRow.company_name);
-    fill('co-name-en',   _companyRow.company_name_en);
-    fill('co-biz',       _companyRow.business_no);
-    fill('co-rep',       _companyRow.representative);
-    fill('co-addr',      _companyRow.address);
-    fill('co-phone',     _companyRow.phone);
-    fill('co-fax',       _companyRow.fax);
-    fill('co-email',     _companyRow.email);
-    fill('co-adj-name',  _companyRow.adjuster_name);
-    fill('co-adj-no',    _companyRow.adjuster_license_no);
-    fill('co-inv-name',  _companyRow.investigator_name);
-    fill('co-inv-no',    _companyRow.investigator_reg_no);
-
-    // 직인 미리보기
-    renderStampPreview(_companyRow.stamp_image_url);
-  } catch (err) {
-    console.error('[company] 로드 실패:', err);
-    toast('회사설정 로드 실패: ' + (err.message || err), 'e');
-  }
-}
-
-function renderStampPreview(url) {
-  const prev = document.getElementById('co-stamp-preview');
-  const rmBtn = document.getElementById('co-stamp-remove');
-  if (!prev) return;
-  if (url) {
-    prev.innerHTML = `<img src="${url}" alt="직인" style="max-width:100%;max-height:100%;object-fit:contain">`;
-    if (rmBtn) rmBtn.style.display = 'inline-block';
-  } else {
-    prev.innerHTML = '<div style="font-size:11px;color:var(--muted);text-align:center">직인<br>미등록</div>';
-    if (rmBtn) rmBtn.style.display = 'none';
-  }
-}
-
-async function onCompanyStampFile(file) {
-  if (!file) return;
-  const allowed = ['image/png','image/jpeg','image/jpg','image/webp','image/svg+xml'];
-  if (!allowed.includes(file.type)) {
-    toast('PNG/JPG/WEBP/SVG 이미지만 업로드 가능합니다.', 'e');
-    return;
-  }
-  if (file.size > 5 * 1024 * 1024) {
-    toast('5MB 이하 이미지만 업로드 가능합니다.', 'e');
-    return;
-  }
-
-  try {
-    toast('직인 이미지 업로드 중...', 'i');
-
-    // 기존 파일 있으면 Storage에서 제거
-    if (_companyRow?.stamp_image_url) {
-      // URL에서 path 추출 (public URL 형식: .../storage/v1/object/public/company-assets/<path>)
-      const m = _companyRow.stamp_image_url.match(/\/company-assets\/(.+)$/);
-      if (m) {
-        await sb.storage.from('company-assets').remove([m[1]]);
-      }
-    }
-
-    // 새 파일 업로드
-    const ext = file.name.split('.').pop().toLowerCase();
-    const safeExt = ['png','jpg','jpeg','webp','svg'].includes(ext) ? ext : 'png';
-    const path = `stamps/company_${Date.now()}.${safeExt}`;
-    const { error: upErr } = await sb.storage.from('company-assets')
-      .upload(path, file, { cacheControl:'3600', upsert:true });
-    if (upErr) throw upErr;
-
-    // public URL 획득
-    const { data: pub } = sb.storage.from('company-assets').getPublicUrl(path);
-    if (!pub?.publicUrl) throw new Error('public URL 생성 실패');
-
-    // _companyRow에 반영 + 즉시 DB에도 저장 (사용자가 저장 안 눌러도 직인은 유지되게)
-    _companyRow.stamp_image_url = pub.publicUrl;
-    if (_companyRow.id) {
-      const { error: updErr } = await sb.from('company_settings')
-        .update({ stamp_image_url: pub.publicUrl, updated_at: new Date().toISOString() })
-        .eq('id', _companyRow.id);
-      if (updErr) throw updErr;
-    }
-
-    renderStampPreview(pub.publicUrl);
-    toast('직인 이미지가 업로드되었습니다.', 's');
-  } catch (err) {
-    console.error('[company] 직인 업로드 실패:', err);
-    toast('직인 업로드 실패: ' + (err.message || err), 'e');
-  }
-}
-
-async function removeCompanyStamp() {
-  if (!confirm('직인 이미지를 삭제하시겠습니까?')) return;
-  try {
-    if (_companyRow?.stamp_image_url) {
-      const m = _companyRow.stamp_image_url.match(/\/company-assets\/(.+)$/);
-      if (m) await sb.storage.from('company-assets').remove([m[1]]);
-    }
-    if (_companyRow?.id) {
-      await sb.from('company_settings')
-        .update({ stamp_image_url: null, updated_at: new Date().toISOString() })
-        .eq('id', _companyRow.id);
-    }
-    _companyRow.stamp_image_url = null;
-    renderStampPreview(null);
-    toast('직인이 삭제되었습니다.', 's');
-  } catch (err) {
-    console.error('[company] 직인 삭제 실패:', err);
-    toast('삭제 실패: ' + (err.message || err), 'e');
-  }
-}
-
-async function saveCompanySettings() {
-  const v = (id) => document.getElementById(id)?.value?.trim() || null;
-  const payload = {
-    company_name:          v('co-name'),
-    company_name_en:       v('co-name-en'),
-    business_no:           v('co-biz'),
-    representative:        v('co-rep'),
-    address:               v('co-addr'),
-    phone:                 v('co-phone'),
-    fax:                   v('co-fax'),
-    email:                 v('co-email'),
-    adjuster_name:         v('co-adj-name'),
-    adjuster_license_no:   v('co-adj-no'),
-    investigator_name:     v('co-inv-name'),
-    investigator_reg_no:   v('co-inv-no'),
-    updated_at:            new Date().toISOString(),
-  };
-
-  if (!payload.company_name) {
-    toast('회사명(한글)은 필수입니다.', 'e');
-    return;
-  }
-
-  try {
-    if (_companyRow?.id) {
-      // 업데이트 (직인 URL은 별도로 관리되므로 덮어쓰지 않음)
-      const { error } = await sb.from('company_settings').update(payload).eq('id', _companyRow.id);
-      if (error) throw error;
-    } else {
-      // 신규 생성
-      payload.stamp_image_url = _companyRow?.stamp_image_url || null;
-      const { data, error } = await sb.from('company_settings').insert(payload).select().single();
-      if (error) throw error;
-      _companyRow = data;
-    }
-    toast('회사설정이 저장되었습니다.', 's');
-    await loadCompanySettings();  // 최신 값으로 재로드
-  } catch (err) {
-    console.error('[company] 저장 실패:', err);
-    toast('저장 실패: ' + (err.message || err), 'e');
-  }
-}
 </script>
 
-<script src="./insurance-tab.js?v=5.5"></script>
+<script src="./insurance-tab.js?v=5.6"></script>
 </body>
 </html>
