@@ -1944,33 +1944,98 @@ function wdRemovePhoto(stage, id){
   wdRenderGallery(stage);
 }
 
-// ─── 클라이언트 사진 리사이즈 + 압축 ───
-// 이미지 파일을 받아 maxSide 픽셀 장변 + JPEG quality 로 변환 (EXIF 회전 자동 적용)
-// 실패 시 원본 그대로 반환
-async function wdCompressImage(file, maxSide = 1600, quality = 0.8) {
+// ─── 클라이언트 사진 리사이즈 + 압축 (모바일 친화) ───
+// 1) createImageBitmap 우선 시도
+// 2) 실패하면 <img> + FileReader (구형 모바일 호환)
+// 3) 둘 다 실패하면 원본 반환
+async function wdCompressImage(file, maxSide = 1280, quality = 0.7) {
+  const startSize = file.size;
+  const startLabel = `${(startSize/1024).toFixed(0)}KB`;
+
+  // 방법 1: createImageBitmap (최신 브라우저)
   try {
-    const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
-    let w = bitmap.width, h = bitmap.height;
-    const longest = Math.max(w, h);
-    if(longest > maxSide){
-      const ratio = maxSide / longest;
-      w = Math.round(w * ratio);
-      h = Math.round(h * ratio);
+    // imageOrientation 옵션이 구형에서 throw할 수 있으므로 try/catch로 감쌈
+    let bitmap;
+    try {
+      bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+    } catch(e) {
+      // 옵션 미지원 → 옵션 없이 재시도 (EXIF 회전은 안 됨)
+      console.warn('[압축] imageOrientation 옵션 미지원, fallback:', e.message);
+      bitmap = await createImageBitmap(file);
     }
-    const canvas = document.createElement('canvas');
-    canvas.width = w; canvas.height = h;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(bitmap, 0, 0, w, h);
+    const blob = await wdBitmapToJpegBlob(bitmap, maxSide, quality);
     bitmap.close && bitmap.close();
-    const blob = await new Promise((resolve, reject) => {
-      canvas.toBlob(b => b ? resolve(b) : reject(new Error('canvas toBlob 실패')), 'image/jpeg', quality);
-    });
-    console.log(`[압축] ${file.name}: ${(file.size/1024).toFixed(0)}KB → ${(blob.size/1024).toFixed(0)}KB (${w}x${h}, q=${quality})`);
+    console.log(`[압축 v1] ${file.name}: ${startLabel} → ${(blob.size/1024).toFixed(0)}KB`);
     return blob;
-  } catch(err) {
-    console.warn('[압축] 실패, 원본 사용:', file.name, err);
-    return file;
+  } catch(err1) {
+    console.warn('[압축 v1 실패, v2 시도]', err1.message);
   }
+
+  // 방법 2: HTMLImageElement + FileReader (구형 모바일)
+  try {
+    const dataUrl = await new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onload = () => resolve(fr.result);
+      fr.onerror = () => reject(new Error('FileReader 실패'));
+      fr.readAsDataURL(file);
+    });
+    const img = await new Promise((resolve, reject) => {
+      const i = new Image();
+      i.onload = () => resolve(i);
+      i.onerror = () => reject(new Error('Image load 실패'));
+      i.src = dataUrl;
+    });
+    const blob = await wdImgToJpegBlob(img, maxSide, quality);
+    console.log(`[압축 v2] ${file.name}: ${startLabel} → ${(blob.size/1024).toFixed(0)}KB`);
+    return blob;
+  } catch(err2) {
+    console.warn('[압축 v2 실패, 원본 사용]', err2.message);
+  }
+
+  // 방법 3: fallback — 원본 그대로
+  return file;
+}
+
+// 공통 헬퍼: bitmap → canvas → jpeg blob
+async function wdBitmapToJpegBlob(bitmap, maxSide, quality){
+  let w = bitmap.width, h = bitmap.height;
+  const longest = Math.max(w, h);
+  if(longest > maxSide){
+    const ratio = maxSide / longest;
+    w = Math.round(w * ratio);
+    h = Math.round(h * ratio);
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(bitmap, 0, 0, w, h);
+  const blob = await new Promise((resolve, reject) => {
+    canvas.toBlob(b => b ? resolve(b) : reject(new Error('canvas toBlob 실패')), 'image/jpeg', quality);
+  });
+  // 메모리 해제 힌트 (모바일 중요)
+  canvas.width = 0; canvas.height = 0;
+  return blob;
+}
+
+// 공통 헬퍼: img element → canvas → jpeg blob
+async function wdImgToJpegBlob(img, maxSide, quality){
+  let w = img.naturalWidth, h = img.naturalHeight;
+  const longest = Math.max(w, h);
+  if(longest > maxSide){
+    const ratio = maxSide / longest;
+    w = Math.round(w * ratio);
+    h = Math.round(h * ratio);
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, w, h);
+  const blob = await new Promise((resolve, reject) => {
+    canvas.toBlob(b => b ? resolve(b) : reject(new Error('canvas toBlob 실패')), 'image/jpeg', quality);
+  });
+  canvas.width = 0; canvas.height = 0;
+  img.src = '';
+  return blob;
 }
 
 // AbortController 기반 타임아웃 Promise.race 래퍼
@@ -2150,11 +2215,13 @@ async function submitWorkDone(){
         wdRenderGallery(item.stage);
 
         // 재시도마다 압축 강도를 높임 (용량↓)
-        const maxSide = attempt === 1 ? 1600 : (attempt === 2 ? 1200 : 900);
-        const quality = attempt === 1 ? 0.8 : (attempt === 2 ? 0.7 : 0.6);
+        const maxSide = attempt === 1 ? 1280 : (attempt === 2 ? 1000 : 800);
+        const quality = attempt === 1 ? 0.7 : (attempt === 2 ? 0.6 : 0.5);
 
+        let compressedSize = null;
         try {
           const compressed = await wdCompressImage(item.file, maxSide, quality);
+          compressedSize = compressed.size;
           const ts = Date.now() + '_' + item.photoObj.id;
           const path = `${selectedAssignmentId}/${item.stage}_${ts}.jpg`;
 
@@ -2170,19 +2237,30 @@ async function submitWorkDone(){
           item.photoObj.status = 'uploaded';
           item.photoObj.uploadedPath = path;  // 재시도 시 중복 업로드 방지
           wdRenderGallery(item.stage);
-          console.log(`[업로드 성공] ${item.stage} #${item.photoObj.id} (${attempt}회차)`);
+          console.log(`[업로드 성공] ${item.stage} #${item.photoObj.id} (${attempt}회차, ${(compressedSize/1024).toFixed(0)}KB)`);
           return true;
         } catch(e) {
+          // 상세 에러 정보 수집 (모바일 디버깅용)
           const msg = e.message || String(e);
-          console.warn(`[업로드 실패] ${item.stage} #${item.photoObj.id} ${attempt}회차:`, msg);
+          const errorDetail = {
+            stage: item.stage,
+            photoId: item.photoObj.id,
+            attempt,
+            compressedSize,
+            errName: e.name,
+            errMsg: msg,
+            errCode: e.statusCode || e.code || 'unknown',
+            userAgent: navigator.userAgent.substring(0, 80)
+          };
+          console.warn('[업로드 실패]', errorDetail);
+
           // 2회차까지 자동 재시도 (네트워크 일시 불안정 대응)
           if(attempt < 2){
-            // 짧게 대기 후 재시도
-            await new Promise(r => setTimeout(r, 500 * attempt));
+            await new Promise(r => setTimeout(r, 800 * attempt));  // 0.8초 대기
             return uploadOne(item, attempt + 1);
           }
           item.photoObj.status = 'failed';
-          item.photoObj.lastError = msg;
+          item.photoObj.lastError = `${msg} (code:${errorDetail.errCode})`;
           wdRenderGallery(item.stage);
           return false;
         }
@@ -2192,7 +2270,7 @@ async function submitWorkDone(){
       const tasks = photoItems.map(item => async () => {
         await uploadOne(item, 1);
       });
-      await wdParallelUpload(tasks, 3, (done, total) => {
+      await wdParallelUpload(tasks, 2, (done, total) => {
         setProgress(done, total, `사진 업로드 ${done}/${total}…`);
         setWdSubmitting(true, `사진 업로드 ${done}/${total}…`);
       });
