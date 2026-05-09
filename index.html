@@ -318,6 +318,100 @@ select.form-control{cursor:pointer}
 /* ── v5 추가: Step bar 보조 라벨 ── */
 .ins-step-sub{font-size:10px;color:var(--subtle);margin-top:2px}
 
+/* ════════════════════════════════════════════════
+   v5.7.x: 회사·내 프로필 설정 페이지
+   ════════════════════════════════════════════════ */
+.settings-card{margin-bottom:14px;padding:0;overflow:hidden}
+.settings-card-head{
+  display:flex;align-items:center;gap:10px;
+  padding:14px 18px;border-bottom:1px solid var(--line);background:#fafafa
+}
+.settings-card-icon{
+  width:32px;height:32px;border-radius:6px;
+  display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0
+}
+.settings-card-icon.company{background:#dbeafe;color:#1e3a8a}
+.settings-card-icon.profile{background:#fef3c7;color:#92400e}
+.settings-card-title{font-size:14px;font-weight:700}
+.settings-card-sub{font-size:11px;color:var(--muted);margin-top:2px}
+.settings-form-grid{
+  display:grid;grid-template-columns:170px 1fr;gap:12px 18px;
+  padding:18px;align-items:start
+}
+.settings-form-label{
+  font-size:12px;color:var(--ink);padding:8px 0 0 0;font-weight:600
+}
+.settings-required{color:#dc2626;margin-left:2px}
+.settings-optional{color:#94a3b8;font-size:10px;margin-left:4px;font-weight:400}
+.settings-input{
+  width:100%;padding:8px 11px;border:1px solid var(--line);background:#fff;
+  border-radius:5px;font-size:13px;font-family:inherit;color:var(--ink);
+  transition:border-color 0.12s
+}
+.settings-input:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 2px var(--primary-soft)}
+.settings-input:disabled,.settings-input.settings-locked{
+  background:#f1f5f9;color:#64748b;cursor:not-allowed
+}
+.settings-hint{font-size:10px;color:var(--muted);margin-top:4px;line-height:1.5}
+.settings-form-row{grid-column:1 / -1}
+.settings-divider{
+  border-top:1px dashed var(--line);padding-top:14px;margin-top:6px
+}
+.settings-divider-title{
+  font-size:12px;font-weight:700;color:#1e3a8a;margin-bottom:2px
+}
+.settings-divider-sub{font-size:10px;color:var(--muted);line-height:1.55}
+
+/* 도장 업로드 */
+.settings-stamp-upload{
+  display:flex;gap:14px;align-items:flex-start;padding:10px;
+  border:1.5px dashed var(--line);border-radius:6px;background:#fafafa
+}
+.settings-stamp-preview{
+  width:72px;height:72px;border-radius:6px;background:#fff;border:1px solid var(--line);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden
+}
+.settings-stamp-preview img{max-width:100%;max-height:100%;object-fit:contain}
+.settings-stamp-empty{font-size:10px;color:#94a3b8;font-weight:600}
+
+/* 미리보기 박스 */
+.settings-preview-box{
+  margin:18px;padding:18px 22px;background:#fafaf5;border:1px dashed var(--line);
+  border-radius:6px;font-family:'Pretendard','Batang',serif;font-size:13px;line-height:2.0
+}
+.settings-preview-title{
+  font-size:10px;color:var(--muted);letter-spacing:0.04em;font-weight:700;
+  margin-bottom:10px;text-transform:uppercase
+}
+.settings-preview-line{margin-bottom:4px}
+.settings-pv-stamp{
+  display:inline-block;width:24px;height:24px;vertical-align:middle;margin-left:4px
+}
+.settings-pv-stamp img{width:100%;height:100%;object-fit:contain}
+.settings-preview-company{
+  text-align:right;margin-top:14px;line-height:1.9;
+  border-top:1px dashed var(--line);padding-top:10px
+}
+.settings-preview-company-name{
+  font-size:14px;font-weight:600;letter-spacing:0.3em;padding-right:0.3em
+}
+
+/* 액션 푸터 */
+.settings-action-bar{
+  position:sticky;bottom:0;background:#fff;padding:14px 18px;margin-top:14px;
+  border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;
+  border-radius:0 0 8px 8px
+}
+.settings-action-status{font-size:11px;color:var(--muted)}
+.settings-action-status.dirty{color:#d97706;font-weight:600}
+.settings-action-status.saved{color:#059669;font-weight:600}
+
+/* 모바일 */
+@media (max-width: 720px){
+  .settings-form-grid{grid-template-columns:1fr;gap:6px}
+  .settings-form-label{padding:0}
+}
+
 </style>
 </head>
 <body>
@@ -387,6 +481,10 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
         <button class="sb-btn" onclick="go('insurance')">
           <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
           보험자료 탭
+        </button>
+        <button class="sb-btn" onclick="go('settings')">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          설정
         </button>
       </div>
       <!-- 파트너 메뉴 -->
@@ -560,6 +658,191 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
         <div class="empty">
           <div class="empty-icon">🛡️</div>
           <div class="empty-text">위에서 사건을 선택하거나, 접수 목록에서 "보험자료" 버튼을 클릭하세요</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ───────────────── 관리자: 설정 (회사·내 프로필) ───────────────── -->
+    <div class="screen" id="screen-settings">
+      <div class="page-header">
+        <div>
+          <div class="page-title">설정 — 회사 정보 + 내 프로필</div>
+          <div class="page-sub">손해사정 보고서 양식 1페이지 발신부에 자동 반영됩니다.</div>
+        </div>
+        <div id="settingsHeaderActions"></div>
+      </div>
+
+      <!-- 회사 정보 카드 -->
+      <div class="card settings-card">
+        <div class="settings-card-head">
+          <div class="settings-card-icon company">🏢</div>
+          <div>
+            <div class="settings-card-title">회사 정보</div>
+            <div class="settings-card-sub">법인 단위 정보. 모든 직원이 공유하며 보고서 1페이지 발신부에 자동 채워집니다.</div>
+          </div>
+        </div>
+        <div class="settings-form-grid">
+          <label class="settings-form-label" for="cf-name">회사명<span class="settings-required">*</span></label>
+          <div>
+            <input type="text" id="cf-name" class="settings-input" placeholder="누수패스손해사정(주)">
+          </div>
+
+          <label class="settings-form-label" for="cf-ceo">대표이사<span class="settings-required">*</span></label>
+          <div>
+            <input type="text" id="cf-ceo" class="settings-input" placeholder="홍길동">
+            <div class="settings-hint">보고서 양식 1페이지 하단 "대표이사 ___" 자리에 표시됩니다.</div>
+          </div>
+
+          <label class="settings-form-label" for="cf-bizno">사업자등록번호<span class="settings-optional">(선택)</span></label>
+          <div>
+            <input type="text" id="cf-bizno" class="settings-input" placeholder="123-45-67890" maxlength="12">
+          </div>
+
+          <label class="settings-form-label" for="cf-email">회사 대표 이메일<span class="settings-required">*</span></label>
+          <div>
+            <input type="email" id="cf-email" class="settings-input" placeholder="contact@example.com">
+            <div class="settings-hint">회사 대표 연락 수단.</div>
+          </div>
+
+          <label class="settings-form-label" for="cf-phone">회사 대표 전화<span class="settings-optional">(선택)</span></label>
+          <div>
+            <input type="text" id="cf-phone" class="settings-input" placeholder="031-000-0000">
+          </div>
+
+          <label class="settings-form-label" for="cf-address">회사 주소<span class="settings-optional">(선택)</span></label>
+          <div>
+            <input type="text" id="cf-address" class="settings-input" placeholder="경기도 용인시 수지구 ...">
+          </div>
+
+          <div class="settings-form-row settings-divider">
+            <div class="settings-divider-title">📜 담당 손해사정사 — 회사 대표 자격자</div>
+            <div class="settings-divider-sub">
+              모든 보고서 1페이지 "손해사정사 : OOO / 등록번호 : XXX" 자리에 <b>고정 표시</b>됩니다.<br>
+              대표이사가 자격증을 보유하지 않은 경우, 자격증 보유 직원 1명을 회사 대표 손해사정사로 지정합니다.
+            </div>
+          </div>
+
+          <label class="settings-form-label" for="cf-chief-name">담당 손해사정사<span class="settings-required">*</span></label>
+          <div>
+            <input type="text" id="cf-chief-name" class="settings-input" placeholder="예: 김OO">
+            <div class="settings-hint">보고서 1페이지 "손해사정사 : OOO" 자리에 표시됩니다.</div>
+          </div>
+
+          <label class="settings-form-label" for="cf-chief-license">손해사정사 등록번호<span class="settings-required">*</span></label>
+          <div>
+            <input type="text" id="cf-chief-license" class="settings-input" placeholder="예: 20XX-XXXXXXX">
+            <div class="settings-hint">금융감독원 손해사정사 자격증 등록번호. 보고서 "등록번호 : XXX" 자리에 표시됩니다.</div>
+          </div>
+
+          <label class="settings-form-label">도장 이미지<span class="settings-optional">(선택)</span></label>
+          <div>
+            <div class="settings-stamp-upload">
+              <div class="settings-stamp-preview" id="stampPreview">
+                <span class="settings-stamp-empty">도장 없음</span>
+              </div>
+              <div style="flex:1">
+                <input type="file" id="cf-chief-stamp-file" accept="image/png,image/jpeg,image/webp,image/svg+xml" style="display:none;">
+                <button type="button" class="btn btn-sm btn-ghost" onclick="document.getElementById('cf-chief-stamp-file').click()">파일 선택</button>
+                <button type="button" class="btn btn-sm btn-ghost" id="btnStampRemove" style="display:none;">제거</button>
+                <div class="settings-hint" style="margin-top:6px;">
+                  보고서 "손해사정사 : ○○○ (인)" 자리에 합성됩니다.<br>
+                  <b>투명 배경 PNG 권장</b> · 정사각형 권장 · 최대 5MB
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 내 프로필 카드 -->
+      <div class="card settings-card">
+        <div class="settings-card-head">
+          <div class="settings-card-icon profile">👤</div>
+          <div>
+            <div class="settings-card-title">내 프로필 — 담당자 정보</div>
+            <div class="settings-card-sub">로그인한 사용자 본인의 정보. 보고서 작성 시 "담당자" 줄에 표시됩니다.</div>
+          </div>
+        </div>
+        <div class="settings-form-grid">
+          <label class="settings-form-label">이름<span class="settings-optional">(고정)</span></label>
+          <div>
+            <input type="text" id="pf-name" class="settings-input settings-locked" disabled>
+            <div class="settings-hint">이름은 관리자 계정 생성 시 등록되며, 본 화면에서 변경할 수 없습니다. 보고서 "담당자 :" 자리에 표시됩니다.</div>
+          </div>
+
+          <label class="settings-form-label">로그인 이메일<span class="settings-optional">(고정)</span></label>
+          <div>
+            <input type="email" id="pf-email" class="settings-input settings-locked" disabled>
+            <div class="settings-hint">로그인용 이메일은 변경 불가. 보고서에 표시될 이메일은 아래 "개인 이메일" 항목을 사용합니다.</div>
+          </div>
+
+          <label class="settings-form-label" for="pf-position">직급<span class="settings-required">*</span></label>
+          <div>
+            <select id="pf-position" class="settings-input">
+              <option value="">선택</option>
+              <option value="사원">사원</option>
+              <option value="대리">대리</option>
+              <option value="과장">과장</option>
+              <option value="차장">차장</option>
+              <option value="부장">부장</option>
+              <option value="이사">이사</option>
+              <option value="고문">고문</option>
+              <option value="팀장">팀장</option>
+              <option value="대표이사">대표이사</option>
+            </select>
+          </div>
+
+          <label class="settings-form-label" for="pf-license">자격증 등록번호<span class="settings-optional">(선택)</span></label>
+          <div>
+            <input type="text" id="pf-license" class="settings-input" placeholder="예: 20XX-XXXXXXX">
+            <div class="settings-hint">손해사정사 또는 손해사정보조인 자격증 등록번호. 본인이 자격증을 보유한 경우만 입력. <b>내부 추적용 — 보고서엔 표시되지 않습니다.</b> 보고서엔 회사 정보의 "담당 손해사정사 등록번호"가 사용됩니다.</div>
+          </div>
+
+          <label class="settings-form-label" for="pf-phone">휴대폰<span class="settings-required">*</span></label>
+          <div>
+            <input type="text" id="pf-phone" class="settings-input" placeholder="010-0000-0000">
+            <div class="settings-hint">보고서 양식 "H.P :" 자리에 표시됩니다.</div>
+          </div>
+
+          <label class="settings-form-label" for="pf-personal-email">개인 이메일<span class="settings-required">*</span></label>
+          <div>
+            <input type="email" id="pf-personal-email" class="settings-input" placeholder="example@nusupass.com">
+            <div class="settings-hint">보고서 양식 "E-MAIL :" 자리에 표시됩니다. 회사 대표 이메일과 같아도 됩니다.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 미리보기 카드 -->
+      <div class="card settings-card">
+        <div class="settings-card-head">
+          <div class="settings-card-icon" style="background:#f1f5f9;color:#475569;">👁</div>
+          <div>
+            <div class="settings-card-title">보고서 미리보기 — 1페이지 발신부</div>
+            <div class="settings-card-sub">위에 입력한 정보가 양식에 어떻게 표시되는지 실시간으로 확인됩니다.</div>
+          </div>
+        </div>
+        <div class="settings-preview-box">
+          <div class="settings-preview-title">발신부 (보고서 1페이지 하단)</div>
+          <div class="settings-preview-line">
+            손해사정사 : <span id="pv-officer">_____</span> / 등록번호 : <span id="pv-license">_____</span>
+            <span class="settings-pv-stamp" id="pvStampSlot"></span>
+          </div>
+          <div class="settings-preview-line">담당자 : <span id="pv-handler">_____</span></div>
+          <div class="settings-preview-line">H.P : <span id="pv-phone">_____</span></div>
+          <div class="settings-preview-line">E-MAIL : <span id="pv-email">_____</span></div>
+          <div class="settings-preview-company">
+            <div class="settings-preview-company-name" id="pv-company">_____</div>
+            <div>대표이사 <span id="pv-ceo">_____</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 액션 푸터 -->
+      <div class="settings-action-bar">
+        <span class="settings-action-status" id="settingsStatus">변경 사항 없음</span>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-ghost btn-sm" id="btnSettingsReset">되돌리기</button>
+          <button class="btn btn-primary btn-sm" id="btnSettingsSave" disabled>저장</button>
         </div>
       </div>
     </div>
@@ -1122,6 +1405,7 @@ function go(screen){
   if(screen==='caseList') loadCaseList();
   if(screen==='pHome') loadPartnerHome();
   if(screen==='pAssignments') loadPartnerAssignments();
+  if(screen==='settings') loadSettings();
   if(screen==='insurance'){
     if(typeof loadInsuranceCaseSelector==='function'){
       loadInsuranceCaseSelector().catch(e=>{
@@ -2394,6 +2678,357 @@ document.querySelectorAll('.modal-overlay').forEach(el=>{
 document.addEventListener('keydown', e=>{
   if(e.key==='Escape') document.querySelectorAll('.modal-overlay.open').forEach(m=>m.classList.remove('open'));
 });
+
+// ══════════════════════════════════════════════════════════
+// v5.7.x: 회사·내 프로필 설정 페이지 (companies + admin_users)
+// ══════════════════════════════════════════════════════════
+const SETTINGS_FIELD_MAP_COMPANY = {
+  'cf-name': 'company_name_ko',
+  'cf-ceo': 'ceo_name',
+  'cf-bizno': 'business_no',
+  'cf-email': 'company_email',
+  'cf-phone': 'company_phone',
+  'cf-address': 'company_address',
+  'cf-chief-name': 'chief_officer_name',
+  'cf-chief-license': 'chief_officer_license_no',
+};
+const SETTINGS_FIELD_MAP_PROFILE = {
+  'pf-name': 'name',
+  'pf-email': 'email',
+  'pf-position': 'position',
+  'pf-license': 'license_no',
+  'pf-phone': 'phone',
+  'pf-personal-email': 'personal_email',
+};
+
+let SETTINGS_STATE = {
+  user: null,             // admin_users 레코드
+  company: null,          // companies 레코드
+  originalCompany: {},    // 되돌리기용
+  originalProfile: {},
+  loaded: false,          // 처음 한 번만 로드 (메뉴 재진입 시 dirty 체크)
+  bound: false,           // 이벤트 1회만 바인딩
+};
+
+let SETTINGS_STAMP = {
+  file: null,
+  currentPath: null,
+  previewDataUrl: null,
+  removeRequested: false,
+};
+
+async function loadSettings(){
+  // 처음 진입 시에만 데이터 로드 + 이벤트 바인딩 (재진입 시엔 dirty 체크)
+  if(!isReal){
+    toast('Supabase 연결이 필요합니다','e');
+    return;
+  }
+
+  // 진입 시마다 최신 데이터로 새로고침
+  try {
+    // 1. 현재 로그인 사용자 ID (auth.uid())
+    const { data:{ session } } = await sb.auth.getSession();
+    if(!session?.user?.id){
+      toast('로그인 세션이 만료되었습니다. 다시 로그인해 주세요.','e');
+      return;
+    }
+    const myUid = session.user.id;
+
+    // 2. admin_users 본인 row 조회 (RLS: id = auth.uid())
+    const { data: userRow, error: e1 } = await sb
+      .from('admin_users').select('*').eq('id', myUid).single();
+    if(e1) throw e1;
+    SETTINGS_STATE.user = userRow;
+
+    // 3. 회사 정보 조회 (RLS: is_admin_user())
+    if(userRow.company_id){
+      const { data: companyRow, error: e2 } = await sb
+        .from('companies').select('*').eq('id', userRow.company_id).single();
+      if(e2) throw e2;
+      SETTINGS_STATE.company = companyRow;
+    } else {
+      SETTINGS_STATE.company = null;
+      toast('회사 정보가 연결되지 않았습니다. 관리자에게 문의해주세요.','e');
+      return;
+    }
+
+    settings_fillForm();
+    settings_updatePreview();
+    settings_captureOriginals();
+
+    if(!SETTINGS_STATE.bound){
+      settings_bindEvents();
+      SETTINGS_STATE.bound = true;
+    }
+    SETTINGS_STATE.loaded = true;
+  } catch(err){
+    console.error('[settings] load', err);
+    toast('설정 로드 실패: '+(err.message||err),'e');
+  }
+}
+
+function settings_fillForm(){
+  const c = SETTINGS_STATE.company;
+  const u = SETTINGS_STATE.user;
+  if(c){
+    for(const [id, field] of Object.entries(SETTINGS_FIELD_MAP_COMPANY)){
+      const el = document.getElementById(id);
+      if(el) el.value = c[field] || '';
+    }
+    SETTINGS_STAMP.currentPath = c.chief_officer_stamp_path || null;
+    SETTINGS_STAMP.file = null;
+    SETTINGS_STAMP.previewDataUrl = null;
+    SETTINGS_STAMP.removeRequested = false;
+    settings_refreshStampPreview();
+  }
+  if(u){
+    for(const [id, field] of Object.entries(SETTINGS_FIELD_MAP_PROFILE)){
+      const el = document.getElementById(id);
+      if(el) el.value = u[field] || '';
+    }
+  }
+}
+
+function settings_captureOriginals(){
+  SETTINGS_STATE.originalCompany = {};
+  SETTINGS_STATE.originalProfile = {};
+  for(const id of Object.keys(SETTINGS_FIELD_MAP_COMPANY)){
+    SETTINGS_STATE.originalCompany[id] = document.getElementById(id).value;
+  }
+  for(const id of Object.keys(SETTINGS_FIELD_MAP_PROFILE)){
+    SETTINGS_STATE.originalProfile[id] = document.getElementById(id).value;
+  }
+  settings_setStatus('saved','저장됨');
+}
+
+function settings_isDirty(){
+  for(const id of Object.keys(SETTINGS_FIELD_MAP_COMPANY)){
+    if(document.getElementById(id).value !== SETTINGS_STATE.originalCompany[id]) return true;
+  }
+  for(const id of Object.keys(SETTINGS_FIELD_MAP_PROFILE)){
+    if(document.getElementById(id).value !== SETTINGS_STATE.originalProfile[id]) return true;
+  }
+  if(SETTINGS_STAMP.file || SETTINGS_STAMP.removeRequested) return true;
+  return false;
+}
+
+function settings_updatePreview(){
+  const officer = document.getElementById('cf-chief-name').value || '_____';
+  const license = document.getElementById('cf-chief-license').value || '_____';
+  const company = document.getElementById('cf-name').value || '_____';
+  const ceo = document.getElementById('cf-ceo').value || '_____';
+  const handler = document.getElementById('pf-name').value || '_____';
+  const phone = document.getElementById('pf-phone').value || '_____';
+  const personalEmail = document.getElementById('pf-personal-email').value;
+  const companyEmail = document.getElementById('cf-email').value;
+  const email = personalEmail || companyEmail || '_____';
+
+  document.getElementById('pv-officer').textContent = officer;
+  document.getElementById('pv-license').textContent = license;
+  document.getElementById('pv-handler').textContent = handler;
+  document.getElementById('pv-phone').textContent = phone;
+  document.getElementById('pv-email').textContent = email;
+  document.getElementById('pv-company').textContent = company;
+  document.getElementById('pv-ceo').textContent = ceo;
+}
+
+function settings_setStatus(cls, text){
+  const el = document.getElementById('settingsStatus');
+  el.className = 'settings-action-status '+cls;
+  el.textContent = text;
+}
+
+function settings_onFormChange(){
+  settings_updatePreview();
+  if(settings_isDirty()){
+    settings_setStatus('dirty','저장되지 않은 변경사항');
+    document.getElementById('btnSettingsSave').disabled = false;
+  } else {
+    settings_setStatus('saved','저장됨');
+    document.getElementById('btnSettingsSave').disabled = true;
+  }
+}
+
+// ──── 도장 처리 ────
+function settings_refreshStampPreview(){
+  const card = document.getElementById('stampPreview');
+  const removeBtn = document.getElementById('btnStampRemove');
+  const slot = document.getElementById('pvStampSlot');
+
+  let url = null;
+  if(SETTINGS_STAMP.removeRequested){
+    url = null;
+  } else if(SETTINGS_STAMP.previewDataUrl){
+    url = SETTINGS_STAMP.previewDataUrl;
+  } else if(SETTINGS_STAMP.currentPath){
+    const { data } = sb.storage.from('company-assets').getPublicUrl(SETTINGS_STAMP.currentPath);
+    url = data?.publicUrl || null;
+  }
+
+  if(url){
+    card.innerHTML = `<img src="${url}" alt="도장">`;
+    slot.innerHTML = `<img src="${url}" alt="(인)">`;
+    removeBtn.style.display = 'inline-block';
+  } else {
+    card.innerHTML = '<span class="settings-stamp-empty">도장 없음</span>';
+    slot.innerHTML = '';
+    removeBtn.style.display = 'none';
+  }
+}
+
+function settings_onStampFileSelected(e){
+  const file = e.target.files?.[0];
+  if(!file) return;
+  if(file.size > 5*1024*1024){
+    toast('도장 이미지는 5MB 이하여야 합니다.','e');
+    e.target.value = '';
+    return;
+  }
+  if(!/^image\//.test(file.type)){
+    toast('이미지 파일만 업로드 가능합니다.','e');
+    e.target.value = '';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = ev => {
+    SETTINGS_STAMP.file = file;
+    SETTINGS_STAMP.previewDataUrl = ev.target.result;
+    SETTINGS_STAMP.removeRequested = false;
+    settings_refreshStampPreview();
+    settings_onFormChange();
+  };
+  reader.readAsDataURL(file);
+}
+
+function settings_onStampRemove(){
+  if(!confirm('도장 이미지를 제거하시겠습니까?')) return;
+  SETTINGS_STAMP.file = null;
+  SETTINGS_STAMP.previewDataUrl = null;
+  SETTINGS_STAMP.removeRequested = true;
+  document.getElementById('cf-chief-stamp-file').value = '';
+  settings_refreshStampPreview();
+  settings_onFormChange();
+}
+
+async function settings_uploadStampToStorage(){
+  if(!SETTINGS_STAMP.file || !SETTINGS_STATE.company) return null;
+  const ext = SETTINGS_STAMP.file.name.split('.').pop().toLowerCase();
+  const path = `company-stamps/${SETTINGS_STATE.company.id}/chief-stamp.${ext}`;
+  const { error } = await sb.storage
+    .from('company-assets')
+    .upload(path, SETTINGS_STAMP.file, { cacheControl:'3600', upsert:true });
+  if(error) throw error;
+  return path;
+}
+
+async function settings_removeStampFromStorage(){
+  if(!SETTINGS_STAMP.currentPath) return;
+  try {
+    await sb.storage.from('company-assets').remove([SETTINGS_STAMP.currentPath]);
+  } catch(err){
+    console.warn('[settings stamp remove]', err);
+  }
+}
+
+// ──── 이벤트 바인딩 ────
+function settings_bindEvents(){
+  document.querySelectorAll('#screen-settings .settings-input').forEach(el=>{
+    el.addEventListener('input', settings_onFormChange);
+    el.addEventListener('change', settings_onFormChange);
+  });
+  document.getElementById('btnSettingsSave').addEventListener('click', settings_onSave);
+  document.getElementById('btnSettingsReset').addEventListener('click', settings_onReset);
+  document.getElementById('cf-chief-stamp-file').addEventListener('change', settings_onStampFileSelected);
+  document.getElementById('btnStampRemove').addEventListener('click', settings_onStampRemove);
+}
+
+// ──── 저장 ────
+async function settings_onSave(){
+  const required = {
+    'cf-name':'회사명',
+    'cf-ceo':'대표이사',
+    'cf-email':'회사 대표 이메일',
+    'cf-chief-name':'담당 손해사정사',
+    'cf-chief-license':'담당 손해사정사 등록번호',
+    'pf-position':'직급',
+    'pf-phone':'휴대폰',
+    'pf-personal-email':'개인 이메일',
+  };
+  for(const [id,label] of Object.entries(required)){
+    if(!document.getElementById(id).value.trim()){
+      toast(`"${label}" 항목은 필수입니다.`,'e');
+      document.getElementById(id).focus();
+      return;
+    }
+  }
+
+  const companyPayload = {};
+  for(const [id,field] of Object.entries(SETTINGS_FIELD_MAP_COMPANY)){
+    companyPayload[field] = document.getElementById(id).value.trim() || null;
+  }
+  const profilePayload = {};
+  for(const [id,field] of Object.entries(SETTINGS_FIELD_MAP_PROFILE)){
+    const el = document.getElementById(id);
+    if(el.disabled) continue;
+    profilePayload[field] = el.value.trim() || null;
+  }
+
+  document.getElementById('btnSettingsSave').disabled = true;
+  try {
+    // 1. 도장 처리
+    let stampPath = SETTINGS_STAMP.currentPath;
+    if(SETTINGS_STAMP.removeRequested){
+      await settings_removeStampFromStorage();
+      stampPath = null;
+    } else if(SETTINGS_STAMP.file){
+      if(SETTINGS_STAMP.currentPath) await settings_removeStampFromStorage();
+      stampPath = await settings_uploadStampToStorage();
+    }
+    companyPayload.chief_officer_stamp_path = stampPath;
+
+    // 2. companies UPDATE
+    const { error: e1 } = await sb.from('companies').update(companyPayload).eq('id', SETTINGS_STATE.company.id);
+    if(e1) throw e1;
+
+    // 3. admin_users UPDATE
+    const { error: e2 } = await sb.from('admin_users').update(profilePayload).eq('id', SETTINGS_STATE.user.id);
+    if(e2) throw e2;
+
+    Object.assign(SETTINGS_STATE.company, companyPayload);
+    Object.assign(SETTINGS_STATE.user, profilePayload);
+    SETTINGS_STAMP.currentPath = stampPath;
+    SETTINGS_STAMP.file = null;
+    SETTINGS_STAMP.previewDataUrl = null;
+    SETTINGS_STAMP.removeRequested = false;
+
+    settings_captureOriginals();
+    settings_refreshStampPreview();
+    toast('저장되었습니다','s');
+  } catch(err){
+    console.error('[settings save]', err);
+    toast('저장 실패: '+(err.message||err),'e');
+    document.getElementById('btnSettingsSave').disabled = false;
+  }
+}
+
+function settings_onReset(){
+  if(!settings_isDirty()) return;
+  if(!confirm('변경 사항을 되돌리시겠습니까?')) return;
+  for(const [id,val] of Object.entries(SETTINGS_STATE.originalCompany)){
+    document.getElementById(id).value = val;
+  }
+  for(const [id,val] of Object.entries(SETTINGS_STATE.originalProfile)){
+    document.getElementById(id).value = val;
+  }
+  SETTINGS_STAMP.file = null;
+  SETTINGS_STAMP.previewDataUrl = null;
+  SETTINGS_STAMP.removeRequested = false;
+  document.getElementById('cf-chief-stamp-file').value = '';
+  settings_refreshStampPreview();
+  settings_updatePreview();
+  settings_setStatus('saved','저장됨');
+  document.getElementById('btnSettingsSave').disabled = true;
+}
 </script>
 
 <script src="./insurance-tab.js?v=5.6"></script>
