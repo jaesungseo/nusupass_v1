@@ -1639,310 +1639,311 @@ body.printing-leak #screen-insurance .leak-doc p{
 }
 
 /* ════════════════════════════════════════════════
-   v6.2 STEP 1 — 3그룹 A안 깔끔한 시각 위계
+   v6.2 STEP 1 — 외부 시스템 패턴 (3.36.160.16:5026 디자인 차용)
    ════════════════════════════════════════════════ */
 
 /* 컨테이너 */
-.v62-step1-container{
-  max-width:880px;
+.v62-container{
+  max-width:760px;
   margin:0 auto;
-  padding:0;
-  display:flex;
-  flex-direction:column;
-  gap:16px;
+  padding:24px;
+  background:#fff;
+  border:1px solid #d1d5db;
+  border-radius:10px;
+  font-family:'Pretendard','Malgun Gothic',sans-serif;
 }
 
-/* 그룹 카드 */
-.v62-group-card{
+/* 그룹 카드 (3가지: 일반/필수/선택) */
+.v62-section{
+  border:1px solid #d1d5db;
+  border-radius:6px;
+  padding:18px 20px;
+  margin-bottom:18px;
   background:#fff;
-  border:1px solid var(--ins-line);
-  border-radius:8px;
-  overflow:hidden;
-  box-shadow:0 1px 3px rgba(0,0,0,0.04);
 }
-.v62-group-header{
+.v62-section-required{
+  border-color:#dc3545;
+}
+
+/* 그룹 제목 (1. 2. 3.) */
+.v62-section-title{
+  font-size:14px;
+  font-weight:700;
+  margin:0 0 4px 0;
+  color:#1d4ed8;
+  letter-spacing:-0.01em;
+}
+.v62-section-required > .v62-section-title{
+  color:#dc3545;
+}
+
+/* "필수 입력 항목입니다" 안내 */
+.v62-required-notice{
+  font-size:11px;
+  color:#dc3545;
+  margin:0 0 14px 0;
+  font-weight:500;
+}
+
+/* 2열 grid (보험증권/약관 같이, 보험청구서/누수소견서 같이) */
+.v62-row{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:18px;
+  margin-bottom:14px;
+}
+.v62-row:last-child{ margin-bottom:0; }
+
+@media (max-width: 640px){
+  .v62-row{ grid-template-columns:1fr; }
+}
+
+/* 필드 (라벨 + 입력박스) */
+.v62-field{
+  display:flex;
+  flex-direction:column;
+}
+.v62-field-label{
+  font-size:12px;
+  font-weight:600;
+  color:#374151;
+  margin-bottom:6px;
+}
+.v62-field-label .req{
+  color:#dc3545;
+  font-weight:700;
+  margin-left:2px;
+}
+.v62-field-fullrow{
+  grid-column:1 / -1;
+}
+
+/* 파일 선택 박스 (드래그앤드롭 영역) */
+.v62-file-input{
   display:flex;
   align-items:center;
   gap:10px;
-  padding:14px 20px;
-  background:#fafafa;
-  border-bottom:1px solid var(--ins-line);
-  font-size:14px;
-  font-weight:600;
-  color:var(--ins-ink);
-}
-.v62-group-icon{
-  font-size:18px;
-  line-height:1;
-}
-.v62-group-title{
-  flex:1;
-  font-size:15px;
-  font-weight:700;
-  letter-spacing:-0.01em;
-}
-.v62-status-ok{
-  font-size:12px;
-  padding:3px 10px;
-  border-radius:999px;
-  background:var(--ins-green-soft);
-  color:var(--ins-green);
-  font-weight:600;
-}
-.v62-status-pend{
-  font-size:12px;
-  padding:3px 10px;
-  border-radius:999px;
-  background:#fff3cd;
-  color:#856404;
-  font-weight:600;
-}
-.v62-status-opt{
-  font-size:12px;
-  padding:3px 10px;
-  border-radius:999px;
-  background:#f0f0f0;
-  color:#666;
-  font-weight:500;
-}
-.v62-group-body{
-  padding:20px 24px;
-  display:flex;
-  flex-direction:column;
-  gap:14px;
-}
-
-/* 필수/선택 표시 */
-.v62-req{color:#dc3545;font-weight:700;margin-left:4px}
-.v62-opt{color:#999;font-weight:400;margin-left:4px;font-size:11px}
-
-/* 슬롯 — 단일 */
-.v62-slot{
-  border:1px solid var(--ins-line);
-  border-radius:6px;
+  border:1px solid #d1d5db;
+  border-radius:5px;
+  padding:8px 10px;
+  min-height:40px;
   background:#fff;
-  transition:all .15s ease;
+  transition:all 0.15s;
+  cursor:pointer;
 }
-.v62-slot:hover{
-  border-color:var(--ins-accent);
+.v62-file-input:hover{
+  border-color:#1d4ed8;
   background:#f8faff;
 }
-.v62-slot-over{
-  border-color:var(--ins-accent) !important;
+.v62-file-input.over{
+  border-color:#1d4ed8 !important;
   background:#eef4ff !important;
+  border-style:dashed;
 }
-.v62-slot-done{
-  border-color:var(--ins-green);
-  background:var(--ins-green-soft);
+.v62-file-input.required{
+  border-color:#dc3545;
 }
-.v62-slot-label{
-  padding:10px 14px 6px;
-  font-size:13px;
-  font-weight:600;
-  color:var(--ins-ink);
-  border-bottom:1px solid #f0f0f0;
+.v62-file-input.required:hover{
+  border-color:#b91c1c;
 }
-.v62-slot-body{
-  padding:12px 14px;
-  display:flex;
+.v62-file-input.done{
+  border-color:#16a34a;
+  background:#f0fdf4;
+}
+
+/* "파일 선택" 버튼 (빨강=필수, 파랑=선택) */
+.v62-file-btn{
+  display:inline-flex;
   align-items:center;
-  justify-content:space-between;
-  gap:12px;
+  justify-content:center;
+  padding:6px 14px;
+  border-radius:4px;
+  font-size:12px;
+  font-weight:600;
   cursor:pointer;
-  min-height:44px;
+  border:0;
+  white-space:nowrap;
+  flex-shrink:0;
 }
-.v62-slot-empty{
-  color:var(--ins-ink-3);
-  font-size:12px;
-  flex:1;
+.v62-file-btn-required{
+  background:#dc3545;
+  color:#fff;
 }
-.v62-slot-status{
+.v62-file-btn-required:hover{ background:#b91c1c; }
+.v62-file-btn-optional{
+  background:#3b82f6;
+  color:#fff;
+}
+.v62-file-btn-optional:hover{ background:#1d4ed8; }
+.v62-file-btn-action{
+  background:#fff;
+  color:#3b82f6;
+  border:1px solid #3b82f6;
+}
+.v62-file-btn-action:hover{
+  background:#3b82f6;
+  color:#fff;
+}
+
+/* 파일명 또는 빈상태 */
+.v62-file-status{
   flex:1;
-  color:var(--ins-green);
   font-size:12px;
-  font-weight:500;
+  color:#6b7280;
   overflow:hidden;
   text-overflow:ellipsis;
   white-space:nowrap;
 }
-.v62-slot-remove{
+.v62-file-status.has-file{
+  color:#16a34a;
+  font-weight:500;
+}
+
+/* 삭제 버튼 */
+.v62-file-remove{
   background:none;
   border:0;
-  color:var(--ins-ink-3);
+  color:#9ca3af;
   cursor:pointer;
-  padding:4px 8px;
-  border-radius:4px;
-  font-size:14px;
+  padding:4px 6px;
+  border-radius:3px;
+  font-size:13px;
   line-height:1;
 }
-.v62-slot-remove:hover{
+.v62-file-remove:hover{
   background:#fee;
   color:#dc3545;
 }
-.v62-slot-action{
-  background:#fff;
-  border:1px solid var(--ins-accent);
-  color:var(--ins-accent);
-  font-size:12px;
-  font-weight:600;
-  padding:6px 14px;
+
+/* select (약관 종류) */
+.v62-select{
+  height:40px;
+  padding:0 10px;
+  font-size:13px;
+  border:1px solid #d1d5db;
   border-radius:5px;
+  background:#fff;
+  color:#111827;
   cursor:pointer;
 }
-.v62-slot-action:hover{
-  background:var(--ins-accent);
-  color:#fff;
+.v62-select.required{
+  border-color:#dc3545;
 }
-.v62-slot-hint{
-  font-size:11px;
-  color:var(--ins-ink-3);
-}
-
-/* 슬롯 — 다중 (한 슬롯에 파일 2개) */
-.v62-slot-multi .v62-multi-files{
-  display:flex;
-  flex-direction:column;
-  gap:0;
-}
-.v62-slot-multi .v62-slot-body{
-  border-top:1px solid #f0f0f0;
-}
-.v62-slot-multi .v62-slot-body:first-child{
-  border-top:0;
+.v62-select:focus{
+  outline:none;
+  border-color:#1d4ed8;
+  box-shadow:0 0 0 3px rgba(29,78,216,0.1);
 }
 
-/* 필드 (입력박스/select) */
-.v62-field{
+/* 다중 파일 (한 슬롯에 파일 2개까지) */
+.v62-multi-files{
   display:flex;
   flex-direction:column;
   gap:6px;
 }
-.v62-field-label{
-  font-size:13px;
-  font-weight:600;
-  color:var(--ins-ink);
-}
-.v62-select{
-  height:40px;
-  padding:0 12px;
-  font-size:14px;
-  border:1px solid var(--ins-line);
-  border-radius:6px;
-  background:#fff;
-  color:var(--ins-ink);
-  cursor:pointer;
-  -webkit-appearance:auto;
-  appearance:auto;
-}
-.v62-select:focus{
-  outline:none;
-  border-color:var(--ins-accent);
-  box-shadow:0 0 0 3px rgba(59,130,246,0.1);
-}
-.v62-field-hint{
-  font-size:11px;
-  color:var(--ins-ink-3);
-  line-height:1.4;
-}
 
-/* 피해자 블록 */
-.v62-victim-block{
-  border:1px solid #f0f0f0;
+/* 피보험자(가해자) / 피해자 서브박스 */
+.v62-subbox{
+  border:1px solid #d1d5db;
   border-radius:5px;
   padding:14px;
+  margin-top:10px;
   background:#fafafa;
+}
+.v62-subbox-title{
+  font-size:12px;
+  font-weight:700;
+  color:#374151;
+  margin-bottom:10px;
+}
+
+/* 피해자 블록 헤더 + 추가 버튼 */
+.v62-victim-row{
   display:flex;
-  flex-direction:column;
-  gap:12px;
+  align-items:center;
+  justify-content:space-between;
+  margin-bottom:10px;
+}
+.v62-victim-add-btn{
+  background:#16a34a;
+  color:#fff;
+  border:0;
+  padding:6px 14px;
+  border-radius:4px;
+  font-size:12px;
+  font-weight:600;
+  cursor:pointer;
+}
+.v62-victim-add-btn:hover{ background:#15803d; }
+.v62-victim-block{
+  border:1px solid #e5e7eb;
+  border-radius:5px;
+  padding:14px;
+  margin-top:10px;
+  background:#fff;
 }
 .v62-victim-block-header{
   display:flex;
   align-items:center;
   justify-content:space-between;
-  padding-bottom:6px;
-  border-bottom:1px dashed #e0e0e0;
+  margin-bottom:10px;
+  padding-bottom:8px;
+  border-bottom:1px dashed #e5e7eb;
 }
 .v62-victim-block-title{
-  font-size:13px;
-  font-weight:600;
-  color:var(--ins-ink);
+  font-size:12px;
+  font-weight:700;
+  color:#374151;
 }
-.v62-add-btn{
-  width:100%;
-  padding:10px;
-  border:1px dashed var(--ins-line);
-  background:transparent;
-  color:var(--ins-ink-2);
-  border-radius:5px;
-  font-size:13px;
+.v62-victim-block-remove{
+  background:none;
+  border:1px solid #e5e7eb;
+  color:#6b7280;
+  font-size:11px;
+  padding:3px 9px;
+  border-radius:3px;
   cursor:pointer;
-  transition:all .15s;
 }
-.v62-add-btn:hover{
-  border-color:var(--ins-accent);
-  color:var(--ins-accent);
-  background:#f8faff;
+.v62-victim-block-remove:hover{
+  border-color:#dc3545;
+  color:#dc3545;
 }
 
-/* 액션 영역 */
-.v62-actions{
-  display:flex;
-  flex-direction:column;
-  gap:10px;
-  padding:16px 0 32px;
+/* 헬퍼 텍스트 */
+.v62-hint{
+  font-size:11px;
+  color:#6b7280;
+  margin-top:4px;
+  line-height:1.4;
 }
-.v62-warning{
-  padding:12px 18px;
-  background:#fff3cd;
-  border:1px solid #ffe082;
-  color:#856404;
-  border-radius:5px;
-  font-size:13px;
-}
-.v62-success{
-  padding:12px 18px;
-  background:var(--ins-green-soft);
-  border:1px solid var(--ins-green);
-  color:var(--ins-green);
-  border-radius:5px;
-  font-size:13px;
-  font-weight:500;
-}
-.v62-btn-primary{
+
+/* 다음 단계 버튼 */
+.v62-next-btn{
+  display:block;
   width:100%;
-  padding:14px;
-  background:var(--ins-accent);
+  max-width:300px;
+  margin:24px auto 0;
+  padding:13px 24px;
+  background:#3b82f6;
   color:#fff;
   border:0;
   border-radius:6px;
-  font-size:15px;
+  font-size:14px;
   font-weight:600;
   cursor:pointer;
-  transition:all .15s;
+  transition:all 0.15s;
 }
-.v62-btn-primary:hover:not(:disabled){
-  background:#2563eb;
+.v62-next-btn:hover:not(:disabled){
+  background:#1d4ed8;
   transform:translateY(-1px);
-  box-shadow:0 2px 8px rgba(59,130,246,0.3);
+  box-shadow:0 2px 8px rgba(59,130,246,0.25);
 }
-.v62-btn-primary:disabled{
-  opacity:0.5;
+.v62-next-btn:disabled{
+  background:#9ca3af;
   cursor:not-allowed;
 }
-.v62-btn-secondary{
-  padding:10px 16px;
-  background:#fff;
-  color:var(--ins-ink-2);
-  border:1px solid var(--ins-line);
-  border-radius:5px;
-  font-size:13px;
-  cursor:pointer;
-}
-.v62-btn-secondary:hover{
-  background:#f5f5f5;
-}
 
-/* 모달 (누수소견서 옵션) */
+/* 모달 (누수소견서 옵션) — 외부 시스템엔 없으나 통합 슬롯 위해 추가 */
 .v62-modal-backdrop{
   position:fixed;
   inset:0;
@@ -1955,101 +1956,93 @@ body.printing-leak #screen-insurance .leak-doc p{
   left:50%;
   transform:translate(-50%, -50%);
   width:90%;
-  max-width:520px;
+  max-width:480px;
   max-height:80vh;
   background:#fff;
-  border-radius:10px;
+  border-radius:8px;
   box-shadow:0 20px 50px rgba(0,0,0,0.3);
   z-index:1001;
   display:flex;
   flex-direction:column;
+  overflow:hidden;
 }
 .v62-modal-header{
   display:flex;
   align-items:center;
   justify-content:space-between;
-  padding:18px 24px;
-  border-bottom:1px solid var(--ins-line);
+  padding:16px 20px;
+  border-bottom:1px solid #e5e7eb;
 }
 .v62-modal-header h3{
   margin:0;
-  font-size:16px;
+  font-size:14px;
   font-weight:700;
-  color:var(--ins-ink);
+  color:#111827;
 }
 .v62-modal-close{
   background:none;
   border:0;
   font-size:18px;
-  color:var(--ins-ink-3);
+  color:#9ca3af;
   cursor:pointer;
   padding:4px 8px;
   border-radius:4px;
 }
-.v62-modal-close:hover{
-  background:#f0f0f0;
-}
+.v62-modal-close:hover{ background:#f3f4f6; }
 .v62-modal-body{
-  padding:20px 24px;
+  padding:20px;
   overflow-y:auto;
   display:flex;
   flex-direction:column;
   gap:10px;
 }
 .v62-modal-section-title{
-  font-size:12px;
-  font-weight:600;
-  color:var(--ins-ink-2);
+  font-size:11px;
+  font-weight:700;
+  color:#6b7280;
   text-transform:uppercase;
-  letter-spacing:0.05em;
   margin-bottom:4px;
 }
 .v62-modal-divider{
   height:1px;
-  background:var(--ins-line);
-  margin:8px 0;
+  background:#e5e7eb;
+  margin:6px 0;
 }
 .v62-modal-option{
   display:flex;
   align-items:flex-start;
-  gap:12px;
-  padding:14px;
-  border:1px solid var(--ins-line);
-  border-radius:6px;
+  gap:10px;
+  padding:12px;
+  border:1px solid #e5e7eb;
+  border-radius:5px;
   cursor:pointer;
-  transition:all .15s;
+  transition:all 0.15s;
 }
 .v62-modal-option:hover{
-  border-color:var(--ins-accent);
+  border-color:#3b82f6;
   background:#f8faff;
 }
 .v62-modal-option:has(input:checked){
-  border-color:var(--ins-accent);
+  border-color:#3b82f6;
   background:#eef4ff;
 }
-.v62-modal-option input[type=radio]{
-  margin-top:2px;
-  cursor:pointer;
-}
-.v62-modal-option-body{
-  flex:1;
-}
+.v62-modal-option-body{ flex:1; }
 .v62-modal-option-title{
   font-size:13px;
   font-weight:600;
-  color:var(--ins-ink);
+  color:#111827;
 }
 .v62-modal-option-meta{
   font-size:11px;
-  color:var(--ins-ink-3);
-  margin-top:4px;
+  color:#6b7280;
+  margin-top:3px;
 }
 .v62-modal-empty{
-  padding:14px;
+  padding:12px;
   background:#fff8e7;
   border:1px solid #ffe082;
-  color:#856404;
-  border-radius:5px;
+  color:#92400e;
+  border-radius:4px;
   font-size:12px;
   line-height:1.5;
 }
@@ -2057,25 +2050,32 @@ body.printing-leak #screen-insurance .leak-doc p{
   display:flex;
   justify-content:flex-end;
   gap:8px;
-  padding:14px 24px;
-  border-top:1px solid var(--ins-line);
+  padding:12px 20px;
+  border-top:1px solid #e5e7eb;
   background:#fafafa;
 }
-.v62-modal-footer .v62-btn-primary{
-  width:auto;
-  padding:10px 20px;
-  font-size:14px;
+.v62-modal-btn-secondary{
+  padding:8px 16px;
+  background:#fff;
+  color:#374151;
+  border:1px solid #d1d5db;
+  border-radius:4px;
+  font-size:12px;
+  cursor:pointer;
 }
+.v62-modal-btn-secondary:hover{ background:#f3f4f6; }
+.v62-modal-btn-primary{
+  padding:8px 16px;
+  background:#3b82f6;
+  color:#fff;
+  border:0;
+  border-radius:4px;
+  font-size:12px;
+  font-weight:600;
+  cursor:pointer;
+}
+.v62-modal-btn-primary:hover{ background:#1d4ed8; }
 
-/* 그룹 아이콘 색상 (v6.2) */
-.v6-icon-claim{
-  background:#fef3c7;
-  color:#92400e;
-}
-.v6-icon-legacy{
-  background:#f3f4f6;
-  color:#6b7280;
-}
 
 /* ════════════════════════════════════════════════
    v5.7.x: 회사·내 프로필 설정 페이지
@@ -5302,7 +5302,7 @@ if (typeof window.escapeHtml !== 'function') {
 }
 </script>
 
-<script src="./insurance-tab.js?v=6.2.0"></script>
+<script src="./insurance-tab.js?v=6.2.1"></script>
 <!-- v6 패치: 9케이스 검증 PASS 룰엔진 + 약관선택 모달 + 파트너 임포트 -->
 <script src="./sabi-rule-v6.js?v=6.0.0"></script>
 <script src="./insurance-tab-v6-patch.js?v=6.0.0"></script>
