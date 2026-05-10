@@ -253,6 +253,16 @@ const INS_TYPE_LABELS = {
   personal_daily:   '일상생활배상책임 (일배책)',
 };
 
+// v6.2: 약관 종류 드롭다운 옵션 (준비중 표시용)
+const INS_TYPE_OPTIONS = [
+  { value: 'family_daily_new',  label: '가족일상생활배상책임 (신형)',  enabled: true },
+  { value: 'family_daily_old',  label: '가족일상생활배상책임 (구형)',  enabled: true },
+  { value: 'personal_daily',    label: '일상생활배상책임',              enabled: true },
+  { value: 'facility_owner',    label: '시설소유배상책임',              enabled: false, note: '준비중' },
+  { value: 'lessor',            label: '임대인배상책임',                enabled: false, note: '준비중' },
+  { value: 'water_leak_rider',  label: '급배수누출손해특약',            enabled: false, note: '준비중' },
+];
+
 // ─────────────────────────────────────────────
 // 약관별 핵심 분기 (Sabi v2.3 원칙: 임대인+주택관리 한 점에서만 갈림)
 // ─────────────────────────────────────────────
@@ -338,24 +348,45 @@ const INS_CAUSE_RULEBOOK_MAP = {
   '기타(직접입력)': { cat: '?', label: '수리소견으로 판단' },
 };
 
-// v6: 카드별 그룹 매핑 추가
-//   group: 'policy'   = 카드2 계약 서류
-//          'insured'  = 카드3 피보험자(가해세대)
-//          'victim'   = 카드4 피해세대
+// v6.2 INS_DOCS — 3그룹 A안 (사용자 결정사항 반영)
+//   group: 'A_contract'  = A. 계약 서류 (보험증권 + 약관)
+//          'B_claim'      = B. 청구·소견·경위 서류
+//          'C_public_insured' = C. 공공서류 — 피보험자(가해자)
+//          'C_public_victim'  = C. 공공서류 — 피해자
+//
+// multipleFiles: true 슬롯은 한 슬롯에 파일 2개까지 업로드 가능
+//                (등본+가족관계증명서 통합, 또는 건축물대장+등기부등본 통합)
 const INS_DOCS = [
-  { code:'insurance_policy',   name:'보험증권',                                               type:'pdf', required:true,  group:'policy'   },
-  { code:'claim_form',         name:'보험금 청구서',                                          type:'pdf', required:false, group:'policy'   },
-  { code:'resident_reg',       name:'피보험자 주민등록등본',                                  type:'pdf', required:true,  group:'insured'  },
-  { code:'family_cert',        name:'가족관계증명서',                                         type:'pdf', required:true,  group:'insured'  },  // v6: 선택→필수 승격
-  { code:'ownership_accident', name:'사고세대 건축물대장 + 등기부등본',                       type:'pdf', required:true,  group:'insured'  },
-  { code:'ownership_victim',   name:'피해세대 건축물대장 + 등기부등본',                       type:'pdf', required:true,  group:'victim'   },
+  // A. 계약 서류
+  { code:'insurance_policy',   name:'보험증권',                            type:'pdf', required:true,  group:'A_contract',       multipleFiles:false },
+
+  // B. 청구·소견·경위 서류
+  { code:'claim_form',         name:'보험청구서 또는 사고접수지',          type:'pdf', required:false, group:'B_claim',          multipleFiles:false },
+  { code:'leak_opinion_external', name:'누수소견서',                        type:'pdf', required:false, group:'B_claim',          multipleFiles:false, hasModal:true },
+  { code:'incident_statement', name:'경위서',                              type:'pdf', required:false, group:'B_claim',          multipleFiles:false },
+
+  // C. 공공서류 — 피보험자(가해자)
+  { code:'family_doc',         name:'주민등록등본 / 가족관계증명서',       type:'pdf', required:true,  group:'C_public_insured', multipleFiles:true  },
+  { code:'ownership_insured',  name:'건축물대장 / 등기부등본',             type:'pdf', required:true,  group:'C_public_insured', multipleFiles:true  },
+
+  // C. 공공서류 — 피해자 (1명 기본, [+ 피해자 추가]로 N명 확장)
+  { code:'ownership_doc_victim', name:'건축물대장 / 등기부등본',           type:'pdf', required:false, group:'C_public_victim',  multipleFiles:true  },
+  { code:'family_doc_victim',  name:'주민등록등본 / 가족관계증명서',       type:'pdf', required:false, group:'C_public_victim',  multipleFiles:true  },
+
+  // 레거시 호환 (v5.x 기존 케이스 표시용 — 신규 케이스는 위 doc_code 사용)
+  { code:'resident_reg',       name:'피보험자 주민등록등본 (legacy)',      type:'pdf', required:false, group:'_legacy',          multipleFiles:false, legacy:true },
+  { code:'family_cert',        name:'가족관계증명서 (legacy)',             type:'pdf', required:false, group:'_legacy',          multipleFiles:false, legacy:true },
+  { code:'ownership_accident', name:'사고세대 건축물대장+등기부 (legacy)', type:'pdf', required:false, group:'_legacy',          multipleFiles:false, legacy:true },
+  { code:'ownership_victim',   name:'피해세대 건축물대장+등기부 (legacy)', type:'pdf', required:false, group:'_legacy',          multipleFiles:false, legacy:true },
 ];
 
-// v6: 카드 메타데이터
+// v6.2 카드 메타데이터 (3그룹)
 const INS_DOC_GROUPS = {
-  policy:   { icon:'📑', cls:'v6-icon-policy',   title:'계약 서류',           sub:'보험증권 OCR · 12개 항목 추출 · Call 1' },
-  insured:  { icon:'👤', cls:'v6-icon-insured',  title:'피보험자(가해세대)',  sub:'4개 문서 교차참조 · 지위 자동 판정 · Call 2' },
-  victim:   { icon:'🏠', cls:'v6-icon-victim',   title:'피해세대',            sub:'대장 + 등기부 · Call 3' },
+  A_contract:        { icon:'📄', cls:'v6-icon-policy',   title:'A. 계약 서류',         sub:'보험증권 + 약관 종류' },
+  B_claim:           { icon:'📋', cls:'v6-icon-claim',    title:'B. 청구·소견·경위 서류', sub:'보험청구서 + 누수소견서 + 경위서' },
+  C_public_insured:  { icon:'👤', cls:'v6-icon-insured',  title:'C. 공공서류 — 피보험자(가해자)', sub:'등본·가족관계증명서·건축물대장·등기부' },
+  C_public_victim:   { icon:'🏠', cls:'v6-icon-victim',   title:'C. 공공서류 — 피해자',  sub:'등본·가족관계·건축물대장·등기부 (피해자별)' },
+  _legacy:           { icon:'📦', cls:'v6-icon-legacy',   title:'레거시 (v5.x)',         sub:'기존 케이스 호환' },
 };
 
 // 피보험자 지위 4-value (표기 통일 — 백엔드 enum과 매칭)
@@ -1037,271 +1068,301 @@ function v6PolicyBarHTML(readonly) {
 //   - 우: 룰엔진 사이드바 (sticky)
 // ─────────────────────────────────────────────
 function insStep1HTML() {
+  // v6.2: 3그룹 A안 — 깔끔한 시각 위계 + 약관 드롭다운 + 누수소견서 모달
   const cl = _insClaim || {};
   const co = _insCompany || {};
   const fd = _insField;
-  const today = new Date().toISOString().split('T')[0];
-  const reqDone = INS_DOCS.filter(d => d.required && _insUploaded[d.code]).length;
-  const reqTotal = INS_DOCS.filter(d => d.required).length;
-  const allReq = reqDone >= reqTotal;
 
-  // 카드별 슬롯 그룹화
-  const policyDocs  = INS_DOCS.filter(d => d.group === 'policy');
-  const insuredDocs = INS_DOCS.filter(d => d.group === 'insured');
-  const victimDocs  = INS_DOCS.filter(d => d.group === 'victim');
+  // 그룹별 슬롯 필터링
+  const groupADocs = INS_DOCS.filter(d => d.group === 'A_contract');
+  const groupBDocs = INS_DOCS.filter(d => d.group === 'B_claim');
+  const groupCInsuredDocs = INS_DOCS.filter(d => d.group === 'C_public_insured');
+  const groupCVictimDocs = INS_DOCS.filter(d => d.group === 'C_public_victim');
 
-  // 슬롯 렌더 헬퍼
+  // 그룹별 진행도 계산 (필수 항목만)
+  const groupProgress = (docs) => {
+    const reqDocs = docs.filter(d => d.required);
+    const reqUploaded = reqDocs.filter(d => _insUploaded[d.code]).length;
+    return { done: reqUploaded, total: reqDocs.length, complete: reqUploaded === reqDocs.length && reqDocs.length > 0 };
+  };
+  const progressA = groupProgress(groupADocs);
+  const progressB = { done: groupBDocs.filter(d => _insUploaded[d.code]).length, total: groupBDocs.length, complete: false }; // B는 모두 선택
+  const progressCInsured = groupProgress(groupCInsuredDocs);
+  const progressCVictim = groupProgress(groupCVictimDocs);
+
+  // 전체 필수 진행도 (분석 시작 가능 여부)
+  const reqAllDone = progressA.complete && progressCInsured.complete;
+
+  // 약관 종류 (기본: 신형)
+  const insType = cl.insurance_type || 'family_daily_new';
+
+  // ─── 슬롯 렌더 헬퍼 (v6.2 통합 슬롯 + 다중 파일) ───
   const renderSlot = (doc) => {
     const up = _insUploaded[doc.code];
     const done = !!up;
     const fileName = done ? (up.doc_name || '업로드 완료') : '';
+    const reqMark = doc.required ? '<span class="v62-req">*</span>' : '<span class="v62-opt">(선택)</span>';
+
+    // 누수소견서: 모달 트리거
+    if (doc.hasModal && doc.code === 'leak_opinion_external') {
+      return `
+        <div class="v62-slot ${done?'v62-slot-done':''}" id="ins-dz-${doc.code}">
+          <div class="v62-slot-label">📄 ${escapeHtml(doc.name)}${reqMark}</div>
+          <div class="v62-slot-body">
+            ${done
+              ? `<span class="v62-slot-status">✓ ${escapeHtml(fileName)}</span>
+                 <button class="v62-slot-remove" onclick="event.stopPropagation();insRemoveDoc('${doc.code}')" title="삭제">✕</button>`
+              : `<button class="v62-slot-action" onclick="insOpenLeakModal()">⚙️ 옵션 선택 ▼</button>
+                 <span class="v62-slot-hint">파트너 임포트 또는 외부업체 PDF</span>`}
+          </div>
+        </div>`;
+    }
+
+    // 통합 슬롯 (multipleFiles=true): 한 슬롯에 파일 2개까지
+    if (doc.multipleFiles) {
+      // _insUploaded[doc.code]가 배열이면 다중 파일, 단일이면 하위 호환
+      const files = Array.isArray(up) ? up : (up ? [up] : []);
+      const slot1Done = files.length >= 1;
+      const slot2Done = files.length >= 2;
+      return `
+        <div class="v62-slot v62-slot-multi ${slot1Done?'v62-slot-done':''}" id="ins-dz-${doc.code}">
+          <div class="v62-slot-label">📄 ${escapeHtml(doc.name)}${reqMark}</div>
+          <div class="v62-multi-files">
+            <div class="v62-slot-body" onclick="${slot1Done?'':`insTrigger('${doc.code}','${escapeHtml(doc.name)}', 0)`}">
+              ${slot1Done
+                ? `<span class="v62-slot-status">✓ ${escapeHtml(files[0]?.doc_name || '파일 1')}</span>
+                   <button class="v62-slot-remove" onclick="event.stopPropagation();insRemoveDoc('${doc.code}', 0)" title="삭제">✕</button>`
+                : `<span class="v62-slot-empty">📎 파일 1 — 클릭 또는 드래그</span>`}
+            </div>
+            <div class="v62-slot-body" onclick="${slot2Done?'':`insTrigger('${doc.code}','${escapeHtml(doc.name)}', 1)`}">
+              ${slot2Done
+                ? `<span class="v62-slot-status">✓ ${escapeHtml(files[1]?.doc_name || '파일 2')}</span>
+                   <button class="v62-slot-remove" onclick="event.stopPropagation();insRemoveDoc('${doc.code}', 1)" title="삭제">✕</button>`
+                : `<span class="v62-slot-empty">📎 파일 2 — 클릭 또는 드래그 (선택)</span>`}
+            </div>
+          </div>
+        </div>`;
+    }
+
+    // 일반 단일 슬롯
     return `
-      <div class="v6-upload-slot ${done?'done':''}" id="ins-dz-${doc.code}"
-           ondragover="event.preventDefault();this.classList.add('v6-upload-slot-over')"
-           ondragleave="this.classList.remove('v6-upload-slot-over')"
+      <div class="v62-slot ${done?'v62-slot-done':''}" id="ins-dz-${doc.code}"
+           ondragover="event.preventDefault();this.classList.add('v62-slot-over')"
+           ondragleave="this.classList.remove('v62-slot-over')"
            ondrop="insDrop(event,'${doc.code}','${escapeHtml(doc.name)}')"
            onclick="insTrigger('${doc.code}','${escapeHtml(doc.name)}')">
-        <div class="v6-upload-slot-label">
-          ${doc.type==='pdf'?'📄':'🖼'} ${escapeHtml(doc.name)}${doc.required?'<span class="v6-upload-required">*</span>':'<span class="v6-upload-optional">(선택)</span>'}
+        <div class="v62-slot-label">📄 ${escapeHtml(doc.name)}${reqMark}</div>
+        <div class="v62-slot-body">
+          ${done
+            ? `<span class="v62-slot-status">✓ ${escapeHtml(fileName)}</span>
+               <button class="v62-slot-remove" onclick="event.stopPropagation();insRemoveDoc('${doc.code}')" title="삭제">✕</button>`
+            : `<span class="v62-slot-empty">📎 클릭 또는 드래그</span>`}
         </div>
-        ${done
-          ? `<span class="v6-upload-slot-status">✓ ${escapeHtml(fileName)}</span>
-             <button class="v6-upload-remove" onclick="event.stopPropagation();insRemoveDoc('${doc.code}')" title="삭제">✕</button>`
-          : `<span class="v6-upload-slot-empty">클릭 또는 드래그</span>`}
-        <div class="v6-upload-progress" id="ins-dp-${doc.code}"></div>
       </div>`;
   };
 
-  // 카드별 추출 데이터 표시 (현재는 프로젝트 진행에 따라 채워짐 — 분석 후 STEP 2/3에서)
-  // 여기서는 업로드 완료 여부만 표시
-  const policyExtractedHTML = _insUploaded.insurance_policy && cl.policy_no
-    ? `<ul class="v6-data-list">
-        <li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">증권번호</div><div class="v6-data-val">${escapeHtml(cl.policy_no || '—')}</div></li>
-        <li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">보험사</div><div class="v6-data-val">${escapeHtml(cl.insurer_name || '—')}</div></li>
-        ${cl.policy_start && cl.policy_end ? `<li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">보험기간</div><div class="v6-data-val">${fmtDate(cl.policy_start)} ~ ${fmtDate(cl.policy_end)}</div></li>` : ''}
-        ${cl.coverage_limit ? `<li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">보장한도</div><div class="v6-data-val">${Number(cl.coverage_limit).toLocaleString()}원 ${cl.deductible?`/ 자기부담금 ${Number(cl.deductible).toLocaleString()}원`:''}</div></li>` : ''}
-       </ul>`
-    : '';
-
-  const insuredExtractedHTML = (_insUploaded.resident_reg && cl.insured_name)
-    ? `<ul class="v6-data-list">
-        <li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">피보험자</div><div class="v6-data-val">${escapeHtml(cl.insured_name || '—')}</div></li>
-        ${cl.insured_owner_name ? `<li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">건물소유자</div><div class="v6-data-val">${escapeHtml(cl.insured_owner_name)}</div></li>` : ''}
-        ${cl.insured_cohabitants ? `<li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">동거인</div><div class="v6-data-val">${escapeHtml(cl.insured_cohabitants)}</div></li>` : ''}
-        ${cl.insured_status ? `<li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">피보험자 지위</div><div class="v6-data-val"><b>${escapeHtml(cl.insured_status)}</b> (4문서 교차참조)</div></li>` : ''}
-       </ul>`
-    : '';
-
-  const victimExtractedHTML = (_insUploaded.ownership_victim && (cl.victim_name || cl.victim_address))
-    ? `<ul class="v6-data-list">
-        ${cl.victim_name ? `<li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">피해자</div><div class="v6-data-val">${escapeHtml(cl.victim_name)}</div></li>` : ''}
-        ${cl.victim_address ? `<li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">소재지</div><div class="v6-data-val">${escapeHtml(cl.victim_address)}</div></li>` : ''}
-       </ul>`
-    : '';
-
-  // v6.1: 파트너 보고서 카드 — 다중 파트너 임포트 토글
-  //   - _insPartners 배열 모두 표시 (탐지/인테리어 등)
-  //   - 체크박스로 임포트 선택, 미체크는 무시
-  //   - 보고서 미제출 파트너는 회색 처리, 토글 비활성
-  const partnerListHTML = (_insPartners && _insPartners.length > 0)
-    ? _insPartners.map(p => {
-        const purposeLabel = p.assignment_purpose === 'restore' ? '🏠 인테리어/복구'
-                          : p.assignment_purpose === 'detection' ? '🔍 누수탐지'
-                          : '🔧 파트너';
-        const checked = _insImportedPartners.has(p.id);
-        const disabled = !p.has_report;
-        const statusBadge = p.has_report
-          ? '<span style="font-size:10px;padding:2px 8px;border-radius:999px;background:var(--ins-green-soft);color:var(--ins-green);font-weight:600">보고서 제출됨</span>'
-          : '<span style="font-size:10px;padding:2px 8px;border-radius:999px;background:var(--ins-bg-soft);color:var(--ins-ink-3);font-weight:600">보고서 미제출</span>';
-        return `
-          <div style="padding:12px 14px;border:1px solid var(--ins-line);border-radius:5px;margin-bottom:8px;background:${disabled?'var(--ins-bg-soft)':'var(--ins-bg-card)'};opacity:${disabled?'.7':'1'}">
-            <label style="display:flex;align-items:center;gap:10px;cursor:${disabled?'not-allowed':'pointer'}">
-              <input type="checkbox" ${checked?'checked':''} ${disabled?'disabled':''}
-                onchange="s1TogglePartner('${p.id}', this.checked)"
-                style="width:16px;height:16px;accent-color:var(--ins-accent);cursor:${disabled?'not-allowed':'pointer'}">
-              <div style="flex:1;min-width:0">
-                <div style="font-size:13px;font-weight:600;color:var(--ins-ink)">${escapeHtml(p.partner_name)} · ${purposeLabel}</div>
-                ${p.has_report ? `<div style="font-size:11px;color:var(--ins-ink-3);margin-top:2px">
-                  ${p.repair_cost ? `수리금액 ${Number(p.repair_cost).toLocaleString()}원` : ''}
-                  ${p.work_done_at ? ` · 완료일 ${fmtDate(p.work_done_at)}` : ''}
-                </div>` : ''}
-              </div>
-              ${statusBadge}
-            </label>
-            ${p.has_report && checked ? `
-              <ul class="v6-data-list" style="margin-top:10px">
-                ${p.accident_occurred_at ? `<li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">사고일자</div><div class="v6-data-val">${fmtDate(p.accident_occurred_at)}</div></li>` : ''}
-                ${p.leak_cause ? `<li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">사고원인</div><div class="v6-data-val">${escapeHtml(p.leak_cause)}</div></li>` : ''}
-                ${p.leak_area_type ? `<li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">누수부위</div><div class="v6-data-val">${escapeHtml(p.leak_area_type)}</div></li>` : ''}
-                ${(p.attacker_unit || p.victim_unit) ? `<li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">가/피해세대</div><div class="v6-data-val">${escapeHtml(p.attacker_unit||'—')} → ${escapeHtml(p.victim_unit||'—')}</div></li>` : ''}
-                ${p.repair_opinion ? `<li class="v6-data-row" style="align-items:flex-start"><div class="v6-data-check">✓</div><div class="v6-data-key">수리소견</div><div class="v6-data-val" style="white-space:pre-wrap;font-size:11px">${escapeHtml(p.repair_opinion)}</div></li>` : ''}
-              </ul>
-            ` : ''}
-          </div>`;
-      }).join('')
-    : `<div class="v6-card-hint" style="border-left-color:var(--ins-amber);background:var(--ins-amber-soft);color:var(--ins-amber);padding:10px 12px">
-        ⚠ 이 케이스에 배정된 파트너가 없습니다 — <b>외부 케이스</b>(직접 접수)인 경우 누수소견서/수리사진을 별도 업로드하세요
-      </div>`;
-
-  const importedCount = _insPartners.filter(p => _insImportedPartners.has(p.id) && p.has_report).length;
-  const partnerCardHTML = `
-    ${partnerListHTML}
-    ${_insPartners.length > 0 ? `
-      <div class="v6-card-hint">
-        ⓘ 체크된 파트너 보고서만 분석에 사용됩니다 · 현재 <b>${importedCount}건</b> 임포트
-      </div>` : ''}`;
-
-  // 카드 헤더 헬퍼
-  const cardHead = (groupKey, statusText, statusCls) => {
-    const g = INS_DOC_GROUPS[groupKey];
-    return `<div class="v6-data-card-header">
-      <div class="v6-data-card-icon ${g.cls}">${g.icon}</div>
-      <div style="flex:1;min-width:0">
-        <div class="v6-data-card-title">${g.title}</div>
-        <div class="v6-data-card-meta">${g.sub}</div>
-      </div>
-      <span class="v6-data-card-status ${statusCls||'v6-status-pend'}">${statusText||'대기'}</span>
+  // ─── 그룹 헤더 + 진행도 표시 ───
+  const groupHeader = (icon, title, progress, isOptional) => {
+    const statusBadge = progress.complete
+      ? `<span class="v62-status-ok">✓ 완료</span>`
+      : isOptional
+        ? `<span class="v62-status-opt">${progress.done}/${progress.total} (선택)</span>`
+        : `<span class="v62-status-pend">${progress.done}/${progress.total} ✏️</span>`;
+    return `<div class="v62-group-header">
+      <span class="v62-group-icon">${icon}</span>
+      <span class="v62-group-title">${title}</span>
+      ${statusBadge}
     </div>`;
   };
 
-  // 카드 상태 계산 헬퍼
-  const groupStatus = (docs) => {
-    const reqDocs = docs.filter(d => d.required);
-    const reqUploaded = reqDocs.filter(d => _insUploaded[d.code]).length;
-    if (reqDocs.length === 0) return ['v6-status-pend','선택'];
-    if (reqUploaded === reqDocs.length) return ['v6-status-ok','완료'];
-    if (reqUploaded === 0) return ['v6-status-pend','대기'];
-    return ['v6-status-warn',`${reqUploaded}/${reqDocs.length}`];
-  };
-  const [policyCls, policyStatus]   = groupStatus(policyDocs);
-  const [insuredCls, insuredStatus] = groupStatus(insuredDocs);
-  const [victimCls, victimStatus]   = groupStatus(victimDocs);
-
-  const insType = cl.insurance_type || 'family_daily_old';
-  const insTypeLabel = INS_TYPE_LABELS[insType] || '미선택';
-
-  // v6.1: 카드 단계 번호를 시각화 (① ② ③ ④ ⑤)
-  // 단계 ①은 약관 선택 (v6PolicyBarHTML), ②~⑤는 카드들
-
-  // 카드 헤더에 단계 번호 prefix 붙이기
-  const cardHeadWithStep = (groupKey, statusText, statusCls, stepNum) => {
-    const g = INS_DOC_GROUPS[groupKey];
-    return `<div class="v6-data-card-header">
-      <div class="v6-data-card-icon ${g.cls}" style="font-weight:700">${stepNum}</div>
-      <div style="flex:1;min-width:0">
-        <div class="v6-data-card-title">${g.title}</div>
-        <div class="v6-data-card-meta">${g.sub}</div>
-      </div>
-      <span class="v6-data-card-status ${statusCls||'v6-status-pend'}">${statusText||'대기'}</span>
-    </div>`;
-  };
+  // ─── 약관 드롭다운 ───
+  const policyTypeOptions = INS_TYPE_OPTIONS.map(opt => {
+    const selected = (opt.value === insType) ? 'selected' : '';
+    const disabled = !opt.enabled ? 'disabled' : '';
+    const labelText = opt.enabled ? opt.label : `${opt.label} (${opt.note})`;
+    return `<option value="${opt.value}" ${selected} ${disabled} ${disabled?'style="color:#999"':''}>${labelText}</option>`;
+  }).join('');
 
   return `
-  ${v6CaseHeaderHTML({ editableDate: true })}
+  ${v6CaseHeaderHTML({ editableDate: false })}
 
-  <!-- v6.1.1: 약관/파트너 임포트 요약 띠 (모달로 변경) -->
-  <div style="background:var(--ins-bg-card);border:1px solid var(--ins-line);border-radius:6px;padding:12px 16px;margin-bottom:12px;box-shadow:var(--ins-shadow);display:flex;gap:18px;align-items:center;flex-wrap:wrap">
-    <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:240px">
-      <div style="width:22px;height:22px;border-radius:50%;background:var(--ins-accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">①</div>
-      <div>
-        <div style="font-size:11px;color:var(--ins-ink-3);font-weight:500">약관</div>
-        <div style="font-size:13px;font-weight:600;color:var(--ins-ink)">${escapeHtml(insTypeLabel)}</div>
-      </div>
-      <button class="btn btn-ghost btn-sm" onclick="insOpenPolicyModal()" style="margin-left:auto;font-size:11px">변경</button>
-    </div>
-    <div style="width:1px;height:32px;background:var(--ins-line)"></div>
-    <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:240px">
-      <div style="width:22px;height:22px;border-radius:50%;background:var(--ins-accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">②</div>
-      <div>
-        <div style="font-size:11px;color:var(--ins-ink-3);font-weight:500">파트너 임포트</div>
-        <div style="font-size:13px;font-weight:600;color:var(--ins-ink)">
-          ${importedCount > 0 ? `${importedCount}건 (${escapeHtml(_insField?.partner_name || '')})` : (_insPartners.length === 0 ? '외부 케이스' : '미선택')}
+  <!-- v6.2: 3그룹 A안 컨테이너 -->
+  <div class="v62-step1-container">
+
+    <!-- ─── A. 계약 서류 ─── -->
+    <div class="v62-group-card">
+      ${groupHeader('📄', 'A. 계약 서류', progressA, false)}
+      <div class="v62-group-body">
+
+        <!-- 보험증권 -->
+        ${groupADocs.map(renderSlot).join('')}
+
+        <!-- 약관 종류 드롭다운 -->
+        <div class="v62-field">
+          <label class="v62-field-label">약관 종류 <span class="v62-req">*</span></label>
+          <select class="v62-select" onchange="s1ChangePolicyType(this.value)">
+            ${policyTypeOptions}
+          </select>
+          <div class="v62-field-hint">기본: 가족일상생활배상책임 (신형) · 준비중 약관은 추후 업데이트 예정</div>
         </div>
+
       </div>
-      <button class="btn btn-ghost btn-sm" onclick="insOpenImportModal()" style="margin-left:auto;font-size:11px">변경</button>
     </div>
-  </div>
 
-  <div class="v6-collect-grid">
-    <!-- 좌측: ③~⑥ 단계 카드 -->
-    <div class="v6-collect-stack">
+    <!-- ─── B. 청구·소견·경위 서류 ─── -->
+    <div class="v62-group-card">
+      ${groupHeader('📋', 'B. 청구·소견·경위 서류', progressB, true)}
+      <div class="v62-group-body">
+        ${groupBDocs.map(renderSlot).join('')}
+      </div>
+    </div>
 
-      <!-- ③ 파트너 보고서 임포트 상세 (모달에서 선택한 결과 표시) -->
-      <div class="v6-data-card">
-        <div class="v6-data-card-header">
-          <div class="v6-data-card-icon v6-icon-partner" style="font-weight:700">③</div>
-          <div style="flex:1;min-width:0">
-            <div class="v6-data-card-title">파트너 보고서 임포트 상세</div>
-            <div class="v6-data-card-meta">위 ② 모달에서 선택한 보고서 데이터</div>
+    <!-- ─── C. 공공서류 — 피보험자(가해자) ─── -->
+    <div class="v62-group-card">
+      ${groupHeader('👤', 'C. 공공서류 — 피보험자(가해자)', progressCInsured, false)}
+      <div class="v62-group-body">
+        ${groupCInsuredDocs.map(renderSlot).join('')}
+      </div>
+    </div>
+
+    <!-- ─── C. 공공서류 — 피해자 ─── -->
+    <div class="v62-group-card">
+      ${groupHeader('🏠', 'C. 공공서류 — 피해자', progressCVictim, true)}
+      <div class="v62-group-body">
+        <div class="v62-victim-block">
+          <div class="v62-victim-block-header">
+            <span class="v62-victim-block-title">피해자 1${(fd?.victim_unit)?` · ${escapeHtml(fd.victim_unit)}`:''}</span>
           </div>
-          <span class="v6-data-card-status ${importedCount > 0 ? 'v6-status-ok' : 'v6-status-pend'}">
-            ${importedCount > 0 ? `${importedCount}건` : (_insPartners.length === 0 ? '외부' : '미임포트')}
-          </span>
+          ${groupCVictimDocs.map(renderSlot).join('')}
         </div>
-        ${partnerCardHTML}
+        <button class="v62-add-btn" onclick="toast('다세대 동시 피해는 다음 업데이트에 추가 예정','i')">+ 피해자 추가</button>
       </div>
-
-      <!-- ④ 계약 서류 -->
-      <div class="v6-data-card">
-        ${cardHeadWithStep('policy', policyStatus, policyCls, '④')}
-        ${policyDocs.map(renderSlot).join('')}
-        ${policyExtractedHTML}
-        <div class="v6-card-hint">→ 보고서 1pg 증권번호 + 3pg 보험계약사항 표 자동 채움</div>
-      </div>
-
-      <!-- ⑤ 피보험자(가해세대) 서류 -->
-      <div class="v6-data-card">
-        ${cardHeadWithStep('insured', insuredStatus, insuredCls, '⑤')}
-        ${insuredDocs.map(renderSlot).join('')}
-        ${insuredExtractedHTML}
-        <div class="v6-card-hint">→ 보고서 4pg "가. 피보험자 개요" 6필드 + 지위 판정값 (룰엔진 입력)</div>
-      </div>
-
-      <!-- ⑥ 피해세대 서류 -->
-      <div class="v6-data-card">
-        ${cardHeadWithStep('victim', victimStatus, victimCls, '⑥')}
-        <div class="v6-victim-block">
-          <div class="v6-victim-block-title">
-            <span>피해세대 1${(fd?.victim_unit)?` · ${escapeHtml(fd.victim_unit)}`:''}</span>
-          </div>
-          ${victimDocs.map(renderSlot).join('')}
-        </div>
-        <button class="v6-attach-btn" onclick="toast('다세대 동시 피해 지원은 추후 업데이트 예정','i')">+ 피해세대 추가 (다세대 동시 피해 시)</button>
-        ${victimExtractedHTML}
-        <div class="v6-card-hint">→ 보고서 4pg "나. 피해자 개요" 5필드</div>
-      </div>
-
-      <!-- 보완 필요 안내 -->
-      ${!allReq ? `
-      <div class="ins-banner ins-banner-warn" style="margin:0">
-        ⚠ 필수 서류 ${reqTotal-reqDone}건 미업로드 — 분석 전에 모두 업로드해 주세요
-      </div>` : `
-      <div class="ins-banner ins-banner-success" style="margin:0">
-        ✓ 필수 서류 ${reqTotal}건 모두 업로드 완료 — 분석을 시작할 수 있습니다
-      </div>`}
     </div>
 
-    <!-- 우측: 룰엔진 사이드바 -->
-    ${v6EngineSidebarHTML(1)}
-  </div>
+    <!-- 분석 시작 버튼 -->
+    <div class="v62-actions">
+      ${!reqAllDone
+        ? `<div class="v62-warning">⚠ 필수 서류(A 보험증권, C 피보험자 공공서류)를 먼저 업로드해 주세요</div>`
+        : `<div class="v62-success">✓ 필수 서류 업로드 완료 — 사실정보를 추출할 수 있습니다</div>`}
+      <button class="v62-btn-primary" onclick="s1Save()" ${reqAllDone?'':'disabled'}>
+        사실정보 추출 → STEP 2
+      </button>
+    </div>
 
-  <div class="ins-action-bar" style="margin-top:16px">
-    <span style="font-size:12px;color:var(--ins-ink-3)">
-      약관 <b>${insTypeLabel}</b> · 파트너 <b>${importedCount}건</b> · 서류 <b>${reqDone}/${reqTotal}</b>
-    </span>
-    <button class="btn btn-primary" onclick="s1Save()" ${allReq?'':'disabled style="opacity:.5;cursor:not-allowed"'}>
-      저장 후 분석·판단 →
-    </button>
   </div>`;
 }
 
 // v6: s1InsurerChange/s1CauseChange는 STEP 1에서 보험사·사고원인 입력 제거되며 더 이상 사용되지 않음
 function s1SelectType(val, el) {
+  // (legacy v6.1 — 카드 라디오 방식, v6.2에선 사용 안 함)
   document.querySelectorAll('.ins-type-card').forEach(c => c.classList.remove('ins-type-selected'));
   el.classList.add('ins-type-selected');
   el.querySelector('input[type=radio]').checked = true;
   _insClaim = { ..._insClaim, insurance_type: val };
 }
+
+// v6.2: 약관 종류 드롭다운 변경
+function s1ChangePolicyType(val) {
+  _insClaim = { ..._insClaim, insurance_type: val };
+  // 화면 재렌더 안 함 — select가 그대로 표시되므로
+  // 단, 약관에 따라 가족관계증명서 슬롯 노출 여부 등 향후 분기 필요시 insRender() 호출
+}
+window.s1ChangePolicyType = s1ChangePolicyType;
+
+// v6.2: 누수소견서 옵션 모달 (파트너 임포트 OR 외부업체 PDF)
+function insOpenLeakModal() {
+  // 사용 가능한 파트너 목록 (보고서 제출됨 + 누수탐지 목적)
+  const detectionPartners = (_insPartners || []).filter(p => p.has_report && p.assignment_purpose === 'detection');
+  const partnerOptionsHTML = detectionPartners.length > 0
+    ? detectionPartners.map(p => `
+        <label class="v62-modal-option">
+          <input type="radio" name="leak-source" value="partner-${p.id}" ${_insImportedPartners.has(p.id)?'checked':''}>
+          <div class="v62-modal-option-body">
+            <div class="v62-modal-option-title">파트너 임포트 — ${escapeHtml(p.partner_name)}</div>
+            <div class="v62-modal-option-meta">
+              ${p.leak_cause ? `사고원인: ${escapeHtml(p.leak_cause)}` : '누수탐지 보고서 제출됨'}
+              ${p.work_done_at ? ` · ${fmtDate(p.work_done_at)}` : ''}
+            </div>
+          </div>
+        </label>
+      `).join('')
+    : `<div class="v62-modal-empty">⚠ 이 케이스에 누수탐지 파트너가 배정되어 있지 않습니다 — 외부업체 PDF를 업로드해주세요</div>`;
+
+  const modalHTML = `
+    <div class="v62-modal-backdrop" onclick="insCloseLeakModal()"></div>
+    <div class="v62-modal" id="leak-modal">
+      <div class="v62-modal-header">
+        <h3>📄 누수소견서 추가</h3>
+        <button class="v62-modal-close" onclick="insCloseLeakModal()">✕</button>
+      </div>
+      <div class="v62-modal-body">
+        <div class="v62-modal-section-title">파트너 임포트</div>
+        ${partnerOptionsHTML}
+
+        <div class="v62-modal-divider"></div>
+
+        <div class="v62-modal-section-title">또는 외부업체 PDF 업로드</div>
+        <label class="v62-modal-option">
+          <input type="radio" name="leak-source" value="external">
+          <div class="v62-modal-option-body">
+            <div class="v62-modal-option-title">외부업체 PDF 업로드</div>
+            <div class="v62-modal-option-meta">파트너가 아닌 외부 누수업체에서 받은 PDF 누수소견서 업로드</div>
+            <input type="file" id="leak-external-file" accept=".pdf" style="margin-top:8px;display:block">
+          </div>
+        </label>
+      </div>
+      <div class="v62-modal-footer">
+        <button class="v62-btn-secondary" onclick="insCloseLeakModal()">취소</button>
+        <button class="v62-btn-primary" onclick="insApplyLeakModal()">적용</button>
+      </div>
+    </div>`;
+
+  let host = document.getElementById('leak-modal-host');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'leak-modal-host';
+    document.body.appendChild(host);
+  }
+  host.innerHTML = modalHTML;
+}
+window.insOpenLeakModal = insOpenLeakModal;
+
+function insCloseLeakModal() {
+  const host = document.getElementById('leak-modal-host');
+  if (host) host.innerHTML = '';
+}
+window.insCloseLeakModal = insCloseLeakModal;
+
+async function insApplyLeakModal() {
+  const selected = document.querySelector('input[name="leak-source"]:checked');
+  if (!selected) { toast('파트너 임포트 또는 외부업체 PDF 중 하나를 선택해주세요','w'); return; }
+
+  if (selected.value === 'external') {
+    // 외부 PDF 업로드 — 기존 insTrigger 패턴 그대로
+    const file = document.getElementById('leak-external-file').files[0];
+    if (!file) { toast('PDF 파일을 선택해주세요','w'); return; }
+    insCloseLeakModal();
+    // 기존 업로드 함수 재사용
+    if (typeof insUploadFile === 'function') {
+      await insUploadFile(file, 'leak_opinion_external', '누수소견서');
+    } else {
+      // 폴백: 직접 처리 필요 — Phase 2에서 보강
+      toast('외부 PDF 업로드는 백엔드 연결 작업 후 활성화됩니다 (Phase 2)','i');
+    }
+  } else if (selected.value.startsWith('partner-')) {
+    // 파트너 임포트
+    const partnerId = selected.value.replace('partner-', '');
+    _insImportedPartners.clear();
+    _insImportedPartners.add(partnerId);
+    // _insField 갱신
+    const partner = _insPartners.find(p => p.id === partnerId);
+    if (partner) _insField = partner;
+    insCloseLeakModal();
+    toast(`${partner?.partner_name || ''} 누수소견서가 임포트되었습니다`,'s');
+    insRender();
+  }
+}
+window.insApplyLeakModal = insApplyLeakModal;
 
 // v6.1: 파트너 임포트 토글 (STEP 1 ②카드)
 function s1TogglePartner(partnerId, checked) {
@@ -1320,10 +1381,12 @@ function s1TogglePartner(partnerId, checked) {
 }
 
 async function s1Save() {
-  // v6: 보험사·참조·사고원인은 보고서 본문에서 편집하므로 STEP 1에서는 검증/저장하지 않음
-  // 약관구분(insurance_type)은 분석 로직의 핵심 입력이므로 여기서 결정
-  const insType = document.querySelector('input[name="ins-type"]:checked')?.value || 'family_daily_old';
-  const submitDate = document.getElementById('s1-date').value;
+  // v6.2: 약관 종류는 select에서 (v6.1 라디오는 폴백)
+  const insType = (_insClaim?.insurance_type) 
+                  || document.querySelector('.v62-select')?.value 
+                  || document.querySelector('input[name="ins-type"]:checked')?.value 
+                  || 'family_daily_new';
+  const submitDate = document.getElementById('s1-date')?.value || new Date().toISOString().split('T')[0];
 
   try {
     // RPC: 보고서번호 채번 + 제출일자 저장 (보험사 필드는 빈값 전달, 추후 보고서 본문에서 채움)
