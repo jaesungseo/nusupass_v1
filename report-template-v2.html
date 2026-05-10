@@ -48,12 +48,15 @@ html,body{
 
 .page{
   width:210mm;
-  min-height:297mm;
   padding:24mm 22mm 20mm 22mm;
   background:var(--paper);
   page-break-after:always;
   break-after:page;
   position:relative;
+}
+/* 첫 화면(non-print)에서는 페이지 분리감을 위해 최소 높이 유지 */
+body:not(.embed) .page{
+  min-height:297mm;
 }
 .page:last-child{
   page-break-after:auto;
@@ -304,6 +307,16 @@ body:not(.embed) .page{
 .photo-row td.photo-cell{
   padding:6px !important;
 }
+/* 사진 행 단위 페이지 분할 허용 (한 페이지 못 들어가면 다음 페이지로 자연스럽게) */
+.photo-row{
+  page-break-inside:avoid;
+  break-inside:avoid;
+}
+/* P5 페이지 — 사진이 많으면 자동으로 다음 페이지로 흐름 */
+.page[data-page="5"]{
+  page-break-after:auto !important;
+  break-after:auto !important;
+}
 
 /* 5. 법률상손해배상책임검토 */
 .liability-table td.lbl{
@@ -358,12 +371,21 @@ body:not(.embed) .page{
     box-shadow:none !important;
     border:0 !important;
     width:210mm !important;
-    height:297mm !important;
-    min-height:297mm !important;
+    min-height:0 !important;
     page-break-after:always !important;
     break-after:page !important;
     padding:24mm 22mm 20mm 22mm !important;
     background:#fff !important;
+  }
+  /* P5 사고사항: 사진이 많으면 자연스럽게 다음 페이지로 흐르도록 */
+  .page[data-page="5"]{
+    page-break-after:auto !important;
+    break-after:auto !important;
+  }
+  /* P5 다음에 P6이 페이지 전환되도록 P6 시작 시 강제 분할 */
+  .page[data-page="6"]{
+    page-break-before:always !important;
+    break-before:page !important;
   }
   .page:last-child{
     page-break-after:auto !important;
@@ -502,6 +524,37 @@ const CASES = {
 };
 
 const D = CASES[caseId] || CASES['SMPL_01_백석균'];
+
+// 부책/면책에 따라 5번 다/라 표준 멘트 자동 채움 (사용자가 비워뒀을 때만)
+function applyStandardMessages() {
+  const cov = (D.liability && D.liability.coverDecision) || '';
+  const isBubchaek = cov.includes('부책');
+  const isMeonchaek = cov.includes('면책');
+
+  // 다. 책임제한/피해자 과실
+  if (D.liability && (!D.liability.faultReview || D.liability.faultReview === '-')) {
+    D.liability.faultReview = isBubchaek
+      ? '금번 사고의 제반정황, 당사 현장조사 등을 종합적으로 검토한 바, 피보험자 세대에서 발생한 누수사고에 대하여 피해세대의 과실을 인정할만한 사유가 없으며, 사전에 예측하고 대비하기는 어려웠을 것으로 여겨지므로 피해자 측의 과실을 묻기는 어려울 것으로 사료됨.'
+      : isMeonchaek
+        ? '면책 사유에 해당되어 검토하지 않음'
+        : D.liability.faultReview || '';
+  }
+
+  // 라. 손해방지비용 검토 — 담보여부 자동, 검토사항 표준 멘트
+  if (D.liability) {
+    if (!D.liability.mitigation || D.liability.mitigation === '-') {
+      D.liability.mitigation = isBubchaek ? '검토 대상' : isMeonchaek ? '면책' : D.liability.mitigation || '';
+    }
+    if (!D.liability.mitigationReview || D.liability.mitigationReview === '-') {
+      D.liability.mitigationReview = isBubchaek
+        ? '상법 제680조 제1항에 따라 규정한 손해방지비용 및 대법원 판례 및 금융분쟁조정위원회 의견에 의거 손해확대 또는 방지를 위해 필요 또는 유익한 비용에 해당하는 누수탐지 및 손해방지를 위해 노력한 공사 비용을 지급처리하는 것이 타당할 것으로 판단됨.'
+        : isMeonchaek
+          ? '면책 사유에 해당되어 검토하지 않음'
+          : D.liability.mitigationReview || '';
+    }
+  }
+}
+applyStandardMessages();
 
 const escapeHtml = s => String(s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const nl2br = s => escapeHtml(s).replace(/\n/g, '<br>');
@@ -744,19 +797,39 @@ function renderPage4(){
 // ════════════════════════════════════════════════════════════════
 function renderPhotoRow(label, photos){
   const p = photos || [];
-  const slot = (i) => p[i]
-    ? `<div class="photo-slot"><img src="${escapeHtml(p[i].url||'')}" alt=""/></div>`
-    : `<div class="photo-slot"></div>`;
-  return `
+  if (p.length === 0) {
+    // 빈 슬롯 1행 (양식 기본)
+    return `
+      <tr class="photo-row">
+        <td class="lbl-photo">현장사진<br>(${escapeHtml(label)})</td>
+        <td class="photo-cell" colspan="2">
+          <div class="photo-cell-row">
+            <div class="photo-slot"></div>
+            <div class="photo-slot"></div>
+          </div>
+        </td>
+      </tr>`;
+  }
+  // 사진 2장씩 묶어서 행 생성. 첫 행에만 라벨 표시 (rowspan), 나머지 행은 라벨 셀 생략
+  const rows = [];
+  for (let i = 0; i < p.length; i += 2) {
+    const a = p[i] ? `<div class="photo-slot"><img src="${escapeHtml(p[i].url||'')}" alt=""/></div>` : `<div class="photo-slot"></div>`;
+    const b = p[i+1] ? `<div class="photo-slot"><img src="${escapeHtml(p[i+1].url||'')}" alt=""/></div>` : `<div class="photo-slot"></div>`;
+    rows.push({ a, b });
+  }
+  const totalRows = rows.length;
+  return rows.map((r, idx) => `
     <tr class="photo-row">
-      <td class="lbl-photo">현장사진<br>(${escapeHtml(label)})</td>
+      ${idx === 0
+        ? `<td class="lbl-photo" rowspan="${totalRows}">현장사진<br>(${escapeHtml(label)})${totalRows > 1 ? `<br><span style="font-size:10px;color:var(--ink-3)">${p.length}장</span>` : ''}</td>`
+        : ''}
       <td class="photo-cell" colspan="2">
         <div class="photo-cell-row">
-          ${slot(0)}
-          ${slot(1)}
+          ${r.a}
+          ${r.b}
         </div>
       </td>
-    </tr>`;
+    </tr>`).join('');
 }
 
 function renderPage5(){
@@ -964,6 +1037,7 @@ window.addEventListener('message', (e) => {
   if (!e.data) return;
   if (e.data.type === 'setCase') {
     Object.assign(D, e.data.data || {});
+    applyStandardMessages();
     renderAll();
   } else if (e.data.type === 'setHeader') {
     const h = e.data.data || {};
