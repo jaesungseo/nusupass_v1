@@ -437,10 +437,157 @@ async function openInsuranceTab(caseId, caseNo) {
              : (s === 'info_in_progress' || s === 'ready_for_draft') ? 2
              : 1;
     insRender();
+
+    // v6.1.1: 신규 케이스 (약관 미선택) → 약관 선택 모달 자동 띄우기
+    //   기존 케이스(약관 이미 선택됨)는 바로 STEP 1
+    if (!claim.insurance_type && _insStep === 1) {
+      setTimeout(() => insOpenPolicyModal(), 100);
+    }
   } catch(e) {
     document.getElementById('insuranceTabBody').innerHTML =
       `<div class="card" style="color:var(--red)">오류: ${e.message}</div>`;
   }
+}
+
+// ─────────────────────────────────────────────
+// v6.1.1: 모달 흐름 — 약관 선택 → 파트너 임포트 → STEP 1
+// ─────────────────────────────────────────────
+
+// 모달 1: 약관 선택 열기
+function insOpenPolicyModal() {
+  const modal = document.getElementById('insPolicyModal');
+  if (!modal) { console.warn('[v6.1.1] insPolicyModal not found'); return; }
+  // 현재 약관에 맞춰 selected 표시 동기화
+  const cur = _insClaim?.insurance_type || 'family_daily_new';
+  document.querySelectorAll('#insPolicyModal .ins-modal-opt').forEach(el => {
+    const v = el.dataset.policy;
+    el.classList.toggle('selected', v === cur);
+    const r = el.querySelector('input[type=radio]');
+    if (r) r.checked = (v === cur);
+  });
+  modal.classList.add('open');
+}
+function insClosePolicyModal() {
+  document.getElementById('insPolicyModal')?.classList.remove('open');
+}
+function insSelectPolicy(el) {
+  document.querySelectorAll('#insPolicyModal .ins-modal-opt').forEach(x => x.classList.remove('selected'));
+  el.classList.add('selected');
+  el.querySelector('input[type=radio]').checked = true;
+}
+async function insConfirmPolicy() {
+  const sel = document.querySelector('#insPolicyModal .ins-modal-opt.selected');
+  if (!sel) { toast('약관을 선택해주세요','w'); return; }
+  const policyVal = sel.dataset.policy;
+  // DB에 즉시 저장
+  if (_insClaim?.id) {
+    try {
+      await sb.from('insurance_claims').update({ insurance_type: policyVal }).eq('id', _insClaim.id);
+      _insClaim.insurance_type = policyVal;
+    } catch (e) { console.warn('[v6.1.1] 약관 저장 실패:', e); }
+  }
+  insClosePolicyModal();
+  // 곧바로 파트너 임포트 모달
+  insOpenImportModal();
+}
+
+// 모달 2: 파트너 임포트
+function insOpenImportModal() {
+  const modal = document.getElementById('insImportModal');
+  if (!modal) { console.warn('[v6.1.1] insImportModal not found'); return; }
+  insRenderImportModal();
+  modal.classList.add('open');
+}
+function insCloseImportModal() {
+  document.getElementById('insImportModal')?.classList.remove('open');
+}
+function insBackToPolicyModal() {
+  insCloseImportModal();
+  insOpenPolicyModal();
+}
+function insRenderImportModal() {
+  const list = document.getElementById('insImportModalList');
+  if (!list) return;
+  if (!_insPartners || _insPartners.length === 0) {
+    list.innerHTML = `
+      <div style="padding:20px;text-align:center;color:#8A8A8A;font-size:13px;background:#F4F2EE;border-radius:6px">
+        ℹ 이 케이스에 배정된 파트너가 없습니다.<br>
+        <span style="font-size:11px">아래 "외부 케이스" 옵션을 체크하고 진행하세요.</span>
+      </div>`;
+    return;
+  }
+  // 보고서 제출된 파트너 = 첫 임포트 후보
+  const firstReady = _insPartners.find(p => p.has_report);
+  list.innerHTML = _insPartners.map(p => {
+    const purposeLabel = p.assignment_purpose === 'restore' ? '인테리어업체'
+                       : p.assignment_purpose === 'detection' ? '누수업체'
+                       : '파트너';
+    const purposePillCls = p.assignment_purpose === 'restore' ? 'amber' : '';
+    const isReady = p.has_report;
+    const isSelected = isReady && p.id === firstReady?.id;
+    const detail = (isReady && p.leak_cause) ? `· 누수원인: ${escapeHtml(p.leak_cause)}<br>` : '';
+    const acc = (isReady && p.accident_occurred_at) ? `· 사고일시: ${fmtDate(p.accident_occurred_at)} (가해세대 진술)<br>` : '';
+    const done = (isReady && p.work_done_at) ? fmtDate(p.work_done_at) + ' 작업완료' : '진행중';
+    return `
+      <label class="ins-modal-opt ${isSelected?'selected':''} ${isReady?'':'disabled'}" 
+             data-partner-id="${p.id}" 
+             onclick="${isReady?`insSelectImportPartner(this)`:'return false'}">
+        <input type="radio" name="ins-partner" value="${p.id}" ${isSelected?'checked':''} ${isReady?'':'disabled'}>
+        <div class="ins-modal-row1">
+          <div class="ins-modal-radio"></div>
+          <span class="ins-modal-name">${escapeHtml(p.partner_name)}</span>
+          <span class="ins-modal-pill ${purposePillCls}">${purposeLabel}</span>
+          <span class="ins-modal-meta">${done}</span>
+        </div>
+        <div class="ins-modal-desc">
+          ${isReady ? `${detail}${acc}${p.repair_cost?`· 수리금액: ${Number(p.repair_cost).toLocaleString()}원`:''}` : '작업 완료 후 임포트 가능'}
+        </div>
+      </label>`;
+  }).join('');
+}
+function insSelectImportPartner(el) {
+  if (el.classList.contains('disabled')) return;
+  // 외부 케이스 체크 해제
+  const ext = document.getElementById('insExternalCase');
+  if (ext) ext.checked = false;
+  document.querySelectorAll('#insImportModal .ins-modal-opt').forEach(x => x.classList.remove('selected'));
+  el.classList.add('selected');
+  const r = el.querySelector('input[type=radio]');
+  if (r) r.checked = true;
+}
+function insToggleExternal(checked) {
+  if (checked) {
+    document.querySelectorAll('#insImportModal .ins-modal-opt').forEach(x => {
+      x.classList.remove('selected');
+      const r = x.querySelector('input[type=radio]');
+      if (r) r.checked = false;
+    });
+  }
+}
+async function insConfirmImport() {
+  const ext = document.getElementById('insExternalCase')?.checked;
+  if (ext) {
+    // 외부 케이스 → 임포트 없이 진행
+    _insImportedPartners = new Set();
+    _insField = null;
+  } else {
+    const sel = document.querySelector('#insImportModal .ins-modal-opt.selected');
+    if (!sel) {
+      // 선택 안하고 외부도 체크 안함
+      if (_insPartners.length > 0) {
+        toast('파트너를 선택하거나 외부 케이스를 체크해주세요','w');
+        return;
+      }
+      _insImportedPartners = new Set();
+      _insField = null;
+    } else {
+      const partnerId = sel.dataset.partnerId;
+      _insImportedPartners = new Set([partnerId]);
+      _insField = _insPartners.find(p => p.id === partnerId) || null;
+    }
+  }
+  insCloseImportModal();
+  insRender();
 }
 
 async function loadInsuranceCaseSelector() {
@@ -993,19 +1140,6 @@ function insStep1HTML() {
   // v6.1: 카드 단계 번호를 시각화 (① ② ③ ④ ⑤)
   // 단계 ①은 약관 선택 (v6PolicyBarHTML), ②~⑤는 카드들
 
-  // 파트너 카드 헤더 (v6.1 다중 파트너용 단계 번호)
-  const partnerCardHead = `
-    <div class="v6-data-card-header">
-      <div class="v6-data-card-icon v6-icon-partner">②</div>
-      <div style="flex:1;min-width:0">
-        <div class="v6-data-card-title">파트너 보고서 임포트</div>
-        <div class="v6-data-card-meta">탐지/인테리어 파트너 보고서 선택 임포트</div>
-      </div>
-      <span class="v6-data-card-status ${_insPartners.length > 0 && importedCount > 0 ? 'v6-status-ok' : 'v6-status-pend'}">
-        ${_insPartners.length === 0 ? '없음' : importedCount > 0 ? `${importedCount}건` : '미선택'}
-      </span>
-    </div>`;
-
   // 카드 헤더에 단계 번호 prefix 붙이기
   const cardHeadWithStep = (groupKey, statusText, statusCls, stepNum) => {
     const g = INS_DOC_GROUPS[groupKey];
@@ -1022,42 +1156,67 @@ function insStep1HTML() {
   return `
   ${v6CaseHeaderHTML({ editableDate: true })}
 
-  <!-- ① 약관 선택 (가장 먼저) -->
-  <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:0 4px">
-    <div style="width:24px;height:24px;border-radius:50%;background:var(--ins-accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700">①</div>
-    <div style="font-size:13px;font-weight:600;color:var(--ins-ink)">약관 구분 선택</div>
+  <!-- v6.1.1: 약관/파트너 임포트 요약 띠 (모달로 변경) -->
+  <div style="background:var(--ins-bg-card);border:1px solid var(--ins-line);border-radius:6px;padding:12px 16px;margin-bottom:12px;box-shadow:var(--ins-shadow);display:flex;gap:18px;align-items:center;flex-wrap:wrap">
+    <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:240px">
+      <div style="width:22px;height:22px;border-radius:50%;background:var(--ins-accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">①</div>
+      <div>
+        <div style="font-size:11px;color:var(--ins-ink-3);font-weight:500">약관</div>
+        <div style="font-size:13px;font-weight:600;color:var(--ins-ink)">${escapeHtml(insTypeLabel)}</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="insOpenPolicyModal()" style="margin-left:auto;font-size:11px">변경</button>
+    </div>
+    <div style="width:1px;height:32px;background:var(--ins-line)"></div>
+    <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:240px">
+      <div style="width:22px;height:22px;border-radius:50%;background:var(--ins-accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">②</div>
+      <div>
+        <div style="font-size:11px;color:var(--ins-ink-3);font-weight:500">파트너 임포트</div>
+        <div style="font-size:13px;font-weight:600;color:var(--ins-ink)">
+          ${importedCount > 0 ? `${importedCount}건 (${escapeHtml(_insField?.partner_name || '')})` : (_insPartners.length === 0 ? '외부 케이스' : '미선택')}
+        </div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="insOpenImportModal()" style="margin-left:auto;font-size:11px">변경</button>
+    </div>
   </div>
-  ${v6PolicyBarHTML(false)}
 
   <div class="v6-collect-grid">
-    <!-- 좌측: ②~⑤ 단계 카드 -->
+    <!-- 좌측: ③~⑥ 단계 카드 -->
     <div class="v6-collect-stack">
 
-      <!-- ② 파트너 보고서 임포트 (다중) -->
+      <!-- ③ 파트너 보고서 임포트 상세 (모달에서 선택한 결과 표시) -->
       <div class="v6-data-card">
-        ${partnerCardHead}
+        <div class="v6-data-card-header">
+          <div class="v6-data-card-icon v6-icon-partner" style="font-weight:700">③</div>
+          <div style="flex:1;min-width:0">
+            <div class="v6-data-card-title">파트너 보고서 임포트 상세</div>
+            <div class="v6-data-card-meta">위 ② 모달에서 선택한 보고서 데이터</div>
+          </div>
+          <span class="v6-data-card-status ${importedCount > 0 ? 'v6-status-ok' : 'v6-status-pend'}">
+            ${importedCount > 0 ? `${importedCount}건` : (_insPartners.length === 0 ? '외부' : '미임포트')}
+          </span>
+        </div>
         ${partnerCardHTML}
       </div>
 
-      <!-- ③ 계약 서류 -->
+      <!-- ④ 계약 서류 -->
       <div class="v6-data-card">
-        ${cardHeadWithStep('policy', policyStatus, policyCls, '③')}
+        ${cardHeadWithStep('policy', policyStatus, policyCls, '④')}
         ${policyDocs.map(renderSlot).join('')}
         ${policyExtractedHTML}
         <div class="v6-card-hint">→ 보고서 1pg 증권번호 + 3pg 보험계약사항 표 자동 채움</div>
       </div>
 
-      <!-- ④ 피보험자(가해세대) 서류 -->
+      <!-- ⑤ 피보험자(가해세대) 서류 -->
       <div class="v6-data-card">
-        ${cardHeadWithStep('insured', insuredStatus, insuredCls, '④')}
+        ${cardHeadWithStep('insured', insuredStatus, insuredCls, '⑤')}
         ${insuredDocs.map(renderSlot).join('')}
         ${insuredExtractedHTML}
         <div class="v6-card-hint">→ 보고서 4pg "가. 피보험자 개요" 6필드 + 지위 판정값 (룰엔진 입력)</div>
       </div>
 
-      <!-- ⑤ 피해세대 서류 -->
+      <!-- ⑥ 피해세대 서류 -->
       <div class="v6-data-card">
-        ${cardHeadWithStep('victim', victimStatus, victimCls, '⑤')}
+        ${cardHeadWithStep('victim', victimStatus, victimCls, '⑥')}
         <div class="v6-victim-block">
           <div class="v6-victim-block-title">
             <span>피해세대 1${(fd?.victim_unit)?` · ${escapeHtml(fd.victim_unit)}`:''}</span>
@@ -3103,45 +3262,137 @@ function insStep3HTML() {
   // 헤더 상태 배지
   const covVal = r.coverage_result || cl.coverage_result;
   const coverageBadge = covVal === '부책'
-    ? '<span class="badge" style="background:#dcfce7;color:#15803d">부책</span>'
+    ? '<span class="badge" style="background:#dcfce7;color:#15803d;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:600">부책</span>'
     : covVal === '면책'
-    ? '<span class="badge" style="background:#fee2e2;color:#dc2626">면책</span>'
-    : '<span class="badge" style="background:#fef3c7;color:#b45309">판단유보</span>';
+    ? '<span class="badge" style="background:#fee2e2;color:#dc2626;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:600">면책</span>'
+    : '<span class="badge" style="background:#fef3c7;color:#b45309;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:600">판단유보</span>';
+
+  // v6.1.1: 우측 액션 사이드 (자주 쓰는 문구 5개 + 작업 정보)
+  const reportNo = cl.report_no || '— 미채번 —';
+  const insTypeLabel = INS_TYPE_LABELS[cl.insurance_type] || '미선택';
 
   return `
   <div class="no-print">
     ${v6CaseHeaderHTML()}
-    ${v6PolicyBarHTML(true)}
-  </div>
-  <div class="card no-print" style="margin-bottom:14px">
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <div style="font-size:14px;font-weight:900">📄 손해사정보고서 ${coverageBadge}</div>
-      <div style="display:flex;gap:6px">
-        <button class="btn btn-ghost btn-sm" onclick="insGoStep(2)">← 이전</button>
-        <button class="btn btn-ghost btn-sm" onclick="s3LoadReportData().then(()=>insRender())">↻ 새로고침</button>
-        <button class="btn btn-ghost btn-sm" onclick="s3SaveReport()">💾 편집 저장</button>
-        <button class="btn btn-primary" onclick="s3ExportPdf()">🖨 PDF 인쇄</button>
-      </div>
-    </div>
-    <div style="font-size:11px;color:var(--muted);margin-top:8px">
-      아래 보고서의 <b>연한 노란색 배경</b> 영역은 수정 가능합니다. "편집 저장"을 누르면 DB에 반영됩니다.
-      "PDF 인쇄"는 브라우저 인쇄 다이얼로그를 열며, 대상을 "PDF로 저장"으로 선택하세요.
-    </div>
   </div>
 
-  <!-- ═══════ 실제 보고서 출력 영역 (#report-print) ═══════ -->
-  <!-- v6.0.2: 7페이지 / 7섹션 구조 (잔존물·구상·검토요청 제거) -->
-  <div id="report-print" class="report-doc">
-    ${renderReportCover(cl, co, victims)}
-    ${renderReportSection1_Summary(cl, r, fd, pa, rc, ded, pay, prevCost)}
-    ${renderReportSection2_Contract(cl, r)}
-    ${renderReportSection3_General(r, cl, victims)}
-    ${renderReportSection4_Accident(cl, r, pa, photos)}
-    ${renderReportSection5_Liability(cl, r)}
-    ${renderReportSection6_Damage(rc, ded, pay)}
-    ${renderReportSection7_Attachments()}
-    ${renderReportFooter(co)}
+  <!-- 출력 화면 헤더: 수신/참조/제목 인라인 -->
+  <div class="v6-output-header no-print">
+    <label>
+      <span>수신</span>
+      <input type="text" id="rep-recipient" 
+        value="${escapeHtml(cl.report_recipient || cl.insurer_name || 'DB손해보험')}" 
+        placeholder="보험사명"
+        oninput="document.getElementById('cover-recipient').textContent=this.value||'—'">
+    </label>
+    <label>
+      <span>참조</span>
+      <input type="text" id="rep-cc" 
+        value="${escapeHtml(cl.report_cc || '손해사정팀')}" 
+        placeholder="부서명 / 담당자" style="width:200px"
+        oninput="document.getElementById('cover-cc').textContent=this.value||'—'">
+    </label>
+    <label>
+      <span>제목</span>
+      <input type="text" id="rep-title" 
+        value="${escapeHtml(cl.report_title || '누수사고 손해사정서')}" 
+        placeholder="보고서 제목" style="width:240px"
+        oninput="document.getElementById('cover-title').textContent=this.value||'—'">
+    </label>
+    <span style="margin-left:auto;font-size:11px;color:var(--ins-ink-3)">→ 변경 시 표지에 즉시 반영</span>
+  </div>
+
+  <!-- 좌(보고서 페이지들) + 우(액션 사이드) -->
+  <div class="v6-output-grid">
+    <!-- 좌측: 보고서 페이지 한 장씩 카드로 -->
+    <div>
+      <div class="card no-print" style="margin-bottom:14px;display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:14px;font-weight:700">📄 손해사정 보고서 ${coverageBadge}</div>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-ghost btn-sm" onclick="insGoStep(2)">← 이전</button>
+          <button class="btn btn-ghost btn-sm" onclick="s3LoadReportData().then(()=>insRender())">↻ 새로고침</button>
+        </div>
+      </div>
+
+      <!-- v6.1.1: 각 섹션을 .v6-page-card로 감싸 페이지 단위 시각화 -->
+      <div id="report-print" class="report-doc v6-output-pages">
+        <div class="v6-page-card report-cover-wrap">
+          ${renderReportCover(cl, co, victims)}
+          <div class="v6-page-num">1 / 7</div>
+        </div>
+        <div class="v6-page-card">
+          ${renderReportSection1_Summary(cl, r, fd, pa, rc, ded, pay, prevCost)}
+          <div class="v6-page-num">2 / 7</div>
+        </div>
+        <div class="v6-page-card">
+          ${renderReportSection2_Contract(cl, r)}
+          <div class="v6-page-num">3 / 7</div>
+        </div>
+        <div class="v6-page-card">
+          ${renderReportSection3_General(r, cl, victims)}
+          <div class="v6-page-num">4 / 7</div>
+        </div>
+        <div class="v6-page-card">
+          ${renderReportSection4_Accident(cl, r, pa, photos)}
+          <div class="v6-page-num">5 / 7</div>
+        </div>
+        <div class="v6-page-card">
+          ${renderReportSection5_Liability(cl, r)}
+          <div class="v6-page-num">6 / 7</div>
+        </div>
+        <div class="v6-page-card">
+          ${renderReportSection6_Damage(rc, ded, pay)}
+          ${renderReportSection7_Attachments()}
+          ${renderReportFooter(co)}
+          <div class="v6-page-num">7 / 7</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 우측: 액션 사이드 -->
+    <div class="v6-action-side no-print">
+      <div class="v6-action-card">
+        <div class="v6-action-card-title">📤 제출</div>
+        <button class="v6-action-btn primary" onclick="s3ExportPdf()">🖨 PDF 다운로드</button>
+        <button class="v6-action-btn" onclick="toast('보험사 송부 기능은 추후 업데이트 예정','i')">📧 보험사 송부</button>
+        <button class="v6-action-btn" onclick="s3SaveReport()">💾 임시저장</button>
+      </div>
+
+      <div class="v6-action-card">
+        <div class="v6-action-card-title">💡 자주 쓰는 문구</div>
+        <ul class="v6-snippet-list">
+          <li class="v6-snippet-item" onclick="s3InsertSnippet('전유부 공작물의 보존상 하자로 인한 누수사고로 판단됨')" title="전유부 공작물 보존상 하자">전유부 공작물 보존상 하자...</li>
+          <li class="v6-snippet-item" onclick="s3InsertSnippet('피보험자의 법률상 손해배상책임이 성립하는 사고로 판단됨')" title="법률상 배상책임 성립함">법률상 배상책임 성립함...</li>
+          <li class="v6-snippet-item" onclick="s3InsertSnippet('약관상 보장 범위에 해당하여 부책으로 판단됨')" title="약관상 보장 범위에 해당">약관상 보장 범위에 해당...</li>
+          <li class="v6-snippet-item" onclick="s3InsertSnippet('본 사고는 민법 제758조 본문에 따라 공작물 점유자/소유자의 무과실책임에 해당함')" title="본 사고는 758조 본문에">본 사고는 758조 본문에...</li>
+          <li class="v6-snippet-item" onclick="s3InsertSnippet('현장 조사 결과를 종합하여 검토한 바')" title="현장 조사 결과를 종합하여">현장 조사 결과를 종합하여...</li>
+        </ul>
+      </div>
+
+      <div class="v6-action-card">
+        <div class="v6-action-card-title">📌 작업 정보</div>
+        <div class="v6-job-info">
+          <div>보고서 번호 · ${escapeHtml(reportNo)}</div>
+          <div>약관 · ${escapeHtml(insTypeLabel)}</div>
+          <div>판단 결과 · ${covVal || '미산출'}</div>
+          <div>버전 · v6.1.1</div>
+        </div>
+      </div>
+    </div>
   </div>`;
+}
+
+// v6.1.1: 자주 쓰는 문구 클릭 → 클립보드 복사 (간단)
+function s3InsertSnippet(text) {
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(() => {
+      toast('문구가 클립보드에 복사되었습니다','s');
+    }).catch(() => {
+      toast('복사 실패 — 직접 입력해주세요','w');
+    });
+  } else {
+    toast('클립보드 미지원 브라우저','w');
+  }
 }
 
 // ─── 표지 (시안 1페이지) ────────────────────────────────────
@@ -3180,18 +3431,17 @@ function renderReportCover(cl, co, victims) {
       <div>제출일자 : <b>${submitDate}</b></div>
     </div>
 
-    <!-- 수신/참조/제목 -->
+    <!-- v6.1.1: 수신/참조/제목 — 출력 헤더에서 입력, 여기는 readonly 표시만 -->
+    <!-- (이전 rep-insurer/rep-insurer-contact ID는 출력 헤더의 rep-recipient/rep-cc로 통합) -->
     <table class="report-meta-table">
-      <tr><td class="lbl">수  신</td><td><input class="report-editable-input" id="rep-insurer" value="${escapeHtml(cl.insurer_name || '')}" placeholder="보험사명 (예: KB손해보험)"></td></tr>
-      <tr><td class="lbl">참  조</td><td><input class="report-editable-input" id="rep-insurer-contact" value="${escapeHtml(cl.insurer_contact || '')}" placeholder="담당자 (예: 홍길동 과장)"></td></tr>
-      <tr><td class="lbl">제  목</td><td><b>${typeLabel} ${escapeHtml(insuredName)} 보고서</b></td></tr>
+      <tr><td class="lbl">수  신</td><td><b id="cover-recipient">${escapeHtml(cl.report_recipient || cl.insurer_name || '—')}</b></td></tr>
+      <tr><td class="lbl">참  조</td><td><b id="cover-cc">${escapeHtml(cl.report_cc || cl.insurer_contact || '—')}</b></td></tr>
+      <tr><td class="lbl">제  목</td><td><b id="cover-title">${escapeHtml(cl.report_title || `${typeLabel} ${insuredName} 보고서`)}</b></td></tr>
     </table>
 
     <!-- 본문 인사말 -->
     <div class="report-intro">
-      <textarea class="report-editable report-editable-multi" id="rep-recipient" rows="2"
-        placeholder="귀사 피보험자 요청에 의거">${escapeHtml(cl.report_recipient || '귀사 피보험자 요청에 의거')}</textarea>
-      <div style="margin-top:8px"> ${accDate}경 ${escapeHtml(accLoc)}에서 발생한 누수 증권번호 <b>제 ${escapeHtml(policyNo)} 호</b>에 대한 사고조사를 실시하고 그 현장조사 결과를 다음과 같이 제출합니다.</div>
+      <div>귀사 피보험자 요청에 의거 ${accDate}경 ${escapeHtml(accLoc)}에서 발생한 누수 증권번호 <b>제 ${escapeHtml(policyNo)} 호</b>에 대한 사고조사를 실시하고 그 현장조사 결과를 다음과 같이 제출합니다.</div>
     </div>
 
     <!-- 손해사정사·조사자 서명 -->
@@ -3637,9 +3887,12 @@ async function s3SaveReport() {
     const repDamageAmt = parseInt((g('rep-damage-amt')||'').replace(/[^0-9]/g,'')) || null;
 
     const updates = {
-      insurer_name:         g('rep-insurer'),
-      insurer_contact:      g('rep-insurer-contact'),
+      // v6.1.1: 보험사명/담당자 입력은 출력 헤더의 rep-recipient/rep-cc로 통합됨 — DB 컬럼은 호환 유지
+      insurer_name:         g('rep-recipient') || _insClaim.insurer_name,    // 호환: 보험사명 = 수신자
+      insurer_contact:      g('rep-cc')        || _insClaim.insurer_contact, // 호환: 담당자 = 참조
       report_recipient:     g('rep-recipient'),
+      report_cc:            g('rep-cc'),       // v6.1.1
+      report_title:         g('rep-title'),    // v6.1.1
       accident_cause_type:  g('rep-cause'),  // v6: 사고원인은 보고서 본문 select에서 입력
       report_no:            reportNo,
       submit_date:          new Date().toISOString().split('T')[0],

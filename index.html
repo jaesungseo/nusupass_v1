@@ -709,6 +709,226 @@ select.form-control{cursor:pointer}
 }
 
 /* ══════════════════════════════════════════════════════════
+   v6.1.1 모달 (사건 선택 후 약관 → 파트너 임포트 흐름)
+   ══════════════════════════════════════════════════════════ */
+.ins-modal-overlay{
+  position:fixed;inset:0;
+  background:rgba(20,20,15,0.45);
+  display:none;align-items:center;justify-content:center;
+  z-index:9999;
+  backdrop-filter:blur(2px);
+}
+.ins-modal-overlay.open{display:flex}
+.ins-modal{
+  background:#fff;
+  border-radius:8px;
+  width:min(560px,92vw);
+  max-height:90vh;
+  overflow-y:auto;
+  box-shadow:0 4px 24px rgba(20,20,15,0.18);
+  padding:28px 32px 24px;
+  font-family:'Pretendard','Malgun Gothic',sans-serif;
+}
+.ins-modal-title{
+  font-size:20px;font-weight:700;letter-spacing:-0.02em;
+  margin:0 0 6px;color:#1A1A1A;
+}
+.ins-modal-sub{
+  color:#8A8A8A;font-size:13px;margin-bottom:20px;line-height:1.5;
+}
+
+/* 옵션 카드 (라디오) */
+.ins-modal-list{display:flex;flex-direction:column;gap:8px}
+.ins-modal-opt{
+  display:block;padding:14px 16px;
+  border:1.5px solid #E8E5DF;border-radius:6px;
+  cursor:pointer;transition:all 0.12s;background:#fff;
+}
+.ins-modal-opt:hover{border-color:#D4D0C8;background:#F8F6F2}
+.ins-modal-opt.selected{border-color:#2E5C4A;background:#E5EDE9}
+.ins-modal-opt.disabled{opacity:0.5;cursor:not-allowed;background:#F4F2EE}
+.ins-modal-opt.disabled:hover{border-color:#E8E5DF;background:#F4F2EE}
+.ins-modal-opt input{display:none}
+.ins-modal-row1{display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap}
+.ins-modal-radio{
+  width:16px;height:16px;border-radius:50%;
+  border:1.5px solid #D4D0C8;flex-shrink:0;
+  position:relative;
+}
+.ins-modal-opt.selected .ins-modal-radio{border-color:#2E5C4A}
+.ins-modal-opt.selected .ins-modal-radio::after{
+  content:'';position:absolute;inset:3px;
+  border-radius:50%;background:#2E5C4A;
+}
+.ins-modal-name{font-size:14px;font-weight:600;color:#1A1A1A}
+.ins-modal-pill{
+  font-size:10px;padding:2px 7px;border-radius:999px;
+  background:#E5EDE9;color:#1B3A2D;font-weight:500;
+}
+.ins-modal-pill.popular{background:#B59544;color:#fff}
+.ins-modal-pill.amber{background:#F5EAD8;color:#B07823}
+.ins-modal-pill.gray{background:#F4F2EE;color:#8A8A8A}
+.ins-modal-meta{margin-left:auto;font-size:11px;color:#8A8A8A}
+.ins-modal-desc{font-size:12px;color:#8A8A8A;padding-left:24px;line-height:1.6}
+
+/* 준비중 영역 */
+.ins-modal-pending{
+  margin-top:14px;padding:12px 14px;
+  background:#F4F2EE;border-radius:6px;
+}
+.ins-modal-pending-title{
+  font-size:11px;color:#8A8A8A;font-weight:600;
+  margin-bottom:6px;letter-spacing:0.02em;
+}
+.ins-modal-pending-item{
+  font-size:12px;color:#BFBFBF;padding:4px 0;
+  display:flex;align-items:center;gap:8px;
+}
+.ins-modal-pending-item::before{
+  content:'';width:12px;height:12px;border-radius:50%;
+  border:1.5px solid #BFBFBF;display:inline-block;
+}
+
+/* 외부 케이스 체크박스 */
+.ins-modal-external{
+  display:flex;align-items:center;gap:8px;
+  margin-top:14px;padding:10px 12px;
+  background:#F4F2EE;border-radius:5px;
+  font-size:12px;color:#4A4A4A;cursor:pointer;
+}
+.ins-modal-external input{accent-color:#2E5C4A;cursor:pointer}
+
+/* 모달 푸터 */
+.ins-modal-actions{
+  display:flex;justify-content:flex-end;gap:8px;margin-top:24px;
+}
+.ins-modal-btn{
+  padding:10px 18px;border-radius:5px;font-size:13px;font-weight:600;
+  border:0;cursor:pointer;font-family:inherit;transition:all 0.12s;
+}
+.ins-modal-btn-primary{background:#1A1A1A;color:#fff}
+.ins-modal-btn-primary:hover{background:#2E5C4A}
+.ins-modal-btn-secondary{background:transparent;color:#4A4A4A;border:1px solid #D4D0C8}
+.ins-modal-btn-secondary:hover{background:#F8F6F2;border-color:#2E5C4A}
+
+/* ══════════════════════════════════════════════════════════
+   v6.1.1 STEP 3 출력 — 좌측 페이지 단위 + 우측 액션 사이드
+   ══════════════════════════════════════════════════════════ */
+#screen-insurance .v6-output-grid{
+  display:grid;
+  grid-template-columns:1fr 280px;
+  gap:18px;
+  align-items:start;
+}
+@media (max-width:1100px){
+  #screen-insurance .v6-output-grid{grid-template-columns:1fr}
+}
+
+/* 보고서 페이지 한 장씩 (.a4) */
+#screen-insurance .v6-output-pages{
+  display:flex;flex-direction:column;gap:14px;
+  max-height:calc(100vh - 200px);overflow-y:auto;
+  padding:4px;
+}
+#screen-insurance .v6-page-card{
+  background:#fff;
+  border:1px solid var(--ins-line);
+  border-radius:6px;
+  padding:32px 36px;
+  box-shadow:var(--ins-shadow);
+  position:relative;
+  /* A4 비율 (210x297mm = 1:1.414) */
+  min-height:780px;
+}
+#screen-insurance .v6-page-num{
+  position:absolute;bottom:12px;right:18px;
+  font-size:10px;color:var(--ins-ink-3);
+  letter-spacing:0.05em;
+}
+
+/* 우측 액션 사이드 */
+#screen-insurance .v6-action-side{
+  display:flex;flex-direction:column;gap:12px;
+  position:sticky;top:18px;
+}
+#screen-insurance .v6-action-card{
+  background:#fff;
+  border:1px solid var(--ins-line);
+  border-radius:6px;
+  padding:16px;
+  box-shadow:var(--ins-shadow);
+}
+#screen-insurance .v6-action-card-title{
+  font-size:12px;font-weight:600;color:var(--ins-ink);
+  margin-bottom:12px;letter-spacing:-0.005em;
+}
+#screen-insurance .v6-action-btn{
+  width:100%;display:block;padding:10px 12px;
+  border:1px solid var(--ins-line-2);border-radius:5px;
+  background:#fff;color:var(--ins-ink-2);
+  font-size:12px;font-weight:500;
+  text-align:center;cursor:pointer;font-family:inherit;
+  margin-bottom:6px;transition:all 0.12s;
+}
+#screen-insurance .v6-action-btn:hover{
+  background:var(--ins-bg-soft);border-color:var(--ins-accent);color:var(--ins-accent);
+}
+#screen-insurance .v6-action-btn:last-child{margin-bottom:0}
+#screen-insurance .v6-action-btn.primary{
+  background:var(--ins-accent);color:#fff;border-color:var(--ins-accent);
+}
+#screen-insurance .v6-action-btn.primary:hover{background:var(--ins-accent-2)}
+
+/* 자주 쓰는 문구 */
+#screen-insurance .v6-snippet-list{
+  list-style:none;padding:0;margin:0;
+  display:flex;flex-direction:column;gap:4px;
+}
+#screen-insurance .v6-snippet-item{
+  padding:8px 10px;font-size:11.5px;color:var(--ins-ink-2);
+  border-radius:4px;cursor:pointer;
+  background:var(--ins-bg-elev);
+  transition:all 0.12s;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+#screen-insurance .v6-snippet-item:hover{
+  background:var(--ins-accent-soft);color:var(--ins-accent);
+}
+
+/* 작업 정보 */
+#screen-insurance .v6-job-info{
+  font-size:11px;color:var(--ins-ink-3);line-height:1.7;
+}
+#screen-insurance .v6-job-info > div{padding:2px 0}
+
+/* 출력 화면 헤더 (수신/참조/제목 인라인) */
+#screen-insurance .v6-output-header{
+  background:var(--ins-bg-card);
+  border:1px solid var(--ins-line);
+  border-radius:6px;
+  padding:14px 18px;
+  margin-bottom:14px;
+  display:flex;gap:14px;flex-wrap:wrap;align-items:center;
+  box-shadow:var(--ins-shadow);
+}
+#screen-insurance .v6-output-header label{
+  display:flex;align-items:center;gap:8px;
+  font-size:12px;color:var(--ins-ink-2);font-weight:500;
+}
+#screen-insurance .v6-output-header label > span:first-child{
+  font-size:11px;color:var(--ins-ink-3);font-weight:600;
+}
+#screen-insurance .v6-output-header input,
+#screen-insurance .v6-output-header select{
+  padding:6px 10px;border:1px solid var(--ins-line-2);border-radius:4px;
+  font-size:12px;font-family:inherit;background:#fff;color:var(--ins-ink);
+}
+#screen-insurance .v6-output-header input:focus,
+#screen-insurance .v6-output-header select:focus{
+  outline:none;border-color:var(--ins-accent);box-shadow:0 0 0 2px var(--ins-accent-soft);
+}
+
+/* ══════════════════════════════════════════════════════════
    v6 손해사정 보고서 양식 (화면 + 인쇄 공용)
    클래스: report-doc / report-section / report-cover / report-meta-table 등
    PDF 출력 시: A4, 12mm 마진, 컬러 보존
@@ -1976,6 +2196,85 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 </div>
 
 <div id="toast-container"></div>
+
+<!-- ════════════════════════════════════════════════════════════
+     v6.1.1 보험자료 탭 모달들 — 사건 선택 후 흐름
+     1) #insPolicyModal: 약관 종류 선택
+     2) #insImportModal: 파트너 보고서 임포트 (외부 케이스 옵션)
+     ════════════════════════════════════════════════════════════ -->
+
+<!-- 모달 1: 약관 종류 선택 -->
+<div class="ins-modal-overlay" id="insPolicyModal">
+  <div class="ins-modal">
+    <h2 class="ins-modal-title">약관 종류 선택</h2>
+    <p class="ins-modal-sub">사고 발생 시점의 약관에 따라 입력 항목과 판단 결과가 달라집니다.</p>
+
+    <div class="ins-modal-list">
+      <label class="ins-modal-opt selected" data-policy="family_daily_new" onclick="insSelectPolicy(this)">
+        <input type="radio" name="ins-policy" value="family_daily_new" checked>
+        <div class="ins-modal-row1">
+          <div class="ins-modal-radio"></div>
+          <span class="ins-modal-name">가족일상생활중배상책임 II/III</span>
+          <span class="ins-modal-pill popular">신형 · 가장 흔함</span>
+        </div>
+        <div class="ins-modal-desc">2020.04 이후 · 소유 또는 거주 둘 중 하나만 충족하면 보장</div>
+      </label>
+
+      <label class="ins-modal-opt" data-policy="family_daily_old" onclick="insSelectPolicy(this)">
+        <input type="radio" name="ins-policy" value="family_daily_old">
+        <div class="ins-modal-row1">
+          <div class="ins-modal-radio"></div>
+          <span class="ins-modal-name">가족일상생활배상책임 (구형)</span>
+          <span class="ins-modal-pill">2020.04 이전</span>
+        </div>
+        <div class="ins-modal-desc">소유 + 거주 동시 충족 필요 · 임대 시 면책</div>
+      </label>
+
+      <label class="ins-modal-opt" data-policy="personal_daily" onclick="insSelectPolicy(this)">
+        <input type="radio" name="ins-policy" value="personal_daily">
+        <div class="ins-modal-row1">
+          <div class="ins-modal-radio"></div>
+          <span class="ins-modal-name">일상생활배상책임</span>
+          <span class="ins-modal-pill">단순</span>
+        </div>
+        <div class="ins-modal-desc">본인 + 동거 배우자만 보장 · 가족 풀 없음</div>
+      </label>
+    </div>
+
+    <div class="ins-modal-pending">
+      <div class="ins-modal-pending-title">준비중 (v2 지원 예정)</div>
+      <div class="ins-modal-pending-item">임대인배상책임</div>
+      <div class="ins-modal-pending-item">시설소유배상책임 (관리주체)</div>
+    </div>
+
+    <div class="ins-modal-actions">
+      <button class="ins-modal-btn ins-modal-btn-secondary" onclick="insClosePolicyModal()">취소</button>
+      <button class="ins-modal-btn ins-modal-btn-primary" onclick="insConfirmPolicy()">파트너 보고서 임포트 →</button>
+    </div>
+  </div>
+</div>
+
+<!-- 모달 2: 파트너 보고서 임포트 -->
+<div class="ins-modal-overlay" id="insImportModal">
+  <div class="ins-modal">
+    <h2 class="ins-modal-title">파트너 보고서 임포트</h2>
+    <p class="ins-modal-sub">이 케이스의 파트너 작업 보고서를 자동으로 가져옵니다. OCR 단계를 건너뛰고 정확도가 높아집니다.</p>
+
+    <div class="ins-modal-list" id="insImportModalList">
+      <!-- 동적 렌더링 (insRenderImportModal()) -->
+    </div>
+
+    <label class="ins-modal-external">
+      <input type="checkbox" id="insExternalCase" onchange="insToggleExternal(this.checked)">
+      <span>외부 케이스 (파트너 보고서 없이 보험증권만 첨부하여 진행)</span>
+    </label>
+
+    <div class="ins-modal-actions">
+      <button class="ins-modal-btn ins-modal-btn-secondary" onclick="insBackToPolicyModal()">← 이전</button>
+      <button class="ins-modal-btn ins-modal-btn-primary" onclick="insConfirmImport()">임포트 후 다음 →</button>
+    </div>
+  </div>
+</div>
 
 <script>
 // ══════════════════════════════════════════════════════════
@@ -4149,7 +4448,7 @@ if (typeof window.escapeHtml !== 'function') {
 }
 </script>
 
-<script src="./insurance-tab.js?v=6.1"></script>
+<script src="./insurance-tab.js?v=6.1.1"></script>
 <!-- v6 패치: 9케이스 검증 PASS 룰엔진 + 약관선택 모달 + 파트너 임포트 -->
 <script src="./sabi-rule-v6.js?v=6.0.0"></script>
 <script src="./insurance-tab-v6-patch.js?v=6.0.0"></script>
