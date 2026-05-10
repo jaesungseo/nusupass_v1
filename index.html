@@ -601,34 +601,61 @@ select.report-editable-input{
   margin:12mm 14mm;
 }
 @media print{
-  /* 인쇄 시 화면 전용 요소 모두 숨김 */
+  /* ─── 1단계: 운영 사이트 레이아웃 완전 숨김 ─── */
+  /* 사이드바 / 헤더 / 토스트 / 모달 / 모든 버튼 / 액션바 / 그리드 wrap */
+  .sidebar,
+  .sb-brand, .sb-user, .sb-nav, .sb-group, .sb-btn, .sb-footer,
   .no-print,
   .ins-step-bar,
   .v6-case-header,
   .v6-policy-bar,
   .v6-engine-side,
+  .v6-engine-card,
   .ins-action-bar,
-  .header,            /* 운영 사이트 상단바 */
-  .sidebar,           /* 운영 사이트 좌측 사이드바 */
-  .toast-container,
-  .modal,
-  button:not(.print-allowed){display:none !important}
+  .toast-container, #toastContainer,
+  .modal, .modal-backdrop,
+  .page-header,
+  button:not(.print-allowed){
+    display:none !important;
+    visibility:hidden !important;
+  }
 
-  /* body / 메인 영역을 풀폭으로 */
+  /* ─── 2단계: 그리드 레이아웃 → 단일 컬럼 풀폭 ─── */
   html,body{
     background:#fff !important;
-    margin:0;padding:0;
+    margin:0 !important;padding:0 !important;
     font-family:'Pretendard','Malgun Gothic','Apple SD Gothic Neo',sans-serif;
-    -webkit-print-color-adjust:exact;
-    print-color-adjust:exact;
+    -webkit-print-color-adjust:exact !important;
+    print-color-adjust:exact !important;
+    color-adjust:exact !important;
   }
-  body.printing-report .main,
-  body.printing-report .content-area,
-  body.printing-report .screen{
-    margin:0 !important;padding:0 !important;width:100% !important;max-width:none !important;
+  /* 운영 사이트 핵심 그리드 .app{grid-template-columns:220px 1fr} → 단일 컬럼으로 강제 */
+  .app{
+    display:block !important;
+    grid-template-columns:none !important;
+    min-height:0 !important;
+  }
+  .content{
+    margin:0 !important;
+    padding:0 !important;
+    width:100% !important;
+    max-width:none !important;
+    background:#fff !important;
+  }
+  /* screen 컨테이너도 풀폭 */
+  .screen{
+    margin:0 !important;
+    padding:0 !important;
+    width:100% !important;
+    max-width:none !important;
+  }
+  /* v6-collect-grid (STEP 3는 wrap만 해놨지만 안전망) */
+  .v6-collect-grid{
+    display:block !important;
+    grid-template-columns:none !important;
   }
 
-  /* 보고서 컨테이너 — 인쇄 시 박스/그림자 제거 */
+  /* ─── 3단계: 보고서 컨테이너 — 깔끔하게 ─── */
   .report-doc{
     border:0 !important;
     box-shadow:none !important;
@@ -637,16 +664,20 @@ select.report-editable-input{
     max-width:none !important;
     margin:0 !important;
     font-size:11.5px;
+    background:#fff !important;
   }
 
-  /* 섹션 페이지 분할 — 같은 섹션 내부에서 분할되지 않게 */
+  /* 섹션 페이지 분할 */
   .report-section{
     page-break-inside:avoid;break-inside:avoid;
     border-bottom:0 !important;
     padding:8px 0 !important;
   }
+  /* 섹션 사이 강제 페이지 분할 */
+  .report-section.page-break-after,
+  .report-cover{page-break-after:always !important;break-after:page !important}
 
-  /* 표/사진은 강제로 깨지지 않게 */
+  /* 표/사진 분할 방지 */
   .report-kv-table,
   .report-num-table,
   .report-meta-table,
@@ -657,7 +688,7 @@ select.report-editable-input{
     page-break-inside:avoid;break-inside:avoid;
   }
 
-  /* 편집 필드: 노란 배경/점선 테두리 제거 → 깔끔한 인쇄 */
+  /* 편집 필드: 노란 배경/점선 제거 */
   .report-editable,
   .report-editable-input,
   select.report-editable-input{
@@ -666,15 +697,12 @@ select.report-editable-input{
     padding:0 !important;
     box-shadow:none !important;
     color:#1a1a1a !important;
-    appearance:none;
+    appearance:none !important;
   }
-  /* select 화살표도 인쇄 시 숨김 */
   select.report-editable-input{background-image:none !important;padding-right:0 !important}
 
   /* 표지 회사 헤더 */
   .report-company-header{border-bottom-width:1.5pt}
-
-  /* 첫 페이지 표지 → 다음 섹션은 새 페이지 */
   .report-cover{padding:0 !important}
 
   /* 색상 보존 — 라벨 배경, 직인 등 */
@@ -682,14 +710,23 @@ select.report-editable-input{
   .report-kv-table td.lbl,
   .report-meta-table td.lbl,
   .report-num-table th,
-  .report-num-table td.lbl{
+  .report-num-table td.lbl,
+  .report-three-col-table th{
     -webkit-print-color-adjust:exact !important;
     print-color-adjust:exact !important;
   }
 }
 
-/* 화면 인쇄 미리보기 모드 (body.printing-report) - 화면에서도 인쇄 시 숨김 효과 미리 적용 */
-body.printing-report .no-print{display:none !important}
+/* 화면에서 인쇄 모드 미리보기 (window.print() 호출 직전 toggle) */
+body.printing-report .no-print,
+body.printing-report .sidebar,
+body.printing-report .v6-case-header,
+body.printing-report .v6-policy-bar,
+body.printing-report .v6-engine-side,
+body.printing-report .ins-action-bar,
+body.printing-report .ins-step-bar{display:none !important}
+body.printing-report .app{display:block !important}
+body.printing-report .content{padding:0 !important;margin:0 !important;width:100% !important}
 
 /* ════════════════════════════════════════════════
    v5.7.x: 회사·내 프로필 설정 페이지
@@ -3837,7 +3874,7 @@ if (typeof window.escapeHtml !== 'function') {
 }
 </script>
 
-<script src="./insurance-tab.js?v=6.0"></script>
+<script src="./insurance-tab.js?v=6.0.2"></script>
 <!-- v6 패치: 9케이스 검증 PASS 룰엔진 + 약관선택 모달 + 파트너 임포트 -->
 <script src="./sabi-rule-v6.js?v=6.0.0"></script>
 <script src="./insurance-tab-v6-patch.js?v=6.0.0"></script>

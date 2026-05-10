@@ -3012,6 +3012,7 @@ function insStep3HTML() {
   </div>
 
   <!-- ═══════ 실제 보고서 출력 영역 (#report-print) ═══════ -->
+  <!-- v6.0.2: 7페이지 / 7섹션 구조 (잔존물·구상·검토요청 제거) -->
   <div id="report-print" class="report-doc">
     ${renderReportCover(cl, co, victims)}
     ${renderReportSection1_Summary(cl, r, fd, pa, rc, ded, pay, prevCost)}
@@ -3020,9 +3021,7 @@ function insStep3HTML() {
     ${renderReportSection4_Accident(cl, r, pa, photos)}
     ${renderReportSection5_Liability(cl, r)}
     ${renderReportSection6_Damage(rc, ded, pay)}
-    ${renderReportSection7_Salvage()}
-    ${renderReportSection8_Plan(cl)}
-    ${renderReportSection9_Attachments()}
+    ${renderReportSection7_Attachments()}
     ${renderReportFooter(co)}
   </div>`;
 }
@@ -3118,7 +3117,7 @@ function renderReportSection1_Summary(cl, r, fd, pa, rc, ded, pay, prevCost) {
     : '';
 
   return `
-  <div class="report-section">
+  <div class="report-section page-break-after">
     <div class="report-section-title">1. 총괄표</div>
     <table class="report-kv-table">
       <tr><td class="lbl">가. 보 험 종 목</td><td>${typeLabel}</td></tr>
@@ -3179,7 +3178,7 @@ function renderReportSection2_Contract(cl, r) {
   const amNote = am === 'ok' ? '일치' : (am === 'warn' ? '확인 필요' : '불일치');
 
   return `
-  <div class="report-section">
+  <div class="report-section page-break-after">
     <div class="report-section-title">2. 보험계약사항</div>
     <table class="report-three-col-table">
       <tr><th class="lbl">항목</th><th>계약사항</th><th>비고</th></tr>
@@ -3225,7 +3224,7 @@ function renderReportSection3_General(r, cl, victims) {
     </div>`;
 
   return `
-  <div class="report-section">
+  <div class="report-section page-break-after">
     <div class="report-section-title">3. 일반사항</div>
     
     <div class="report-subsection">
@@ -3274,7 +3273,7 @@ function renderReportSection4_Accident(cl, r, pa, photos) {
   };
 
   return `
-  <div class="report-section">
+  <div class="report-section page-break-after">
     <div class="report-section-title">4. 사고사항</div>
     <table class="report-kv-table">
       <tr><td class="lbl">사고일시</td><td>${accDt}</td></tr>
@@ -3310,7 +3309,7 @@ function renderReportSection5_Liability(cl, r) {
     '민법 제758조';
 
   return `
-  <div class="report-section">
+  <div class="report-section page-break-after">
     <div class="report-section-title">5. 법률상 손해배상책임 검토</div>
 
     <div class="report-subsection">
@@ -3344,7 +3343,7 @@ function renderReportSection5_Liability(cl, r) {
         </tr>
         <tr><td class="lbl">검토사항</td>
           <td><textarea class="report-editable report-editable-multi" id="rep-fault-note" rows="4"
-            placeholder="과실비율 검토 사항">${escapeHtml(cl.fault_ratio_note || '')}</textarea></td>
+            placeholder="과실비율 검토 사항">${escapeHtml(cl.fault_ratio_note || (cov === '부책' ? '금번 사고의 제반정황, 당사 현장조사 등을 종합적으로 검토한 바, 피보험자 세대에서 발생한 누수사고에 대하여 피해세대의 과실을 인정할만한 사유가 없으며, 사전에 예측하고 대비하기는 어려웠을 것으로 여겨지므로 피해자 측의 과실을 묻기는 어려울 것으로 사료됨.' : '면책 사유에 해당되어 검토하지 않음'))}</textarea></td>
         </tr>
       </table>
     </div>
@@ -3352,94 +3351,131 @@ function renderReportSection5_Liability(cl, r) {
     <div class="report-subsection">
       <div class="report-subsection-title">라. 손해방지비용 검토</div>
       <table class="report-kv-table">
-        <tr><td class="lbl">담보여부</td><td><b>${cov === '부책' ? '부책' : '—'}</b></td></tr>
+        <tr><td class="lbl">담보여부</td><td><b>${cov === '부책' ? '검토 대상' : '면책'}</b></td></tr>
         <tr><td class="lbl">검토사항</td>
           <td><textarea class="report-editable report-editable-multi" id="rep-prev-memo" rows="4"
-            placeholder="손해방지비용 검토 (템플릿 고정, 수정 가능)">${escapeHtml(cl.prevention_cost_memo || '상법 제680조 제1항에 따라 규정한 손해방지비용 및 대법원 판례 및 금융분쟁조정위원회 의견에 의거 손해확대 또는 방지를 위해 필요 또는 유익한 비용에 해당하는 누수탐지 및 설비공사 비용을 지급처리하는 것이 타당할 것으로 판단됨.')}</textarea></td>
+            placeholder="손해방지비용 검토">${escapeHtml(cl.prevention_cost_memo || (cov === '부책' ? '상법 제680조 제1항에 따라 규정한 손해방지비용 및 대법원 판례 및 금융분쟁조정위원회 의견에 의거 손해확대 또는 방지를 위해 필요 또는 유익한 비용에 해당하는 누수탐지 및 손해방지를 위해 노력한 공사 비용을 지급처리하는 것이 타당할 것으로 판단됨.' : '면책 사유에 해당되어 검토하지 않음'))}</textarea></td>
         </tr>
       </table>
     </div>
   </div>`;
 }
 
-// ─── 6. 손해액 평가내역 ─────────────────────────────────────
+// ─── 6. 손해액평가 (v6.0.2: 양식 표준 6컬럼 표) ─────────────
+//   컬럼: 구분 | 보상한도액 | 손해액 | 법률상 배상책임액 | 자기부담금 | 지급보험금
+//   행: 손해방지비용 / 대물배상 / 합계
 function renderReportSection6_Damage(rc, ded, pay) {
-  return `
-  <div class="report-section">
-    <div class="report-section-title">6. 손해액 평가내역</div>
-    <div style="padding:20px;text-align:center;color:var(--muted);font-size:12px;border:1px dashed var(--line);border-radius:6px">
-      〈개발 진행중〉<br>
-      수리금액: ${money(rc)} / 자기부담금: ${money(ded)} / 지급보험금 예상액: ${money(pay)}
-    </div>
-  </div>`;
-}
+  const cl = _insClaim || {};
+  const r  = _insResult || {};
+  const prevCost = cl.damage_prevention_cost || 0;
+  const damageAmt = cl.damage_amount || rc;
+  const limit = r.coverage_limit || cl.coverage_limit || 0;
 
-// ─── 7·8. 잔존물 / 구상 ────────────────────────────────────
-function renderReportSection7_Salvage() {
-  return `
-  <div class="report-section">
-    <div class="report-section-title">7. 잔존물</div>
-    <div class="report-plain-line">해당 사항 없음</div>
-  </div>
-  <div class="report-section">
-    <div class="report-section-title">8. 구상</div>
-    <div class="report-plain-line">해당 사항 없음</div>
-  </div>`;
-}
+  // 부책 시 법률상 배상책임액 = 손해액, 면책 시 0
+  const covYes = (r.coverage_result || cl.coverage_result) === '부책';
+  const liabAmt = covYes ? damageAmt : 0;
 
-// ─── 9. 검토요청사항 / 향후진행방안 ────────────────────────
-function renderReportSection8_Plan(cl) {
+  // 합계
+  const totalDamage = (prevCost || 0) + (damageAmt || 0);
+  const totalLiab   = covYes ? totalDamage : 0;
+  const totalPay    = (prevCost || 0) + (covYes ? Math.max(0, damageAmt - ded) : 0);
+
+  const cell = (v) => v && v > 0 ? Number(v).toLocaleString() : '-';
+
   return `
-  <div class="report-section">
-    <div class="report-section-title">9. 검토요청사항 / 향후진행방안</div>
-    <table class="report-kv-table">
-      <tr><td class="lbl">검토요청사항</td>
-        <td><input class="report-editable-input" id="rep-exam-req" value="${escapeHtml(cl.examination_request || '면·부책 검토 요청')}"></td>
-      </tr>
-      <tr><td class="lbl">향후진행방안</td>
-        <td><input class="report-editable-input" id="rep-future-plan" value="${escapeHtml(cl.future_plan || '피보험자 및 피해자 지속 관리하여 신속하게 종결 예정')}"></td>
-      </tr>
+  <div class="report-section page-break-after">
+    <div class="report-section-title">6. 손해액평가</div>
+    <div class="report-unit-label">(단위: 원)</div>
+    <table class="report-num-table">
+      <thead>
+        <tr>
+          <th style="width:18%">구분</th>
+          <th>보상한도액</th>
+          <th>손해액</th>
+          <th>법률상<br>배상책임액</th>
+          <th>자기부담금</th>
+          <th>지급보험금</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="lbl">손해방지비용</td>
+          <td>${cell(limit)}</td>
+          <td><input class="report-editable-input" id="rep-prev-cost" value="${prevCost || ''}" placeholder="-" style="text-align:right"></td>
+          <td>${cell(prevCost)}</td>
+          <td>-</td>
+          <td>${cell(prevCost)}</td>
+        </tr>
+        <tr>
+          <td class="lbl">대물배상</td>
+          <td>${cell(limit)}</td>
+          <td><input class="report-editable-input" id="rep-damage-amt" value="${damageAmt || ''}" placeholder="-" style="text-align:right"></td>
+          <td>${cell(liabAmt)}</td>
+          <td>${cell(ded)}</td>
+          <td>${cell(covYes ? Math.max(0, damageAmt - ded) : 0)}</td>
+        </tr>
+        <tr style="font-weight:700;background:#fafaf7">
+          <td class="lbl">합계</td>
+          <td>${cell(limit)}</td>
+          <td>${cell(totalDamage)}</td>
+          <td>${cell(totalLiab)}</td>
+          <td>${cell(ded)}</td>
+          <td>${cell(totalPay)}</td>
+        </tr>
+      </tbody>
     </table>
+    ${cl.damage_memo ? `
+      <div style="margin-top:8px;font-size:11px;color:#555;padding:8px 10px;background:#fafaf7;border-left:2px solid var(--line);border-radius:0 3px 3px 0">
+        ${escapeHtml(cl.damage_memo)}
+      </div>` : ''}
   </div>`;
 }
 
-// ─── 10. 첨부자료 목록 ─────────────────────────────────────
-function renderReportSection9_Attachments() {
-  const docLabels = {
-    'policy':            '보험증권',
-    'leak_report':       '누수소견서',
-    'residence_insured': '피보험자 주민등록등본',
-    'ownership_insured': '사고발생장소 소유자료 (등기부등본/건축물대장)',
-    'ownership_victim':  '피해세대 소유자료 (등기부등본/건축물대장)',
-    'incident_report':   '사고 경위서',
-    'interview':         '문답서',
-    'complaint':         '민원 이력',
-    'etc':               '기타 자료',
-  };
-  
-  const docs = Object.values(_insUploaded || {})
-    .filter(u => u?.doc_code 
-      && u.doc_code !== 'repair_photo_before' 
-      && u.doc_code !== 'repair_photo_during' 
+// ─── 7. 첨부자료 목록 (v6.0.2: 잔존물/구상/검토요청 섹션 제거됨) ─────
+//
+// 양식 기본값 7개를 항상 표시하고, 실제 업로드된 파일이 있으면 추가로 나열
+// 양식대로 "보험증권, 보험청구서, 누수소견서, 가/피해자 자료, 위임장, 선임권동의서" 7항목 고정
+function renderReportSection7_Attachments() {
+  // 양식 기본 7개 항목
+  const defaultRows = [
+    '보험증권',
+    '보험청구서',
+    '누수소견서',
+    '가/피해자 자료 일체',
+    '위임장',
+    '선임권동의서',
+    '..',
+  ];
+
+  // 실제 업로드된 파일 (참고용 — 양식 아래 별도 섹션으로 노출하거나 양식에 매핑)
+  const uploadedDocs = Object.values(_insUploaded || {})
+    .filter(u => u?.doc_code
+      && u.doc_code !== 'repair_photo_before'
+      && u.doc_code !== 'repair_photo_during'
       && u.doc_code !== 'repair_photo_after')
     .sort((a, b) => (a.uploaded_at || '').localeCompare(b.uploaded_at || ''));
 
-  const rows = docs.length > 0
-    ? docs.map((d, i) => `
-        <tr>
-          <td>${i+1}</td>
-          <td>${escapeHtml(d.doc_name || docLabels[d.doc_code] || d.doc_code)}</td>
-          <td>1부</td>
-        </tr>`).join('')
-    : `<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:14px">첨부자료가 업로드되지 않았습니다</td></tr>`;
+  const rows = defaultRows.map((label, i) => `
+    <tr>
+      <td style="text-align:center;width:80px">${i+1}</td>
+      <td>${escapeHtml(label)}</td>
+    </tr>`).join('');
 
   return `
   <div class="report-section">
-    <div class="report-section-title">10. 첨부자료 목록</div>
+    <div class="report-section-title">7. 첨부자료 목록</div>
     <table class="report-three-col-table">
-      <tr><th class="lbl" style="width:80px">순번</th><th>첨부자료</th><th style="width:100px">부수</th></tr>
-      ${rows}
+      <thead>
+        <tr><th style="width:80px">순번</th><th>첨부자료</th></tr>
+      </thead>
+      <tbody>
+        ${rows}
+      </tbody>
     </table>
+    ${uploadedDocs.length > 0 ? `
+      <div style="margin-top:8px;font-size:10px;color:var(--muted);padding:6px 8px;background:var(--bg);border-radius:3px">
+        * 실제 업로드된 파일: ${uploadedDocs.length}건 (${uploadedDocs.map(d => escapeHtml(d.doc_name || d.doc_code)).join(', ')})
+      </div>` : ''}
   </div>`;
 }
 
@@ -3447,11 +3483,10 @@ function renderReportSection9_Attachments() {
 function renderReportFooter(co) {
   return `
   <div class="report-footer">
-    <div style="text-align:center;font-size:11px;line-height:1.8;margin-top:20px;padding:14px;border-top:1px solid var(--line)">
-      본 손해사정서는 당사의 양식과 최선의 노력으로 이해 당사자 어느 일방에도 편중됨이 없이<br>
-      공정하게 작성되었음을 명백히 합니다.
-    </div>
-    ${co.company_name ? `<div style="text-align:center;font-size:11px;color:var(--muted);margin-top:8px">— ${co.company_name} —</div>` : ''}
+    <p style="text-align:center;font-size:11px;line-height:1.8;margin-top:24px;padding:14px;border-top:1px solid var(--line);color:#555">
+      ※ 본 손해사정서는 당사의 양식과 최선의 노력으로 어느 일방에도 편견 없이<br>
+      작성하였음을 명백히 합니다. <b style="font-size:12px;color:#1a1a1a">- 끝 -</b>
+    </p>
   </div>`;
 }
 
@@ -3477,6 +3512,12 @@ async function s3SaveReport() {
       if (!rpcErr && no) reportNo = no;
     }
     
+    // v6.0.2: 검토요청사항/향후진행방안 섹션 제거됨 — 해당 필드 업데이트 안 함
+    //         (DB 컬럼은 유지되므로 기존 값은 보존됨)
+    // v6.0.2: Section 6 손해액평가에서 손해방지비용/손해액 입력 추가
+    const repPrevCost = parseInt((g('rep-prev-cost')||'').replace(/[^0-9]/g,'')) || null;
+    const repDamageAmt = parseInt((g('rep-damage-amt')||'').replace(/[^0-9]/g,'')) || null;
+
     const updates = {
       insurer_name:         g('rep-insurer'),
       insurer_contact:      g('rep-insurer-contact'),
@@ -3489,8 +3530,8 @@ async function s3SaveReport() {
       fault_ratio:          g('rep-fault'),
       fault_ratio_note:     g('rep-fault-note'),
       prevention_cost_memo: g('rep-prev-memo'),
-      examination_request:  g('rep-exam-req'),
-      future_plan:          g('rep-future-plan'),
+      damage_prevention_cost: repPrevCost,
+      damage_amount:        repDamageAmt,
       updated_at:           new Date().toISOString(),
     };
     const { error } = await sb.from('insurance_claims').update(updates).eq('id', _insClaim.id);
