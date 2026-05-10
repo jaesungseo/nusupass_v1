@@ -824,26 +824,40 @@ select.form-control{cursor:pointer}
   #screen-insurance .v6-output-grid{grid-template-columns:1fr}
 }
 
-/* 보고서 페이지 한 장씩 (.a4) */
+/* 보고서 페이지 한 장씩 (.a4) — A4 시각적 분리감 */
 #screen-insurance .v6-output-pages{
-  display:flex;flex-direction:column;gap:14px;
+  display:flex;flex-direction:column;gap:24px;       /* 페이지 간격 넓힘 */
   max-height:calc(100vh - 200px);overflow-y:auto;
-  padding:4px;
+  padding:24px;                                      /* 안쪽 여백 */
+  background:#E8E5DF;                                /* 회색 작업대 — 흰 종이 대비 */
+  border-radius:8px;
+  border:1px solid var(--ins-line);
 }
 #screen-insurance .v6-page-card{
   background:#fff;
-  border:1px solid var(--ins-line);
-  border-radius:6px;
-  padding:32px 36px;
-  box-shadow:var(--ins-shadow);
+  border:1px solid #d4d0c8;                          /* 종이 가장자리 라인 */
+  border-radius:2px;                                  /* 종이답게 절제 */
+  padding:36px 44px;                                  /* A4 인쇄 마진 흉내 */
+  box-shadow:                                         /* 종이 그림자 */
+    0 1px 2px rgba(0,0,0,0.05),
+    0 4px 12px rgba(0,0,0,0.08),
+    0 8px 24px rgba(0,0,0,0.05);
   position:relative;
-  /* A4 비율 (210x297mm = 1:1.414) */
-  min-height:780px;
+  min-height:780px;                                   /* A4 비율 (1:1.414) */
+  width:100%;
+  max-width:794px;                                    /* A4 폭 @96dpi */
+  margin:0 auto;                                      /* 중앙 정렬 */
 }
 #screen-insurance .v6-page-num{
-  position:absolute;bottom:12px;right:18px;
+  position:absolute;bottom:14px;right:24px;
   font-size:10px;color:var(--ins-ink-3);
   letter-spacing:0.05em;
+}
+
+/* 페이지 카드 내부 .report-section 는 패딩 없음 (페이지 카드가 패딩을 가짐) */
+#screen-insurance .v6-page-card .report-section{
+  padding:0 !important;
+  border-bottom:0 !important;
 }
 
 /* 우측 액션 사이드 */
@@ -900,6 +914,101 @@ select.form-control{cursor:pointer}
   font-size:11px;color:var(--ins-ink-3);line-height:1.7;
 }
 #screen-insurance .v6-job-info > div{padding:2px 0}
+
+/* ══════════════════════════════════════════════════════════
+   v6.1.2 STEP 3 탭 (손해사정서 / 누수소견서)
+   ══════════════════════════════════════════════════════════ */
+#screen-insurance .v6-output-tabs{
+  display:flex;gap:4px;
+  margin-bottom:14px;
+  border-bottom:2px solid var(--ins-line);
+  padding-left:4px;
+}
+#screen-insurance .v6-output-tab{
+  background:transparent;
+  border:0;
+  padding:10px 18px;
+  font-size:13px;font-weight:600;
+  color:var(--ins-ink-3);
+  cursor:pointer;
+  font-family:inherit;
+  border-bottom:2px solid transparent;
+  margin-bottom:-2px;
+  transition:all 0.12s;
+}
+#screen-insurance .v6-output-tab:hover{color:var(--ins-ink-2)}
+#screen-insurance .v6-output-tab.active{
+  color:var(--ins-accent);
+  border-bottom-color:var(--ins-accent);
+}
+
+/* 누수소견서 (옛날 양식 톤) */
+#screen-insurance .leak-doc{
+  background:#FBFAF5;
+  font-family:'Pretendard','Malgun Gothic',sans-serif;
+  font-size:13px;
+  line-height:1.65;
+  color:var(--ins-ink);
+}
+#screen-insurance .leak-header{
+  text-align:center;
+  border-bottom:2px solid var(--ins-ink);
+  padding-bottom:16px;
+  margin-bottom:24px;
+}
+#screen-insurance .leak-title-ko{
+  font-size:24px;font-weight:700;
+  letter-spacing:0.4em;
+  margin-bottom:6px;
+  color:var(--ins-ink);
+}
+#screen-insurance .leak-title-num{
+  font-size:11px;color:var(--ins-ink-3);
+}
+#screen-insurance .leak-section-title{
+  font-size:13px;font-weight:700;color:var(--ins-ink);
+  border-left:3px solid var(--ins-ink);
+  padding:4px 10px;
+  margin:14px 0 8px;
+  background:#F4F2EE;
+}
+#screen-insurance .leak-table{
+  width:100%;border-collapse:collapse;
+  border:1px solid #d4d0c8;
+  font-size:12.5px;
+}
+#screen-insurance .leak-table tr{border-bottom:1px solid #e5e2db}
+#screen-insurance .leak-table tr:last-child{border-bottom:0}
+#screen-insurance .leak-table td{padding:8px 12px;line-height:1.55;vertical-align:top}
+#screen-insurance .leak-table td.lbl{
+  width:120px;background:#F4F2EE;font-weight:600;color:#444;
+  border-right:1px solid #d4d0c8;
+}
+#screen-insurance .leak-stamp-area{
+  margin-top:32px;
+  text-align:right;
+  padding-right:60px;
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:14px;
+}
+#screen-insurance .leak-stamp-line{
+  font-size:12.5px;color:var(--ins-ink);
+}
+#screen-insurance .leak-stamp{
+  display:inline-flex;
+  width:60px;height:60px;
+  border:2px solid var(--ins-red);
+  border-radius:50%;
+  color:var(--ins-red);
+  font-size:9px;font-weight:700;
+  align-items:center;justify-content:center;
+  transform:rotate(-8deg);
+  letter-spacing:-0.02em;
+  line-height:1.1;
+  text-align:center;
+}
 
 /* 출력 화면 헤더 (수신/참조/제목 인라인) */
 #screen-insurance .v6-output-header{
@@ -1096,8 +1205,7 @@ select.report-editable-input{
   margin:12mm 14mm;
 }
 @media print{
-  /* ─── 1단계: 운영 사이트 레이아웃 완전 숨김 ─── */
-  /* 사이드바 / 헤더 / 토스트 / 모달 / 모든 버튼 / 액션바 / 그리드 wrap */
+  /* ─── 1단계: 운영 사이트 + v6.1.1 추가 컴포넌트 모두 숨김 ─── */
   .sidebar,
   .sb-brand, .sb-user, .sb-nav, .sb-group, .sb-btn, .sb-footer,
   .no-print,
@@ -1107,9 +1215,16 @@ select.report-editable-input{
   .v6-engine-side,
   .v6-engine-card,
   .ins-action-bar,
-  .toast-container, #toastContainer,
+  .toast-container, #toastContainer, #toast-container,
   .modal, .modal-backdrop,
+  .ins-modal-overlay,            /* v6.1.1 모달 */
+  .v6-output-header,             /* v6.1.1 출력 헤더 (수신/참조/제목 입력) */
+  .v6-action-side,               /* v6.1.1 우측 액션 사이드 */
+  .v6-action-card,               /* v6.1.1 액션 카드들 */
+  .v6-output-tabs,               /* v6.1.1 누수소견서/손해사정서 탭 */
   .page-header,
+  #insuranceCaseSelect,          /* 사건 선택 셀렉트박스 */
+  select[id*="caseSelect"],
   button:not(.print-allowed){
     display:none !important;
     visibility:hidden !important;
@@ -1124,31 +1239,57 @@ select.report-editable-input{
     print-color-adjust:exact !important;
     color-adjust:exact !important;
   }
-  /* 운영 사이트 핵심 그리드 .app{grid-template-columns:220px 1fr} → 단일 컬럼으로 강제 */
   .app{
     display:block !important;
     grid-template-columns:none !important;
     min-height:0 !important;
   }
   .content{
-    margin:0 !important;
-    padding:0 !important;
-    width:100% !important;
-    max-width:none !important;
+    margin:0 !important;padding:0 !important;
+    width:100% !important;max-width:none !important;
     background:#fff !important;
   }
-  /* screen 컨테이너도 풀폭 */
   .screen{
-    margin:0 !important;
-    padding:0 !important;
-    width:100% !important;
-    max-width:none !important;
+    margin:0 !important;padding:0 !important;
+    width:100% !important;max-width:none !important;
   }
-  /* v6-collect-grid (STEP 3는 wrap만 해놨지만 안전망) */
+  /* 보험자료 탭 베이지 배경 → 흰색 */
+  #screen-insurance{background:#fff !important;padding:0 !important}
+  #screen-insurance.screen{padding:0 !important}
+
+  /* v6.1.1 출력 그리드 → 단일 컬럼 (액션 사이드 숨김 후) */
+  .v6-output-grid,
   .v6-collect-grid{
     display:block !important;
     grid-template-columns:none !important;
+    gap:0 !important;
   }
+
+  /* v6.1.1 출력 페이지 컨테이너 → 스크롤 제거, 풀폭 */
+  .v6-output-pages,
+  #screen-insurance .v6-output-pages{
+    display:block !important;
+    max-height:none !important;
+    overflow:visible !important;
+    padding:0 !important;
+    gap:0 !important;
+  }
+
+  /* v6.1.1 .v6-page-card → 평면화 (테두리/그림자/min-height 제거하고 자연 흐름) */
+  .v6-page-card,
+  #screen-insurance .v6-page-card{
+    background:#fff !important;
+    border:0 !important;
+    box-shadow:none !important;
+    border-radius:0 !important;
+    padding:0 !important;
+    margin:0 !important;
+    min-height:0 !important;
+    page-break-after:always !important;
+    break-after:page !important;
+  }
+  .v6-page-card:last-child{page-break-after:auto !important}
+  .v6-page-num{display:none !important}    /* "1 / 7" 표시는 인쇄 시 숨김 — @page에서 페이지 번호 처리 */
 
   /* ─── 3단계: 보고서 컨테이너 — 깔끔하게 ─── */
   .report-doc{
@@ -1168,15 +1309,12 @@ select.report-editable-input{
     border-bottom:0 !important;
     padding:8px 0 !important;
   }
-  /* 섹션 사이 강제 페이지 분할 */
   .report-section.page-break-after,
   .report-cover{page-break-after:always !important;break-after:page !important}
 
   /* 표/사진 분할 방지 */
-  .report-kv-table,
-  .report-num-table,
-  .report-meta-table,
-  .report-three-col-table{
+  .report-kv-table, .report-num-table,
+  .report-meta-table, .report-three-col-table{
     page-break-inside:avoid;break-inside:avoid;
   }
   .report-photo,.report-photo-empty{
@@ -1200,7 +1338,7 @@ select.report-editable-input{
   .report-company-header{border-bottom-width:1.5pt}
   .report-cover{padding:0 !important}
 
-  /* 색상 보존 — 라벨 배경, 직인 등 */
+  /* 색상 보존 */
   .report-section-title,
   .report-kv-table td.lbl,
   .report-meta-table td.lbl,
@@ -1212,16 +1350,23 @@ select.report-editable-input{
   }
 }
 
-/* 화면에서 인쇄 모드 미리보기 (window.print() 호출 직전 toggle) */
+/* 화면에서 인쇄 모드 미리보기 (s3ExportPdf가 body에 .printing-report toggle) */
 body.printing-report .no-print,
 body.printing-report .sidebar,
 body.printing-report .v6-case-header,
 body.printing-report .v6-policy-bar,
 body.printing-report .v6-engine-side,
 body.printing-report .ins-action-bar,
-body.printing-report .ins-step-bar{display:none !important}
+body.printing-report .ins-step-bar,
+body.printing-report .v6-output-header,
+body.printing-report .v6-action-side,
+body.printing-report .v6-output-tabs{display:none !important}
 body.printing-report .app{display:block !important}
 body.printing-report .content{padding:0 !important;margin:0 !important;width:100% !important}
+body.printing-report #screen-insurance{background:#fff !important;padding:0 !important}
+body.printing-report .v6-output-grid{display:block !important}
+body.printing-report .v6-output-pages{max-height:none !important;overflow:visible !important;padding:0 !important;gap:0 !important}
+body.printing-report .v6-page-card{border:0 !important;box-shadow:none !important;padding:0 !important;min-height:0 !important}
 
 /* ════════════════════════════════════════════════
    v5.7.x: 회사·내 프로필 설정 페이지
@@ -4448,7 +4593,7 @@ if (typeof window.escapeHtml !== 'function') {
 }
 </script>
 
-<script src="./insurance-tab.js?v=6.1.1"></script>
+<script src="./insurance-tab.js?v=6.1.2"></script>
 <!-- v6 패치: 9케이스 검증 PASS 룰엔진 + 약관선택 모달 + 파트너 임포트 -->
 <script src="./sabi-rule-v6.js?v=6.0.0"></script>
 <script src="./insurance-tab-v6-patch.js?v=6.0.0"></script>

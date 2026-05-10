@@ -3205,37 +3205,75 @@ function money(n) { return (n||0).toLocaleString() + '원'; }
 
 // 파트너 수리 데이터 + 사진 signed URL 로드
 async function s3LoadReportData() {
+  console.log('[s3] 보고서 데이터 로드 시작 case_id=', _insCaseId);
+
   // 1) 파트너 assignment 최신 수리완료 건 (신 컬럼 포함)
+  //    v6.1.1: 임포트된 파트너 우선 (사용자가 모달에서 선택한 것)
   try {
-    const { data: pa } = await sb.from('partner_assignments')
-      .select('id, repair_cost, repair_opinion, work_done_at, visited_at, accident_occurred_at, attacker_unit, victim_unit, leak_area_type, leak_cause')
-      .eq('case_id', _insCaseId)
-      .in('work_status', ['repair_done','repair_completed'])
-      .order('work_done_at', { ascending: false })
-      .limit(1).maybeSingle();
+    const importedIds = Array.from(_insImportedPartners || []);
+    let pa = null;
+    if (importedIds.length > 0) {
+      const { data: imp } = await sb.from('partner_assignments')
+        .select('id, repair_cost, repair_opinion, work_done_at, visited_at, accident_occurred_at, attacker_unit, victim_unit, leak_area_type, leak_cause, assignment_purpose, partner_company_id')
+        .in('id', importedIds)
+        .order('work_done_at', { ascending: false })
+        .limit(1).maybeSingle();
+      pa = imp;
+    }
+    // 임포트가 비어있으면 case_id 기준으로 fallback
+    if (!pa) {
+      const { data: any } = await sb.from('partner_assignments')
+        .select('id, repair_cost, repair_opinion, work_done_at, visited_at, accident_occurred_at, attacker_unit, victim_unit, leak_area_type, leak_cause, assignment_purpose, partner_company_id')
+        .eq('case_id', _insCaseId)
+        .in('work_status', ['repair_done','repair_completed'])
+        .order('work_done_at', { ascending: false })
+        .limit(1).maybeSingle();
+      pa = any;
+    }
     _insPartnerReport = pa || null;
+    console.log('[s3] 파트너 보고 로드:', pa ? `assignment_id=${pa.id}` : 'NONE');
   } catch (e) { console.warn('[s3] partner_assignments 로드 실패:', e); _insPartnerReport = null; }
 
   // 2) case_documents 사진 3단계별 signed URL
+  //    v6.1.1: 임포트된 assignment_id 모두에서 사진 가져오기 (한라+두리 둘 다 임포트한 경우)
   _insRepairPhotos = { before: [], during: [], after: [] };
   try {
-    const { data: docs } = await sb.from('case_documents')
-      .select('id, document_type, file_url, file_name, created_at')
+    const importedIds = Array.from(_insImportedPartners || []);
+    let docsQuery = sb.from('case_documents')
+      .select('id, document_type, file_url, file_name, created_at, assignment_id')
       .eq('case_id', _insCaseId)
       .in('document_type', ['repair_photo_before','repair_photo_during','repair_photo_after'])
       .order('created_at', { ascending: true });
-    
+
+    // 임포트한 파트너가 있으면 그 assignment_id의 사진만
+    if (importedIds.length > 0) {
+      docsQuery = docsQuery.in('assignment_id', importedIds);
+    }
+
+    const { data: docs, error: docErr } = await docsQuery;
+    if (docErr) { console.warn('[s3] case_documents 쿼리 에러:', docErr); }
+    console.log('[s3] case_documents 로드:', docs?.length || 0, '건 (필터:',
+      importedIds.length > 0 ? `assignment_id IN (${importedIds.length}건)` : 'case_id 전체', ')');
+
+    let signedSuccess = 0, signedFail = 0;
     for (const d of (docs || [])) {
       const stage = d.document_type.replace('repair_photo_', '');  // before/during/after
       try {
-        const { data: s } = await sb.storage.from('partner-work').createSignedUrl(d.file_url, 3600);
+        const { data: s, error: signErr } = await sb.storage.from('partner-work').createSignedUrl(d.file_url, 3600);
+        if (signErr) { console.warn(`[s3] signed URL 에러 (${d.file_url}):`, signErr); signedFail++; continue; }
         if (s?.signedUrl) {
           _insRepairPhotos[stage].push({ url: s.signedUrl, name: d.file_name || stage });
+          signedSuccess++;
+        } else {
+          signedFail++;
         }
       } catch (err) {
-        console.warn(`[s3] signed URL 실패 (${d.file_url}):`, err);
+        console.warn(`[s3] signed URL 예외 (${d.file_url}):`, err);
+        signedFail++;
       }
     }
+    console.log(`[s3] 사진 signed URL 결과: 성공 ${signedSuccess} / 실패 ${signedFail}`);
+    console.log(`[s3] 사진 분류: before=${_insRepairPhotos.before.length} / during=${_insRepairPhotos.during.length} / after=${_insRepairPhotos.after.length}`);
   } catch (e) { console.warn('[s3] case_documents 로드 실패:', e); }
 }
 
@@ -3304,7 +3342,7 @@ function insStep3HTML() {
 
   <!-- 좌(보고서 페이지들) + 우(액션 사이드) -->
   <div class="v6-output-grid">
-    <!-- 좌측: 보고서 페이지 한 장씩 카드로 -->
+    <!-- 좌측: 손해사정서/누수소견서 탭 + 페이지 카드 -->
     <div>
       <div class="card no-print" style="margin-bottom:14px;display:flex;align-items:center;justify-content:space-between">
         <div style="font-size:14px;font-weight:700">📄 손해사정 보고서 ${coverageBadge}</div>
@@ -3314,37 +3352,58 @@ function insStep3HTML() {
         </div>
       </div>
 
-      <!-- v6.1.1: 각 섹션을 .v6-page-card로 감싸 페이지 단위 시각화 -->
-      <div id="report-print" class="report-doc v6-output-pages">
-        <div class="v6-page-card report-cover-wrap">
-          ${renderReportCover(cl, co, victims)}
-          <div class="v6-page-num">1 / 7</div>
+      <!-- v6.1.1: 탭 — 손해사정서 / 누수소견서 -->
+      <div class="v6-output-tabs no-print">
+        <button class="v6-output-tab active" id="tab-btn-report" onclick="s3SwitchTab('report')">
+          손해사정서 (보험사 제출)
+        </button>
+        <button class="v6-output-tab" id="tab-btn-leak" onclick="s3SwitchTab('leak')">
+          누수소견서 (파트너 명의)
+        </button>
+      </div>
+
+      <!-- 탭 컨텐츠 1: 손해사정서 (7페이지) -->
+      <div id="tab-content-report" style="display:block">
+        <div id="report-print" class="report-doc v6-output-pages">
+          <div class="v6-page-card report-cover-wrap">
+            ${renderReportCover(cl, co, victims)}
+            <div class="v6-page-num">1 / 7</div>
+          </div>
+          <div class="v6-page-card">
+            ${renderReportSection1_Summary(cl, r, fd, pa, rc, ded, pay, prevCost)}
+            <div class="v6-page-num">2 / 7</div>
+          </div>
+          <div class="v6-page-card">
+            ${renderReportSection2_Contract(cl, r)}
+            <div class="v6-page-num">3 / 7</div>
+          </div>
+          <div class="v6-page-card">
+            ${renderReportSection3_General(r, cl, victims)}
+            <div class="v6-page-num">4 / 7</div>
+          </div>
+          <div class="v6-page-card">
+            ${renderReportSection4_Accident(cl, r, pa, photos)}
+            <div class="v6-page-num">5 / 7</div>
+          </div>
+          <div class="v6-page-card">
+            ${renderReportSection5_Liability(cl, r)}
+            <div class="v6-page-num">6 / 7</div>
+          </div>
+          <div class="v6-page-card">
+            ${renderReportSection6_Damage(rc, ded, pay)}
+            ${renderReportSection7_Attachments()}
+            ${renderReportFooter(co)}
+            <div class="v6-page-num">7 / 7</div>
+          </div>
         </div>
-        <div class="v6-page-card">
-          ${renderReportSection1_Summary(cl, r, fd, pa, rc, ded, pay, prevCost)}
-          <div class="v6-page-num">2 / 7</div>
-        </div>
-        <div class="v6-page-card">
-          ${renderReportSection2_Contract(cl, r)}
-          <div class="v6-page-num">3 / 7</div>
-        </div>
-        <div class="v6-page-card">
-          ${renderReportSection3_General(r, cl, victims)}
-          <div class="v6-page-num">4 / 7</div>
-        </div>
-        <div class="v6-page-card">
-          ${renderReportSection4_Accident(cl, r, pa, photos)}
-          <div class="v6-page-num">5 / 7</div>
-        </div>
-        <div class="v6-page-card">
-          ${renderReportSection5_Liability(cl, r)}
-          <div class="v6-page-num">6 / 7</div>
-        </div>
-        <div class="v6-page-card">
-          ${renderReportSection6_Damage(rc, ded, pay)}
-          ${renderReportSection7_Attachments()}
-          ${renderReportFooter(co)}
-          <div class="v6-page-num">7 / 7</div>
+      </div>
+
+      <!-- 탭 컨텐츠 2: 누수소견서 (파트너 명의) -->
+      <div id="tab-content-leak" style="display:none">
+        <div class="v6-output-pages">
+          <div class="v6-page-card">
+            ${renderLeakOpinion(cl, r, pa, photos, _insPartners)}
+          </div>
         </div>
       </div>
     </div>
@@ -3393,6 +3452,129 @@ function s3InsertSnippet(text) {
   } else {
     toast('클립보드 미지원 브라우저','w');
   }
+}
+
+// v6.1.2: STEP 3 탭 전환 (손해사정서 / 누수소견서)
+function s3SwitchTab(tabName) {
+  // 탭 버튼 active 토글
+  document.querySelectorAll('.v6-output-tab').forEach(b => b.classList.remove('active'));
+  document.getElementById(`tab-btn-${tabName}`)?.classList.add('active');
+  // 탭 컨텐츠 표시 토글
+  document.getElementById('tab-content-report').style.display = (tabName === 'report') ? 'block' : 'none';
+  document.getElementById('tab-content-leak').style.display   = (tabName === 'leak')   ? 'block' : 'none';
+}
+
+// v6.1.2: 누수소견서 렌더 (파트너 명의)
+//   - 파트너 사업자 정보 (partner_companies 조회)
+//   - 사고/진단/수리 정보 (partner_assignment + claim 조합)
+//   - 직인 영역 (간이)
+function renderLeakOpinion(cl, r, pa, photos, partners) {
+  // 임포트한 첫 파트너 → 명의자
+  const importedIds = Array.from(_insImportedPartners || []);
+  const namedPartner = (partners || []).find(p => importedIds.includes(p.id) && p.assignment_purpose === 'detection')
+    || (partners || []).find(p => importedIds.includes(p.id))
+    || (partners || [])[0]
+    || null;
+
+  // 발행번호
+  const issueDate = pa.work_done_at ? new Date(pa.work_done_at) : new Date();
+  const issueNo = `NS-${issueDate.getFullYear()}${String(issueDate.getMonth()+1).padStart(2,'0')}${String(issueDate.getDate()).padStart(2,'0')}-001`;
+
+  // 파트너 정보 (없으면 빈칸 유도)
+  const partnerName = namedPartner?.partner_name || '— 파트너 미선택 —';
+
+  // 사고/수리 정보
+  const accDt = pa.accident_occurred_at ? fmtDate(pa.accident_occurred_at) : (cl.accident_date ? fmtDate(cl.accident_date) : '—');
+  const accLoc = r.accident_location_from_doc || pa.attacker_unit || cl.victim_address || '—';
+  const attackerUnit = pa.attacker_unit || '—';
+  const victimUnit = pa.victim_unit || '—';
+  const leakCause = pa.leak_cause || '—';
+  const leakArea = pa.leak_area_type || '—';
+  const repairDate = pa.work_done_at ? fmtDate(pa.work_done_at) : '—';
+  const repairCost = pa.repair_cost ? Number(pa.repair_cost).toLocaleString()+'원' : '—';
+  const repairOpinion = pa.repair_opinion || '—';
+
+  return `
+  <div class="leak-doc">
+    <div class="leak-header">
+      <div class="leak-title-ko">누 수 소 견 서</div>
+      <div class="leak-title-num">발행번호 ${escapeHtml(issueNo)}</div>
+    </div>
+
+    <div class="doc-section">
+      <div class="leak-section-title">사업자 정보</div>
+      <table class="leak-table">
+        <tr><td class="lbl">상호</td><td>${escapeHtml(partnerName)}</td></tr>
+        <tr><td class="lbl">대표</td><td>—</td></tr>
+        <tr><td class="lbl">사업자번호</td><td>—</td></tr>
+        <tr><td class="lbl">주소</td><td>—</td></tr>
+        <tr><td class="lbl">연락처</td><td>—</td></tr>
+      </table>
+      <div style="font-size:10px;color:var(--ins-ink-3);margin-top:4px;padding-left:4px">
+        ⓘ 파트너 사업자 상세는 partner_companies 테이블에서 자동 채움 (현재 미연동)
+      </div>
+    </div>
+
+    <div class="doc-section">
+      <div class="leak-section-title">사고 정보</div>
+      <table class="leak-table">
+        <tr><td class="lbl">사고일자</td><td>${escapeHtml(accDt)} (가해세대 진술 기준)</td></tr>
+        <tr><td class="lbl">사고장소</td><td>${escapeHtml(accLoc)}</td></tr>
+        <tr><td class="lbl">가해세대</td><td>${escapeHtml(attackerUnit)}</td></tr>
+        <tr><td class="lbl">피해세대</td><td>${escapeHtml(victimUnit)}</td></tr>
+      </table>
+    </div>
+
+    <div class="doc-section">
+      <div class="leak-section-title">누수 진단 결과</div>
+      <table class="leak-table">
+        <tr><td class="lbl">누수원인</td><td>${escapeHtml(leakCause)}</td></tr>
+        <tr><td class="lbl">누수부위</td><td>${escapeHtml(leakArea)}</td></tr>
+        <tr><td class="lbl">탐지 횟수</td><td>${pa.detection_count || 1}회</td></tr>
+      </table>
+    </div>
+
+    <div class="doc-section">
+      <div class="leak-section-title">수리 내역</div>
+      <table class="leak-table">
+        <tr><td class="lbl">수리일자</td><td>${escapeHtml(repairDate)}</td></tr>
+        <tr><td class="lbl">수리금액</td><td>${escapeHtml(repairCost)}</td></tr>
+        <tr><td class="lbl">수리내용</td>
+          <td style="white-space:pre-wrap">${escapeHtml(repairOpinion)}</td>
+        </tr>
+      </table>
+    </div>
+
+    ${photos && (photos.before.length || photos.during.length || photos.after.length) ? `
+    <div class="doc-section">
+      <div class="leak-section-title">현장 사진</div>
+      ${photos.before.length ? `
+        <div style="font-size:11px;font-weight:600;color:var(--ins-ink-2);margin:8px 0 4px">① 수리 전 (${photos.before.length}장)</div>
+        <div class="report-photo-grid">
+          ${photos.before.slice(0,3).map(p => `<img src="${p.url}" class="report-photo" alt="">`).join('')}
+        </div>` : ''}
+      ${photos.during.length ? `
+        <div style="font-size:11px;font-weight:600;color:var(--ins-ink-2);margin:8px 0 4px">② 수리 중 (${photos.during.length}장)</div>
+        <div class="report-photo-grid">
+          ${photos.during.slice(0,3).map(p => `<img src="${p.url}" class="report-photo" alt="">`).join('')}
+        </div>` : ''}
+      ${photos.after.length ? `
+        <div style="font-size:11px;font-weight:600;color:var(--ins-ink-2);margin:8px 0 4px">③ 수리 후 (${photos.after.length}장)</div>
+        <div class="report-photo-grid">
+          ${photos.after.slice(0,3).map(p => `<img src="${p.url}" class="report-photo" alt="">`).join('')}
+        </div>` : ''}
+    </div>` : ''}
+
+    <p style="margin-top:24px;font-size:11px;color:var(--ins-ink-2);line-height:1.7">
+      본 소견서는 위 사고에 대해 현장조사 및 수리를 진행한 결과를 기재한 것임을 확인합니다.
+    </p>
+
+    <div class="leak-stamp-area">
+      <div class="leak-stamp-line">${escapeHtml(repairDate)}</div>
+      <div class="leak-stamp-line">${escapeHtml(partnerName)} 대표 ―</div>
+      <div class="leak-stamp">소견<br>확인</div>
+    </div>
+  </div>`;
 }
 
 // ─── 표지 (시안 1페이지) ────────────────────────────────────
