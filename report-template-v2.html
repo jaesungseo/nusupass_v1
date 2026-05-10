@@ -318,6 +318,35 @@ body:not(.embed) .page{
   break-after:auto !important;
 }
 
+/* v6.1.4: 수기 수정 — contenteditable 셀 시각 표시 */
+[contenteditable="true"]{
+  outline:none;
+  cursor:text;
+  transition:background 0.12s ease;
+}
+[contenteditable="true"]:hover{
+  background:rgba(217,90,48,0.04);
+}
+[contenteditable="true"]:focus{
+  background:rgba(217,90,48,0.08);
+  outline:1px dashed rgba(217,90,48,0.4);
+  outline-offset:-2px;
+}
+/* 인쇄 시엔 편집 표식 제거 */
+@media print{
+  [contenteditable="true"]:hover,
+  [contenteditable="true"]:focus{
+    background:transparent !important;
+    outline:none !important;
+  }
+}
+/* embed 모드일 때만 편집 힌트 보임 (단독 뷰는 깨끗하게) */
+body:not(.embed) [contenteditable="true"]:hover,
+body:not(.embed) [contenteditable="true"]:focus{
+  background:transparent;
+  outline:none;
+}
+
 /* 5. 법률상손해배상책임검토 */
 .liability-table td.lbl{
   width:120px;
@@ -591,9 +620,10 @@ function renderPage1(){
     귀사의 피보험자 ${escapeHtml(D.insuredName)}님의 요청에 의거 ${escapeHtml(D.accDate)} ${escapeHtml(D.accAddr)}에서 발생한 누수 사고에 대한 손해사정보고서를 다음과 같이 제출합니다. (귀사 증권번호 : ${escapeHtml(D.policyNoMasked)})
   </div>
   <div class="cover-officer">
-    <div>손해사정사 : ${escapeHtml(D.officer)} (인) / 등록번호 : ${escapeHtml(D.officerCert)}</div>
-    <div style="margin-top:24px">H.P : ${escapeHtml(D.officerHp)}</div>
-    <div>E-MAIL : ${escapeHtml(D.officerEmail)}</div>
+    <div>손해사정사 : ${escapeHtml(D.chiefOfficer)} (인) / 등록번호 : ${escapeHtml(D.chiefOfficerCert)}</div>
+    <div style="margin-top:18px">담당자 : ${escapeHtml(D.handlerName)}</div>
+    <div>H.P : ${escapeHtml(D.handlerHp)}</div>
+    <div>E-MAIL : ${escapeHtml(D.handlerEmail)}</div>
   </div>
   <div class="cover-company">
     <div class="corp">${escapeHtml(D.company)}</div>
@@ -691,8 +721,6 @@ function renderPage2(){
       <tr>
         <td class="lbl">지급처</td>
         <td colspan="5" class="payment-cell">
-          <div class="pc-line">○ 지급 보험금 산출 내역</div>
-          <div class="pc-line">손해액(₩${escapeHtml(p.lossAmt)})이 합의금액(₩${escapeHtml(p.agreeAmt)})인 바, 합의금액에서 공제금액 ₩${escapeHtml(p.deductAmt)}을 제외한 금액 ₩${escapeHtml(p.finalAmt)}을 지급공제금으로 산정함.</div>
           <table class="pc-table">
             <thead>
               <tr>
@@ -1030,7 +1058,47 @@ function renderAll(){
   document.getElementById('reportRoot').innerHTML =
     renderPage1() + renderPage2() + renderPage3() + renderPage4()
     + renderPage5() + renderPage6() + renderPage7();
+
+  // v6.1.4: 모든 본문 셀을 contenteditable로 만들어 수기 수정 가능
+  applyEditableCells();
 }
+
+// v6.1.4: 수기 수정 가능한 셀 일괄 마킹
+function applyEditableCells(){
+  // 본문 텍스트 셀 (라벨 셀 lbl 제외, 헤더 th 제외, 사진/도장 영역 제외)
+  const editableSelectors = [
+    '.cover-meta > div',                              // 보고서 번호 / 제출일자
+    '.cover-addr-row > div:last-child',               // 수신/참조/제목 우측 값
+    '.cover-body',                                     // 본문 인사
+    '.cover-officer > div',                            // 손해사정사/담당자 4줄
+    '.cover-company .corp', '.cover-company .ceo',    // 회사명/대표이사
+    '.t td.val',                                       // 일반 표 본문 셀
+    '.t td.note',                                      // 비고 셀
+    '.t td.dash',                                      // "-" 또는 금액 셀 (총괄표/손해액평가)
+    '.payment-cell .pc-table td',                      // 지급처 표 셀
+    '.attach-table td:nth-child(2)',                   // 첨부자료 이름 셀
+    '.report-end'                                      // 마무리 멘트
+  ];
+
+  editableSelectors.forEach(sel => {
+    document.querySelectorAll(sel).forEach(el => {
+      el.setAttribute('contenteditable', 'true');
+      el.setAttribute('spellcheck', 'false');
+    });
+  });
+}
+
+// v6.1.4: 수기 수정 안내 (단독 뷰가 아니라 iframe embed 모드일 때만)
+function showEditHint(){
+  if (!document.body.classList.contains('embed')) return;
+  if (document.getElementById('editHint')) return;
+  const hint = document.createElement('div');
+  hint.id = 'editHint';
+  hint.style.cssText = 'position:sticky;top:0;left:0;right:0;background:#fff3e0;border-bottom:1px solid #f59e0b;padding:8px 16px;font-size:11px;color:#92400e;z-index:100;text-align:center';
+  hint.innerHTML = '✎ 본문 영역을 클릭하면 직접 수정할 수 있습니다. 수정 내용은 PDF 출력에 반영됩니다.';
+  document.body.insertBefore(hint, document.body.firstChild);
+}
+showEditHint();
 
 // 운영 사이트에서 iframe.contentWindow.postMessage({ type:'setCase', data:{...} }) 로 데이터 주입
 window.addEventListener('message', (e) => {

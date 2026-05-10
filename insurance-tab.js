@@ -395,6 +395,7 @@ async function openInsuranceTab(caseId, caseNo) {
   _insCompany = null; _insUploaded = {}; _insStep = 1;
   _insResult = {}; _insDraft = null; _insAnalyzing = false;
   _insVictims = [];
+  _insHandler = null;
 
   go('insurance');
   document.getElementById('insurancePageSub').textContent = `사건 ${caseNo || caseId.slice(0,8)}`;
@@ -402,14 +403,16 @@ async function openInsuranceTab(caseId, caseNo) {
     `<div class="loading"><span class="spinner"></span> 불러오는 중…</div>`;
 
   try {
-    const [claim, field, partners, company] = await Promise.all([
+    const [claim, field, partners, company, handler] = await Promise.all([
       insEnsureClaim(caseId),
       insFetchField(caseId),
       insFetchAllPartners(caseId),  // v6.1: 다중 파트너 로드
       insFetchCompany(),
+      insFetchHandler(),  // v6.1.4: 본인(담당자) 정보
     ]);
     _insClaim = claim; _insField = field; _insCompany = company;
     _insPartners = partners;
+    _insHandler = handler;
 
     // v6.1: 보고서 제출된 파트너는 기본적으로 임포트 ON, 미제출은 OFF
     _insPartners.forEach(p => {
@@ -639,20 +642,28 @@ async function insFetchAllPartners(caseId) {
     .select(`
       id, case_id, partner_company_id, assignment_status, work_status, assignment_purpose,
       repair_cost, repair_opinion, work_done_at, work_started_at, visited_at, accident_occurred_at,
-      attacker_unit, victim_unit, leak_area_type, leak_cause,
+      attacker_unit, victim_unit, leak_area_type, leak_cause, leak_detail_part, detection_count,
       accident_datetime_at_site, accident_datetime_source, accident_datetime_note,
-      partner_companies(company_name)
+      partner_companies(company_name, owner_name, business_no, phone, service_areas, stamp_image_path)
     `)
     .eq('case_id', caseId)
     .neq('assignment_status', 'cancelled')
     .order('created_at', { ascending: true });
   if (error) { console.warn('[v6.1] 파트너 다중 로드 실패:', error); return []; }
-  // 회사명 평탄화
-  return (data || []).map(p => ({
-    ...p,
-    partner_name: p.partner_companies?.company_name || '파트너',
-    has_report: ['repair_done','repair_completed'].includes(p.work_status),
-  }));
+  // 회사 정보 평탄화 (v6.1.4: 누수소견서 데이터 매핑 위해 사업자 상세 필드 포함)
+  return (data || []).map(p => {
+    const pc = p.partner_companies || {};
+    return {
+      ...p,
+      partner_name: pc.company_name || '파트너',
+      partner_owner: pc.owner_name || '',
+      partner_business_no: pc.business_no || '',
+      partner_phone: pc.phone || '',
+      partner_address: pc.service_areas || '',  // 임시: service_areas → 주소 (전용 address 컬럼 없음)
+      partner_stamp_path: pc.stamp_image_path || '',
+      has_report: ['repair_done','repair_completed'].includes(p.work_status),
+    };
+  });
 }
 async function insFetchUploads(claimId) {
   const { data } = await sb.from('insurance_doc_uploads')
@@ -661,8 +672,40 @@ async function insFetchUploads(claimId) {
   return data || [];
 }
 async function insFetchCompany() {
-  const { data } = await sb.from('company_settings').select('*').eq('id',1).maybeSingle();
-  return data;
+  // v6.1.4: company_settings(legacy) + companies(chief_officer 정보) 동시 로드
+  const [{ data: cs }, { data: co }] = await Promise.all([
+    sb.from('company_settings').select('*').eq('id', 1).maybeSingle(),
+    sb.from('companies').select('id, company_name_ko, ceo_name, business_no, company_address, company_phone, company_email, chief_officer_name, chief_officer_license_no, chief_officer_stamp_path, company_stamp_path').limit(1).maybeSingle()
+  ]);
+  // 두 소스 머지 (companies 우선)
+  return {
+    ...(cs || {}),
+    // 보고서 1페이지 발신부 4줄용
+    chief_officer_name: co?.chief_officer_name || cs?.adjuster_name || '서재성',
+    chief_officer_license_no: co?.chief_officer_license_no || cs?.adjuster_license_no || '',
+    chief_officer_stamp_path: co?.chief_officer_stamp_path || '',
+    company_name_ko: co?.company_name_ko || cs?.company_name || '누수패스손해사정(주)',
+    ceo_name: co?.ceo_name || cs?.representative || '',
+    company_address: co?.company_address || cs?.address || '',
+    company_phone: co?.company_phone || cs?.phone || '',
+    company_email: co?.company_email || cs?.email || '',
+  };
+}
+
+// v6.1.4: 본인(현재 로그인 admin_users) 정보 로드 — 보고서 "담당자" 자리
+async function insFetchHandler() {
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+    if (!user) return null;
+    const { data } = await sb.from('admin_users')
+      .select('id, name, email, phone, personal_email, position, license_no, signature_image_path')
+      .eq('id', user.id)
+      .maybeSingle();
+    return data || null;
+  } catch (e) {
+    console.warn('[v6.1.4] 담당자 정보 로드 실패', e);
+    return null;
+  }
 }
 
 // v5.4: 피해자 배열 CRUD
@@ -3185,6 +3228,7 @@ async function s2Save() {
 // 보고서용 부가 상태
 let _insPartnerReport = null;   // 파트너 수리완료 보고 (assignment 레코드 일부)
 let _insRepairPhotos  = { before: [], during: [], after: [] };  // signed URLs
+let _insHandler       = null;   // v6.1.4: 본인(담당자) 정보 — admin_users row
 
 // v6.1.4: 보고서 양식(report-template-v2.html iframe)에 주입할 데이터
 let _insCurrentReportData = null;
@@ -3305,7 +3349,7 @@ function insStep3HTML() {
   // v6.1.4: 보고서 양식(iframe)에 주입할 데이터 빌드
   _reportRecipient = cl.report_recipient || cl.insurer_name || 'DB손해보험';
   _reportDept = cl.report_cc || '손해사정팀';
-  _insCurrentReportData = buildReportData(cl, r, co, _insPartners, victims, photos);
+  _insCurrentReportData = buildReportData(cl, r, co, _insPartners, victims, photos, _insHandler);
 
   // 헤더 상태 배지
   const covVal = r.coverage_result || cl.coverage_result;
@@ -3450,7 +3494,36 @@ function s3SwitchTab(tabName) {
   // 탭 컨텐츠 표시 토글
   document.getElementById('tab-content-report').style.display = (tabName === 'report') ? 'block' : 'none';
   document.getElementById('tab-content-leak').style.display   = (tabName === 'leak')   ? 'block' : 'none';
+
+  // v6.1.4: 누수소견서 탭 전환 시 도장 signed URL 로드
+  if (tabName === 'leak') {
+    s3LoadStampImages();
+  }
 }
+
+// v6.1.4: 누수소견서 안의 도장 이미지(.leak-stamp-img)를 partner-stamps Storage에서 signed URL로 로드
+async function s3LoadStampImages() {
+  const imgs = document.querySelectorAll('.leak-stamp-img[data-stamp-path]');
+  for (const img of imgs) {
+    const path = img.getAttribute('data-stamp-path');
+    if (!path || img.src) continue;
+    try {
+      const { data, error } = await sb.storage.from('partner-stamps').createSignedUrl(path, 3600);
+      if (!error && data?.signedUrl) {
+        img.src = data.signedUrl;
+      } else {
+        // 도장 로드 실패 시 텍스트 (인) 으로 폴백
+        const fallback = document.createElement('span');
+        fallback.className = 'leak-stamp';
+        fallback.textContent = '(인)';
+        img.replaceWith(fallback);
+      }
+    } catch (e) {
+      console.warn('[v6.1.4] 도장 signed URL 실패:', e);
+    }
+  }
+}
+window.s3LoadStampImages = s3LoadStampImages;
 
 // v6.1.2: 누수소견서 렌더 (파트너 명의)
 //   - 파트너 사업자 정보 (partner_companies 조회)
@@ -3468,19 +3541,47 @@ function renderLeakOpinion(cl, r, pa, photos, partners) {
   const issueDate = pa.work_done_at ? new Date(pa.work_done_at) : new Date();
   const issueNo = `NS-${issueDate.getFullYear()}${String(issueDate.getMonth()+1).padStart(2,'0')}${String(issueDate.getDate()).padStart(2,'0')}-001`;
 
-  // 파트너 정보 (없으면 빈칸 유도)
+  // v6.1.4: partner_companies 사업자 상세 매핑
   const partnerName = namedPartner?.partner_name || '— 파트너 미선택 —';
+  const partnerOwner = namedPartner?.partner_owner || '—';
+  const partnerBusinessNo = namedPartner?.partner_business_no || '—';
+  const partnerAddress = namedPartner?.partner_address || '—';
+  const partnerPhone = namedPartner?.partner_phone || '—';
+  const partnerStampPath = namedPartner?.partner_stamp_path || '';
 
-  // 사고/수리 정보
-  const accDt = pa.accident_occurred_at ? fmtDate(pa.accident_occurred_at) : (cl.accident_date ? fmtDate(cl.accident_date) : '—');
-  const accLoc = r.accident_location_from_doc || pa.attacker_unit || cl.victim_address || '—';
-  const attackerUnit = pa.attacker_unit || '—';
-  const victimUnit = pa.victim_unit || '—';
-  const leakCause = pa.leak_cause || '—';
-  const leakArea = pa.leak_area_type || '—';
-  const repairDate = pa.work_done_at ? fmtDate(pa.work_done_at) : '—';
-  const repairCost = pa.repair_cost ? Number(pa.repair_cost).toLocaleString()+'원' : '—';
-  const repairOpinion = pa.repair_opinion || '—';
+  // 사고/수리 정보 — accident_datetime_at_site 우선 (v5.4.3 신규 컬럼)
+  const accDtRaw = namedPartner?.accident_datetime_at_site || pa.accident_datetime_at_site || pa.accident_occurred_at || cl.accident_date;
+  const accDt = accDtRaw ? fmtDate(accDtRaw) : '—';
+  const accDtSource = namedPartner?.accident_datetime_source || pa.accident_datetime_source || '';
+  const accDtSourceLabel = ({
+    victim_statement: '피해세대 진술',
+    complaint_log: '관리소 민원',
+    insured_statement: '피보험자 진술',
+    partner_estimate: '현장 관찰 추정',
+    unknown: '특정 불가'
+  })[accDtSource] || (accDtSource ? '진술 기준' : '');
+
+  const accLoc = r.accident_location_from_doc || cl.accident_address || cl.address_full || '—';
+  const attackerUnit = (namedPartner?.attacker_unit || pa.attacker_unit) || '—';
+  const victimUnit = (namedPartner?.victim_unit || pa.victim_unit) || '—';
+  const leakCauseRaw = (namedPartner?.leak_cause || pa.leak_cause) || '';
+  const leakCause = leakCauseRaw || '—';
+  const leakAreaRaw = (namedPartner?.leak_area_type || pa.leak_area_type) || '';
+  const leakAreaLabel = ({
+    living: '거실', kitchen: '주방', main_room: '안방',
+    sub_room_1: '작은방1', sub_room_2: '작은방2', sub_room_3: '작은방3',
+    bathroom: '화장실', boiler_room: '보일러실', utility_room: '다용도실',
+    veranda: '베란다', other: '기타'
+  })[leakAreaRaw] || (leakAreaRaw || '—');
+  const leakDetailPart = (namedPartner?.leak_detail_part || pa.leak_detail_part) || '';
+  const leakAreaFull = leakDetailPart ? `${leakAreaLabel} (${leakDetailPart})` : leakAreaLabel;
+  const detectionCount = namedPartner?.detection_count || pa.detection_count || 1;
+
+  const repairDateRaw = namedPartner?.work_done_at || pa.work_done_at;
+  const repairDate = repairDateRaw ? fmtDate(repairDateRaw) : '—';
+  const repairCostRaw = namedPartner?.repair_cost || pa.repair_cost;
+  const repairCost = repairCostRaw ? Number(repairCostRaw).toLocaleString()+'원' : '—';
+  const repairOpinion = (namedPartner?.repair_opinion || pa.repair_opinion) || '—';
 
   return `
   <div class="leak-doc">
@@ -3493,20 +3594,17 @@ function renderLeakOpinion(cl, r, pa, photos, partners) {
       <div class="leak-section-title">사업자 정보</div>
       <table class="leak-table">
         <tr><td class="lbl">상호</td><td>${escapeHtml(partnerName)}</td></tr>
-        <tr><td class="lbl">대표</td><td>—</td></tr>
-        <tr><td class="lbl">사업자번호</td><td>—</td></tr>
-        <tr><td class="lbl">주소</td><td>—</td></tr>
-        <tr><td class="lbl">연락처</td><td>—</td></tr>
+        <tr><td class="lbl">대표</td><td>${escapeHtml(partnerOwner)}</td></tr>
+        <tr><td class="lbl">사업자번호</td><td>${escapeHtml(partnerBusinessNo)}</td></tr>
+        <tr><td class="lbl">주소</td><td>${escapeHtml(partnerAddress)}</td></tr>
+        <tr><td class="lbl">연락처</td><td>${escapeHtml(partnerPhone)}</td></tr>
       </table>
-      <div style="font-size:10px;color:var(--ins-ink-3);margin-top:4px;padding-left:4px">
-        ⓘ 파트너 사업자 상세는 partner_companies 테이블에서 자동 채움 (현재 미연동)
-      </div>
     </div>
 
     <div class="doc-section">
       <div class="leak-section-title">사고 정보</div>
       <table class="leak-table">
-        <tr><td class="lbl">사고일자</td><td>${escapeHtml(accDt)} (가해세대 진술 기준)</td></tr>
+        <tr><td class="lbl">사고일자</td><td>${escapeHtml(accDt)}${accDtSourceLabel ? ` (${escapeHtml(accDtSourceLabel)})` : ''}</td></tr>
         <tr><td class="lbl">사고장소</td><td>${escapeHtml(accLoc)}</td></tr>
         <tr><td class="lbl">가해세대</td><td>${escapeHtml(attackerUnit)}</td></tr>
         <tr><td class="lbl">피해세대</td><td>${escapeHtml(victimUnit)}</td></tr>
@@ -3517,8 +3615,8 @@ function renderLeakOpinion(cl, r, pa, photos, partners) {
       <div class="leak-section-title">누수 진단 결과</div>
       <table class="leak-table">
         <tr><td class="lbl">누수원인</td><td>${escapeHtml(leakCause)}</td></tr>
-        <tr><td class="lbl">누수부위</td><td>${escapeHtml(leakArea)}</td></tr>
-        <tr><td class="lbl">탐지 횟수</td><td>${pa.detection_count || 1}회</td></tr>
+        <tr><td class="lbl">누수부위</td><td>${escapeHtml(leakAreaFull)}</td></tr>
+        <tr><td class="lbl">탐지 횟수</td><td>${detectionCount}회</td></tr>
       </table>
     </div>
 
@@ -3559,8 +3657,11 @@ function renderLeakOpinion(cl, r, pa, photos, partners) {
 
     <div class="leak-stamp-area">
       <div class="leak-stamp-line">${escapeHtml(repairDate)}</div>
-      <div class="leak-stamp-line">${escapeHtml(partnerName)} 대표 ―</div>
-      <div class="leak-stamp">소견<br>확인</div>
+      <div class="leak-stamp-line">${escapeHtml(partnerName)}${partnerOwner !== '—' ? ` 대표 ${escapeHtml(partnerOwner)}` : ''}</div>
+      ${partnerStampPath
+        ? `<img class="leak-stamp-img" src="" data-stamp-path="${escapeHtml(partnerStampPath)}" alt="(인)" style="width:60px;height:60px;object-fit:contain;margin-left:12px;vertical-align:middle"/>`
+        : `<div class="leak-stamp">(인)</div>`
+      }
     </div>
   </div>`;
 }
@@ -4033,13 +4134,14 @@ function renderReportFooter(co) {
 // 운영 데이터를 report-template-v2.html의 D 객체 스키마로 변환
 // (cl=claim, r=result, co=company, partners, victims, photos)
 // ════════════════════════════════════════════════════════════════
-function buildReportData(cl, r, co, partners, victims, photos) {
+function buildReportData(cl, r, co, partners, victims, photos, handler) {
   cl = cl || {};
   r = r || {};
   co = co || {};
   partners = partners || [];
   victims = victims || [];
   photos = photos || { before: [], during: [], after: [] };
+  handler = handler || {};
 
   // 마무리 시점 데이터
   const todayStr = new Date().toISOString().slice(0,10).replace(/-/g,'.');
@@ -4070,12 +4172,17 @@ function buildReportData(cl, r, co, partners, victims, photos) {
     accDate: accDateLong || '-',
     accAddr: r.accident_address || cl.accident_address || '-',
     policyNoMasked: policyNoMasked,
-    officer: co.adjuster_name || co.officer_name || co.ceo_name || 'OOO',
-    officerCert: co.adjuster_cert_no || co.officer_cert_no || '000000000',
-    officerHp: co.adjuster_phone || co.officer_phone || co.phone || '010-0000-0000',
-    officerEmail: co.adjuster_email || co.email || 'nusupass.cs@gmail.com',
-    company: co.company_name || '누수패스손해사정㈜',
-    ceo: co.ceo_name || 'OOO',
+    // v6.1.4: 손해사정사 (회사 정보 — companies.chief_officer_*) — 모든 보고서 고정
+    chiefOfficer: co.chief_officer_name || co.adjuster_name || 'OOO',
+    chiefOfficerCert: co.chief_officer_license_no || co.adjuster_license_no || '000000000',
+    chiefOfficerStampPath: co.chief_officer_stamp_path || '',
+    // v6.1.4: 담당자 (본인 정보 — admin_users 현재 로그인) — 보고서마다 다름
+    handlerName: handler.name || co.investigator_name || '서재성',
+    handlerHp: handler.phone || co.phone || '010-0000-0000',
+    handlerEmail: handler.personal_email || handler.email || co.company_email || co.email || 'nusupass.cs@gmail.com',
+    handlerPosition: handler.position || '',
+    company: co.company_name_ko || co.company_name || '누수패스손해사정㈜',
+    ceo: co.ceo_name || co.representative || 'OOO',
     summary: {
       limitProperty: (r.coverage_limit || r.limit_property || 0).toLocaleString(),
       damage: '-', liable: '-', deduct: '-', payout: '-'
