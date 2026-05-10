@@ -338,14 +338,25 @@ const INS_CAUSE_RULEBOOK_MAP = {
   '기타(직접입력)': { cat: '?', label: '수리소견으로 판단' },
 };
 
+// v6: 카드별 그룹 매핑 추가
+//   group: 'policy'   = 카드2 계약 서류
+//          'insured'  = 카드3 피보험자(가해세대)
+//          'victim'   = 카드4 피해세대
 const INS_DOCS = [
-  { code:'insurance_policy',   name:'보험증권',                                               type:'pdf', required:true  },
-  { code:'resident_reg',       name:'피보험자 주민등록등본',                                  type:'pdf', required:true  },
-  { code:'ownership_accident', name:'사고발생장소 소유자료 (등기부등본 또는 건축물대장)',     type:'pdf', required:true  },
-  { code:'ownership_victim',   name:'피해세대 소유자료 (등기부등본 또는 건축물대장)',         type:'pdf', required:true  },
-  { code:'family_cert',        name:'가족관계증명서',                                         type:'pdf', required:false },
-  { code:'claim_form',         name:'보험청구서',                                             type:'pdf', required:false },
+  { code:'insurance_policy',   name:'보험증권',                                               type:'pdf', required:true,  group:'policy'   },
+  { code:'claim_form',         name:'보험금 청구서',                                          type:'pdf', required:false, group:'policy'   },
+  { code:'resident_reg',       name:'피보험자 주민등록등본',                                  type:'pdf', required:true,  group:'insured'  },
+  { code:'family_cert',        name:'가족관계증명서',                                         type:'pdf', required:true,  group:'insured'  },  // v6: 선택→필수 승격
+  { code:'ownership_accident', name:'사고세대 건축물대장 + 등기부등본',                       type:'pdf', required:true,  group:'insured'  },
+  { code:'ownership_victim',   name:'피해세대 건축물대장 + 등기부등본',                       type:'pdf', required:true,  group:'victim'   },
 ];
+
+// v6: 카드 메타데이터
+const INS_DOC_GROUPS = {
+  policy:   { icon:'📑', cls:'v6-icon-policy',   title:'계약 서류',           sub:'보험증권 OCR · 12개 항목 추출 · Call 1' },
+  insured:  { icon:'👤', cls:'v6-icon-insured',  title:'피보험자(가해세대)',  sub:'4개 문서 교차참조 · 지위 자동 판정 · Call 2' },
+  victim:   { icon:'🏠', cls:'v6-icon-victim',   title:'피해세대',            sub:'대장 + 등기부 · Call 3' },
+};
 
 // 피보험자 지위 4-value (표기 통일 — 백엔드 enum과 매칭)
 const INSURED_STATUS_VALUES = [
@@ -640,7 +651,166 @@ async function insGoStep(n) {
 }
 
 // ─────────────────────────────────────────────
-// STEP 1: 준비 (기본정보 + 약관구분 + 서류업로드)
+// v6 공통 헬퍼: 케이스 헤더 + 룰엔진 사이드바
+//   STEP 1/2/3에서 일관되게 재사용
+// ─────────────────────────────────────────────
+
+// 케이스 헤더 (사건 요약 — 모든 STEP 상단)
+function v6CaseHeaderHTML(opts = {}) {
+  const cl = _insClaim || {};
+  const fd = _insField;
+  const today = new Date().toISOString().split('T')[0];
+  const insType = cl.insurance_type || 'family_daily_old';
+  const insTypeLabel = INS_TYPE_LABELS[insType] || '미선택';
+  const caseName = cl.insured_name || (cl.case_id ? `케이스 ${String(cl.case_id).slice(0,8)}` : '— 사건 정보 —');
+  const accLoc = (fd && fd.attacker_unit) || cl.victim_address || '';
+  // STEP 1에서만 제출일자 입력 가능, 나머지는 readonly
+  const dateInput = opts.editableDate
+    ? `<input type="date" id="s1-date" value="${cl.submit_date||today}"/>`
+    : `<b>${cl.submit_date ? fmtDate(cl.submit_date) : today}</b>`;
+  return `
+    <div class="v6-case-header">
+      <div class="v6-case-header-info">
+        <div class="v6-case-header-name">${escapeHtml(caseName)}</div>
+        <div class="v6-case-header-sub">
+          <span class="v6-case-tag">${escapeHtml(insTypeLabel)}</span>
+          ${accLoc ? escapeHtml(accLoc) : '— 사고 장소 미확인 —'}
+        </div>
+        <div class="v6-meta-bar">
+          <span>보고서 번호 <b>${cl.report_no || '— (저장 시 자동채번)'}</b></span>
+          <span>제출일자 ${dateInput}</span>
+        </div>
+      </div>
+    </div>`;
+}
+
+// 룰엔진 사이드바 (분석 결과를 실시간 반영)
+//   step: 1 → 분석 대기, 2/3 → 분석 결과 반영
+function v6EngineSidebarHTML(step) {
+  const cl = _insClaim || {};
+  const r = _insResult || {};
+  const fd = _insField;
+  const insType = cl.insurance_type || 'family_daily_old';
+  const insTypeLabel = INS_TYPE_LABELS[insType] || '미선택';
+
+  // STEP 1: 입력 진행 상태
+  if (step === 1) {
+    const reqDone = INS_DOCS.filter(d => d.required && _insUploaded[d.code]).length;
+    const reqTotal = INS_DOCS.filter(d => d.required).length;
+    const allReq = reqDone >= reqTotal;
+    return `
+    <div class="v6-engine-side">
+      <div class="v6-engine-card">
+        <div class="v6-engine-head">
+          <div class="v6-engine-head-title">SABI v6 · 룰엔진</div>
+          <div class="v6-engine-pulse"><span class="v6-pulse-dot"></span>실시간</div>
+        </div>
+        <div class="v6-engine-body">
+          <div class="v6-engine-result gray">
+            <div class="v6-engine-result-label">현재 입력 기준 예상</div>
+            <div class="v6-engine-result-value">${allReq ? '분석 대기' : '서류 업로드 중'}</div>
+          </div>
+          <ul class="v6-engine-list">
+            <li class="v6-engine-row"><span class="v6-engine-row-key">약관</span><span class="v6-engine-row-val">${escapeHtml(insTypeLabel)}</span></li>
+            <li class="v6-engine-row"><span class="v6-engine-row-key">필수 서류</span><span class="v6-engine-row-val ${allReq?'green':'amber'}">${reqDone}/${reqTotal}</span></li>
+            <li class="v6-engine-row"><span class="v6-engine-row-key">파트너 자료</span><span class="v6-engine-row-val ${fd?'green':'amber'}">${fd?'연동됨':'없음'}</span></li>
+            <li class="v6-engine-row"><span class="v6-engine-row-key">사고원인 카테고리</span><span class="v6-engine-row-val">분석 후 확정</span></li>
+            <li class="v6-engine-row"><span class="v6-engine-row-key">피보 지위</span><span class="v6-engine-row-val">분석 후 확정</span></li>
+            <li class="v6-engine-row"><span class="v6-engine-row-key">법률상 책임</span><span class="v6-engine-row-val">분석 후 확정</span></li>
+          </ul>
+          <div class="v6-engine-explain"><b>안내</b> · 서류를 모두 업로드하고 약관을 선택한 후 <b>저장 후 분석·판단</b>을 클릭하면 Claude가 9단계 판단 로직으로 면·부책을 산출합니다.</div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  // STEP 2/3: 분석 결과 반영
+  const established  = r.liability_result || cl.liability_result || '';
+  const coverage     = r.coverage_result || cl.coverage_result || '';
+  const insuredStat  = r.insured_status || cl.insured_status || '';
+  const causeCat     = r.rulebook_cat || cl.rulebook_cat || '';
+  const faultRatio   = r.fault_ratio || cl.fault_ratio || '';
+  const accCause     = (fd?.leak_cause) || cl.accident_cause_type || '';
+
+  // 결과 색상
+  let resultCls = 'gray', resultLabel = '분석 결과 없음', resultValue = '미산출';
+  if (coverage === '부책')     { resultCls = '';      resultLabel = '면·부책 결과'; resultValue = '부책'; }
+  else if (coverage === '면책') { resultCls = 'red';   resultLabel = '면·부책 결과'; resultValue = '면책'; }
+  else if (coverage === '판단유보') { resultCls = 'amber'; resultLabel = '면·부책 결과'; resultValue = '판단유보'; }
+
+  // 카테고리 매핑 라벨
+  const catLabel = causeCat
+    ? (INS_CAUSE_RULEBOOK_MAP?.[accCause]?.label || causeCat)
+    : '확정 안됨';
+
+  return `
+    <div class="v6-engine-side">
+      <div class="v6-engine-card">
+        <div class="v6-engine-head">
+          <div class="v6-engine-head-title">SABI v6 · 룰엔진</div>
+          <div class="v6-engine-pulse"><span class="v6-pulse-dot"></span>실시간</div>
+        </div>
+        <div class="v6-engine-body">
+          <div class="v6-engine-result ${resultCls}">
+            <div class="v6-engine-result-label">${resultLabel}</div>
+            <div class="v6-engine-result-value">${resultValue}</div>
+          </div>
+          <ul class="v6-engine-list">
+            <li class="v6-engine-row"><span class="v6-engine-row-key">약관</span><span class="v6-engine-row-val">${escapeHtml(insTypeLabel)}</span></li>
+            <li class="v6-engine-row"><span class="v6-engine-row-key">사고원인</span><span class="v6-engine-row-val">${escapeHtml(accCause || '미지정')}</span></li>
+            <li class="v6-engine-row"><span class="v6-engine-row-key">카테고리</span><span class="v6-engine-row-val" title="${escapeHtml(catLabel)}">${escapeHtml(causeCat || '—')}</span></li>
+            <li class="v6-engine-row"><span class="v6-engine-row-key">피보 지위</span><span class="v6-engine-row-val ${insuredStat?'green':''}">${escapeHtml(insuredStat || '—')}</span></li>
+            <li class="v6-engine-row"><span class="v6-engine-row-key">법률상 책임</span><span class="v6-engine-row-val ${established==='yes'?'green':established==='no'?'red':''}">${established==='yes'?'성립':established==='no'?'불성립':'—'}</span></li>
+            <li class="v6-engine-row"><span class="v6-engine-row-key">과실 비율</span><span class="v6-engine-row-val">${escapeHtml(faultRatio || '—')}</span></li>
+          </ul>
+          ${(r.liability_reasoning || cl.liability_reasoning) ? `<div class="v6-engine-explain"><b>판단 근거</b> · ${escapeHtml((r.liability_reasoning || cl.liability_reasoning).slice(0, 240))}${(r.liability_reasoning || cl.liability_reasoning).length > 240 ? '…' : ''}</div>` : ''}
+        </div>
+      </div>
+    </div>`;
+}
+
+// 약관 선택 바 (STEP 1에서 사용, 분석 후엔 readonly)
+function v6PolicyBarHTML(readonly) {
+  const cl = _insClaim || {};
+  if (readonly) {
+    // STEP 2/3: 약관 정보 표시만
+    const insTypeLabel = INS_TYPE_LABELS[cl.insurance_type] || '미선택';
+    return `
+      <div class="v6-policy-bar" style="display:flex;align-items:center;gap:14px;padding:10px 14px">
+        <div style="font-size:12px;font-weight:700;color:var(--text);flex-shrink:0">📌 약관</div>
+        <div style="flex:1;font-size:13px;color:var(--primary);font-weight:700">${escapeHtml(insTypeLabel)}</div>
+        <button class="btn btn-ghost btn-sm" onclick="insGoStep(1)" style="font-size:11px">↩ STEP 1에서 변경</button>
+      </div>`;
+  }
+  return `
+    <div class="v6-policy-bar">
+      <div class="v6-policy-bar-title">📌 약관 구분 선택</div>
+      <div class="v6-policy-bar-sub">서류 분석 전에 선택하면 Claude가 해당 약관 기준으로 판단합니다</div>
+      <div class="v6-policy-grid">
+        ${[
+          ['family_daily_old','가족일상생활 (구형)','가족 단위 · 제3자 배상','구형 — 임대인 케이스 면책'],
+          ['family_daily_new','가족일상생활 (신형)','가족 단위 · 임대 주택 포함','신형 — 임대인 케이스 부책 가능'],
+          ['personal_daily',  '일상생활 (일배책)',  '본인+배우자 한정','일배책 — 구형과 동일 로직, 범위만 축소'],
+        ].map(([val, name, desc, note]) => {
+          const sel = (cl.insurance_type||'family_daily_old') === val;
+          return `<div class="ins-type-card ${sel?'ins-type-selected':''}" onclick="s1SelectType('${val}',this)">
+            <input type="radio" name="ins-type" value="${val}" ${sel?'checked':''} style="display:none">
+            <div style="font-size:13px;font-weight:700;margin-bottom:4px">${name}</div>
+            <div style="font-size:12px;color:${sel?'var(--primary)':'var(--muted)'}">${desc}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:3px">${note}</div>
+          </div>`;
+        }).join('')}
+      </div>
+      <div style="margin-top:8px;padding:8px 12px;background:var(--bg);border-radius:6px;font-size:11px;color:var(--muted);border-left:3px solid var(--line)">
+        💡 시설소유(관리)자배상책임 · 급배수누출손해는 추후 지원 예정입니다.
+      </div>
+    </div>`;
+}
+
+// ─────────────────────────────────────────────
+// STEP 1: 준비 (v6 카드 구조)
+//   - 좌: 케이스 헤더 + 약관 + 4카드 (파트너/계약/피보험자/피해세대)
+//   - 우: 룰엔진 사이드바 (sticky)
 // ─────────────────────────────────────────────
 function insStep1HTML() {
   const cl = _insClaim || {};
@@ -651,110 +821,171 @@ function insStep1HTML() {
   const reqTotal = INS_DOCS.filter(d => d.required).length;
   const allReq = reqDone >= reqTotal;
 
-  const insurerOpts = INS_INSURERS
-    .map(n => `<option ${cl.insurer_name===n?'selected':''}>${n}</option>`)
-    .join('') + `<option value="기타">기타 (직접 입력)</option>`;
+  // 카드별 슬롯 그룹화
+  const policyDocs  = INS_DOCS.filter(d => d.group === 'policy');
+  const insuredDocs = INS_DOCS.filter(d => d.group === 'insured');
+  const victimDocs  = INS_DOCS.filter(d => d.group === 'victim');
 
-  // v6: 보고서 본문에서 select로 표시되므로 여기서도 옵션 생성 (보고서 미리보기용으로 재사용)
-  const causeOpts = INS_CAUSES
-    .map(c => `<option value="${c}" ${(cl.accident_cause_type||'')===c?'selected':''}>${c}</option>`)
-    .join('');
-
-  const docsHTML = INS_DOCS.map(doc => {
+  // 슬롯 렌더 헬퍼
+  const renderSlot = (doc) => {
     const up = _insUploaded[doc.code];
     const done = !!up;
+    const fileName = done ? (up.doc_name || '업로드 완료') : '';
     return `
-    <div class="ins-dz ${done?'ins-dz-done':''}" id="ins-dz-${doc.code}"
-         ondragover="event.preventDefault();this.classList.add('ins-dz-over')"
-         ondragleave="this.classList.remove('ins-dz-over')"
-         ondrop="insDrop(event,'${doc.code}','${doc.name}')"
-         onclick="insTrigger('${doc.code}','${doc.name}')">
-      <div class="ins-dz-progress" id="ins-dp-${doc.code}"></div>
-      <div class="ins-dz-icon">${done?'✅':(doc.type==='pdf'?'📄':'🖼')}</div>
-      <div class="ins-dz-name">${doc.name}</div>
-      <div class="ins-dz-sub">${done?(up.doc_name||'완료'):'클릭 또는 드래그'}</div>
-      <div class="ins-dz-badge ${doc.required?'ins-badge-req':'ins-badge-opt'}">${done?'완료':(doc.required?'필수':'선택')}</div>
-    </div>`;
-  }).join('');
+      <div class="v6-upload-slot ${done?'done':''}" id="ins-dz-${doc.code}"
+           ondragover="event.preventDefault();this.classList.add('v6-upload-slot-over')"
+           ondragleave="this.classList.remove('v6-upload-slot-over')"
+           ondrop="insDrop(event,'${doc.code}','${escapeHtml(doc.name)}')"
+           onclick="insTrigger('${doc.code}','${escapeHtml(doc.name)}')">
+        <div class="v6-upload-slot-label">
+          ${doc.type==='pdf'?'📄':'🖼'} ${escapeHtml(doc.name)}${doc.required?'<span class="v6-upload-required">*</span>':'<span class="v6-upload-optional">(선택)</span>'}
+        </div>
+        ${done
+          ? `<span class="v6-upload-slot-status">✓ ${escapeHtml(fileName)}</span>
+             <button class="v6-upload-remove" onclick="event.stopPropagation();insRemoveDoc('${doc.code}')" title="삭제">✕</button>`
+          : `<span class="v6-upload-slot-empty">클릭 또는 드래그</span>`}
+        <div class="v6-upload-progress" id="ins-dp-${doc.code}"></div>
+      </div>`;
+  };
 
-  const fieldHTML = fd
-    ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
-        <div class="detail-item"><label>수리금액</label><span>${fd.repair_cost?Number(fd.repair_cost).toLocaleString()+'원':'—'}</span></div>
-        <div class="detail-item"><label>수리완료일</label><span>${(fd.work_done_at||'').slice(0,10)||'—'}</span></div>
-        <div class="detail-item" style="grid-column:1/-1"><label>수리소견</label><span>${fd.repair_opinion||'—'}</span></div>
-       </div>`
-    : `<div class="empty" style="padding:12px"><div class="empty-text">파트너가 수리완료 보고서를 아직 제출하지 않았습니다</div></div>`;
+  // 카드별 추출 데이터 표시 (현재는 프로젝트 진행에 따라 채워짐 — 분석 후 STEP 2/3에서)
+  // 여기서는 업로드 완료 여부만 표시
+  const policyExtractedHTML = _insUploaded.insurance_policy && cl.policy_no
+    ? `<ul class="v6-data-list">
+        <li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">증권번호</div><div class="v6-data-val">${escapeHtml(cl.policy_no || '—')}</div></li>
+        <li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">보험사</div><div class="v6-data-val">${escapeHtml(cl.insurer_name || '—')}</div></li>
+        ${cl.policy_start && cl.policy_end ? `<li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">보험기간</div><div class="v6-data-val">${fmtDate(cl.policy_start)} ~ ${fmtDate(cl.policy_end)}</div></li>` : ''}
+        ${cl.coverage_limit ? `<li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">보장한도</div><div class="v6-data-val">${Number(cl.coverage_limit).toLocaleString()}원 ${cl.deductible?`/ 자기부담금 ${Number(cl.deductible).toLocaleString()}원`:''}</div></li>` : ''}
+       </ul>`
+    : '';
+
+  const insuredExtractedHTML = (_insUploaded.resident_reg && cl.insured_name)
+    ? `<ul class="v6-data-list">
+        <li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">피보험자</div><div class="v6-data-val">${escapeHtml(cl.insured_name || '—')}</div></li>
+        ${cl.insured_owner_name ? `<li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">건물소유자</div><div class="v6-data-val">${escapeHtml(cl.insured_owner_name)}</div></li>` : ''}
+        ${cl.insured_cohabitants ? `<li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">동거인</div><div class="v6-data-val">${escapeHtml(cl.insured_cohabitants)}</div></li>` : ''}
+        ${cl.insured_status ? `<li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">피보험자 지위</div><div class="v6-data-val"><b>${escapeHtml(cl.insured_status)}</b> (4문서 교차참조)</div></li>` : ''}
+       </ul>`
+    : '';
+
+  const victimExtractedHTML = (_insUploaded.ownership_victim && (cl.victim_name || cl.victim_address))
+    ? `<ul class="v6-data-list">
+        ${cl.victim_name ? `<li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">피해자</div><div class="v6-data-val">${escapeHtml(cl.victim_name)}</div></li>` : ''}
+        ${cl.victim_address ? `<li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">소재지</div><div class="v6-data-val">${escapeHtml(cl.victim_address)}</div></li>` : ''}
+       </ul>`
+    : '';
+
+  // 파트너 보고서 카드 컨텐츠
+  const partnerCardHTML = fd
+    ? `<ul class="v6-data-list">
+        ${fd.accident_occurred_at ? `<li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">사고일자</div><div class="v6-data-val">${fmtDate(fd.accident_occurred_at)} (가해세대 진술 기준)</div></li>` : ''}
+        ${fd.leak_cause ? `<li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">사고원인</div><div class="v6-data-val">${escapeHtml(fd.leak_cause)}</div></li>` : ''}
+        ${fd.leak_area_type ? `<li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">누수부위</div><div class="v6-data-val">${escapeHtml(fd.leak_area_type)}</div></li>` : ''}
+        ${(fd.attacker_unit || fd.victim_unit) ? `<li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">가/피해세대</div><div class="v6-data-val">${escapeHtml(fd.attacker_unit || '—')} → ${escapeHtml(fd.victim_unit || '—')}</div></li>` : ''}
+        ${fd.repair_cost ? `<li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">수리금액</div><div class="v6-data-val">${Number(fd.repair_cost).toLocaleString()}원</div></li>` : ''}
+        ${fd.work_done_at ? `<li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">수리완료일</div><div class="v6-data-val">${fmtDate(fd.work_done_at)}</div></li>` : ''}
+        ${fd.repair_opinion ? `<li class="v6-data-row" style="align-items:flex-start"><div class="v6-data-check">✓</div><div class="v6-data-key">수리소견</div><div class="v6-data-val" style="white-space:pre-wrap">${escapeHtml(fd.repair_opinion)}</div></li>` : ''}
+       </ul>
+       <div class="v6-card-hint">ⓘ <b>외부 케이스</b>(파트너 미경유)인 경우 → 누수소견서 / 수리사진을 별도 업로드</div>`
+    : `<div class="v6-card-hint" style="border-left-color:var(--amber);background:var(--amber-soft);color:var(--amber)">⚠ 파트너가 수리완료 보고서를 아직 제출하지 않았습니다 — 보험처리만 케이스라면 외부 자료 첨부 필요</div>`;
+
+  // 카드 헤더 헬퍼
+  const cardHead = (groupKey, statusText, statusCls) => {
+    const g = INS_DOC_GROUPS[groupKey];
+    return `<div class="v6-data-card-header">
+      <div class="v6-data-card-icon ${g.cls}">${g.icon}</div>
+      <div style="flex:1;min-width:0">
+        <div class="v6-data-card-title">${g.title}</div>
+        <div class="v6-data-card-meta">${g.sub}</div>
+      </div>
+      <span class="v6-data-card-status ${statusCls||'v6-status-pend'}">${statusText||'대기'}</span>
+    </div>`;
+  };
+
+  // 카드 상태 계산 헬퍼
+  const groupStatus = (docs) => {
+    const reqDocs = docs.filter(d => d.required);
+    const reqUploaded = reqDocs.filter(d => _insUploaded[d.code]).length;
+    if (reqDocs.length === 0) return ['v6-status-pend','선택'];
+    if (reqUploaded === reqDocs.length) return ['v6-status-ok','완료'];
+    if (reqUploaded === 0) return ['v6-status-pend','대기'];
+    return ['v6-status-warn',`${reqUploaded}/${reqDocs.length}`];
+  };
+  const [policyCls, policyStatus]   = groupStatus(policyDocs);
+  const [insuredCls, insuredStatus] = groupStatus(insuredDocs);
+  const [victimCls, victimStatus]   = groupStatus(victimDocs);
+
+  const insType = cl.insurance_type || 'family_daily_old';
+  const insTypeLabel = INS_TYPE_LABELS[insType] || '미선택';
 
   return `
-  <!-- ── 섹션 A: 기본 정보 (v6 단순화 — 보고서번호 + 제출일자만) ── -->
-  <!-- 수신/참조/사고원인은 보고서 본문에서 직접 편집. 손해사정사·담당자는 회사/개인 설정에서 자동 반영. -->
-  <div class="card">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-      <div style="font-size:14px;font-weight:900">📋 보고서 기본 정보</div>
-      <div style="font-size:11px;color:var(--muted)">수신·참조·사고원인은 분석 후 보고서 본문에서 편집</div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <div class="form-group">
-        <label class="form-label">보고서 번호</label>
-        <input class="form-control" id="s1-no" value="${cl.report_no||''}" placeholder="저장 시 자동채번" readonly
-          style="background:var(--bg);color:var(--muted)"/>
+  ${v6CaseHeaderHTML({ editableDate: true })}
+  ${v6PolicyBarHTML(false)}
+
+  <div class="v6-collect-grid">
+    <!-- 좌측: 데이터 카드 4개 -->
+    <div class="v6-collect-stack">
+
+      <!-- 카드 1: 파트너 보고서 (자동 임포트, 업로드 슬롯 없음) -->
+      <div class="v6-data-card">
+        <div class="v6-data-card-header">
+          <div class="v6-data-card-icon v6-icon-partner">🔧</div>
+          <div style="flex:1;min-width:0">
+            <div class="v6-data-card-title">파트너 보고서 · 자동 임포트</div>
+            <div class="v6-data-card-meta">${fd?.partner_name || '한라누수'}${fd?.partner_role?` (${fd.partner_role})`:''}</div>
+          </div>
+          <span class="v6-data-card-status ${fd?'v6-status-ok':'v6-status-pend'}">${fd?'자동완료':'대기'}</span>
+        </div>
+        ${partnerCardHTML}
       </div>
-      <div class="form-group">
-        <label class="form-label">제출일자 *</label>
-        <input class="form-control" type="date" id="s1-date" value="${cl.submit_date||today}"/>
+
+      <!-- 카드 2: 계약 서류 -->
+      <div class="v6-data-card">
+        ${cardHead('policy', policyStatus, policyCls)}
+        ${policyDocs.map(renderSlot).join('')}
+        ${policyExtractedHTML}
+        <div class="v6-card-hint">→ 보고서 1pg 증권번호 + 3pg 보험계약사항 표 자동 채움</div>
       </div>
+
+      <!-- 카드 3: 피보험자(가해세대) 서류 -->
+      <div class="v6-data-card">
+        ${cardHead('insured', insuredStatus, insuredCls)}
+        ${insuredDocs.map(renderSlot).join('')}
+        ${insuredExtractedHTML}
+        <div class="v6-card-hint">→ 보고서 4pg "가. 피보험자 개요" 6필드 + 지위 판정값 (룰엔진 입력)</div>
+      </div>
+
+      <!-- 카드 4: 피해세대 서류 -->
+      <div class="v6-data-card">
+        ${cardHead('victim', victimStatus, victimCls)}
+        <div class="v6-victim-block">
+          <div class="v6-victim-block-title">
+            <span>피해세대 1${(fd?.victim_unit)?` · ${escapeHtml(fd.victim_unit)}`:''}</span>
+          </div>
+          ${victimDocs.map(renderSlot).join('')}
+        </div>
+        <button class="v6-attach-btn" onclick="toast('다세대 동시 피해 지원은 추후 업데이트 예정','i')">+ 피해세대 추가 (다세대 동시 피해 시)</button>
+        ${victimExtractedHTML}
+        <div class="v6-card-hint">→ 보고서 4pg "나. 피해자 개요" 5필드</div>
+      </div>
+
+      <!-- 보완 필요 안내 -->
+      ${!allReq ? `
+      <div class="ins-banner ins-banner-warn" style="margin:0">
+        ⚠ 필수 서류 ${reqTotal-reqDone}건 미업로드 — 분석 전에 모두 업로드해 주세요
+      </div>` : `
+      <div class="ins-banner ins-banner-success" style="margin:0">
+        ✓ 필수 서류 ${reqTotal}건 모두 업로드 완료 — 분석을 시작할 수 있습니다
+      </div>`}
     </div>
+
+    <!-- 우측: 룰엔진 사이드바 -->
+    ${v6EngineSidebarHTML(1)}
   </div>
 
-  <!-- ── 섹션 B: 약관 구분 선택 (3종 — 핵심!) ── -->
-  <div class="card">
-    <div style="font-size:14px;font-weight:900;margin-bottom:6px">📌 약관 구분 선택</div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:14px">
-      서류 분석 전에 선택하면 Claude가 해당 약관 기준으로 판단합니다
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
-      ${[
-        ['family_daily_old','가족일상생활 (구형)','가족 단위 · 제3자 배상','구형 — 임대인 케이스 면책'],
-        ['family_daily_new','가족일상생활 (신형)','가족 단위 · 임대 주택 포함','신형 — 임대인 케이스 부책 가능'],
-        ['personal_daily',  '일상생활 (일배책)',  '본인+배우자 한정','일배책 — 구형과 동일 로직, 범위만 축소'],
-      ].map(([val, name, desc, note]) => {
-        const sel = (cl.insurance_type||'family_daily_old') === val;
-        return `<div class="ins-type-card ${sel?'ins-type-selected':''}" onclick="s1SelectType('${val}',this)">
-          <input type="radio" name="ins-type" value="${val}" ${sel?'checked':''} style="display:none">
-          <div style="font-size:13px;font-weight:700;margin-bottom:4px">${name}</div>
-          <div style="font-size:12px;color:${sel?'#1d4ed8':'var(--muted)'}">${desc}</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:3px">${note}</div>
-        </div>`;
-      }).join('')}
-    </div>
-    <div style="margin-top:10px;padding:8px 12px;background:var(--bg);border-radius:6px;font-size:11px;color:var(--muted);border-left:3px solid var(--line)">
-      💡 시설소유(관리)자배상책임 · 급배수누출손해는 추후 지원 예정입니다.
-    </div>
-  </div>
-
-  <!-- ── 섹션 C: 서류 업로드 ── -->
-  <div class="card">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-      <div style="font-size:14px;font-weight:900">📎 서류 업로드</div>
-      <div style="font-size:12px;color:var(--muted)">${reqDone}/${reqTotal} 필수 완료</div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px" id="ins-doc-grid">
-      ${docsHTML}
-    </div>
-    ${allReq
-      ? `<div class="ins-banner ins-banner-success" style="margin-top:12px">✓ 필수 서류 ${reqTotal}건 모두 업로드 완료</div>`
-      : `<div class="ins-banner ins-banner-warn" style="margin-top:12px">⚠ 필수 서류 ${reqTotal-reqDone}건 미업로드 — 분석 전에 모두 업로드해 주세요</div>`}
-  </div>
-
-  <!-- ── 섹션 D: 파트너 수리 자료 ── -->
-  <div class="card">
-    <div style="font-size:14px;font-weight:900;margin-bottom:4px">🔧 파트너 수리 자료 (자동 연동)</div>
-    ${fieldHTML}
-  </div>
-
-  <div class="ins-action-bar">
-    <span></span>
-    <button class="btn btn-primary" onclick="s1Save()">
+  <div class="ins-action-bar" style="margin-top:16px">
+    <span style="font-size:12px;color:var(--muted)">필수 ${reqDone}/${reqTotal} · 약관 ${insTypeLabel}</span>
+    <button class="btn btn-primary" onclick="s1Save()" ${allReq?'':'disabled style="opacity:.5;cursor:not-allowed"'}>
       저장 후 분석·판단 →
     </button>
   </div>`;
@@ -815,8 +1046,40 @@ function insTrigger(code, name) {
 }
 function insDrop(e, code, name) {
   e.preventDefault();
-  document.getElementById(`ins-dz-${code}`)?.classList.remove('ins-dz-over');
+  // v6: 신/구 클래스 모두 제거
+  const dz = document.getElementById(`ins-dz-${code}`);
+  if (dz) {
+    dz.classList.remove('ins-dz-over');
+    dz.classList.remove('v6-upload-slot-over');
+  }
   if(e.dataTransfer.files[0]) insUpload(e.dataTransfer.files[0], code, name);
+}
+
+// v6: 업로드된 슬롯 ✕ 버튼 — Storage + DB 레코드 삭제
+async function insRemoveDoc(code) {
+  if (!_insClaim?.id) return;
+  const up = _insUploaded[code];
+  if (!up) return;
+  const docName = (INS_DOCS.find(d => d.code === code)?.name) || code;
+  if (!confirm(`${docName} 파일을 삭제할까요?\n(되돌릴 수 없습니다)`)) return;
+
+  try {
+    // 1. Storage 파일 삭제
+    if (up.file_path) {
+      const { error: rmErr } = await sb.storage.from('insurance-docs').remove([up.file_path]);
+      if (rmErr) console.warn('[v6] Storage 삭제 경고:', rmErr.message);
+    }
+    // 2. DB 레코드 삭제
+    if (up.id) {
+      const { error: delErr } = await sb.from('insurance_doc_uploads').delete().eq('id', up.id);
+      if (delErr) throw new Error('DB 삭제 실패: ' + delErr.message);
+    }
+    delete _insUploaded[code];
+    toast(`${docName} 삭제 완료`, 's');
+    insRender();
+  } catch (e) {
+    toast('삭제 실패: ' + e.message, 'e');
+  }
 }
 
 async function insUpload(file, code, name) {
@@ -871,7 +1134,11 @@ async function insUpload(file, code, name) {
     if (upErr) throw new Error('Storage: '+upErr.message);
 
     // 5. 새 DB 레코드 INSERT
-    const docCategory = code === 'ownership_victim' ? 'victim' : 'insured';
+    // v6: doc_category는 INS_DOCS의 group 정보 활용
+    //   group 'victim' → 'victim'
+    //   그 외 (policy/insured) → 'insured'
+    const docDef = INS_DOCS.find(d => d.code === code);
+    const docCategory = (docDef?.group === 'victim') ? 'victim' : 'insured';
 
     const { data: row, error: dbErr } = await sb.from('insurance_doc_uploads').insert({
       claim_id: _insClaim.id, doc_code: code, doc_name: file.name,
@@ -943,8 +1210,12 @@ function insStep2HTML() {
     </div>` : '';
 
   return `
+  ${v6CaseHeaderHTML()}
+  ${v6PolicyBarHTML(true)}
   ${mismatchBanner}
   ${partnerAccBanner}
+  <div class="v6-collect-grid">
+    <div class="v6-collect-stack">
   <!-- 분석 버튼 + 진행바 -->
   <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${hasResult?'0':'4px'}">
@@ -1160,6 +1431,9 @@ function insStep2HTML() {
   <div class="ins-action-bar">
     <button class="btn btn-ghost" onclick="insGoStep(1)">← 이전</button>
     <button class="btn btn-primary" onclick="s2Save()">저장 후 보고서 작성 →</button>
+  </div>
+    </div>
+    ${v6EngineSidebarHTML(2)}
   </div>`;
 }
 
@@ -2717,6 +2991,10 @@ function insStep3HTML() {
     : '<span class="badge" style="background:#fef3c7;color:#b45309">판단유보</span>';
 
   return `
+  <div class="no-print">
+    ${v6CaseHeaderHTML()}
+    ${v6PolicyBarHTML(true)}
+  </div>
   <div class="card no-print" style="margin-bottom:14px">
     <div style="display:flex;justify-content:space-between;align-items:center">
       <div style="font-size:14px;font-weight:900">📄 손해사정보고서 ${coverageBadge}</div>

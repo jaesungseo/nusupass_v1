@@ -318,6 +318,379 @@ select.form-control{cursor:pointer}
 /* ── v5 추가: Step bar 보조 라벨 ── */
 .ins-step-sub{font-size:10px;color:var(--subtle);margin-top:2px}
 
+/* ══════════════════════════════════════════════════════════
+   v6 보험자료 탭 — 카드 구조 (운영 색상 톤)
+   ══════════════════════════════════════════════════════════ */
+
+/* 좌측 카드 / 우측 룰엔진 그리드 */
+.v6-collect-grid{display:grid;grid-template-columns:1.7fr 1fr;gap:16px;align-items:start}
+@media (max-width:980px){.v6-collect-grid{grid-template-columns:1fr}}
+.v6-collect-stack{display:flex;flex-direction:column;gap:12px}
+
+/* 데이터 카드 */
+.v6-data-card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.v6-data-card-header{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.v6-data-card-icon{width:30px;height:30px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
+.v6-icon-partner{background:var(--primary-soft);color:var(--primary)}
+.v6-icon-policy{background:#f3f4f6;color:#4b5563}
+.v6-icon-insured{background:#fef3c7;color:#92400e}
+.v6-icon-victim{background:var(--amber-soft);color:var(--amber)}
+.v6-data-card-title{font-size:13px;font-weight:700;color:var(--text);line-height:1.3}
+.v6-data-card-meta{font-size:11px;color:var(--muted);margin-top:2px}
+.v6-data-card-status{margin-left:auto;font-size:10px;padding:3px 9px;border-radius:999px;font-weight:700;letter-spacing:.02em;flex-shrink:0}
+.v6-status-ok{background:var(--green-soft);color:var(--green);border:1px solid #86efac}
+.v6-status-warn{background:var(--amber-soft);color:var(--amber);border:1px solid #fcd34d}
+.v6-status-pend{background:var(--bg);color:var(--muted);border:1px solid var(--line)}
+
+/* 업로드 슬롯 (카드 내부) */
+.v6-upload-slot{
+  display:flex;align-items:center;gap:10px;padding:10px 12px;
+  border:1.5px dashed var(--line);border-radius:8px;
+  font-size:12px;background:var(--bg);cursor:pointer;
+  transition:all .15s;margin-bottom:6px;
+}
+.v6-upload-slot:hover{border-color:var(--primary);background:var(--primary-soft)}
+.v6-upload-slot-over{border-color:var(--primary);background:var(--primary-soft)}
+.v6-upload-slot.done{border-style:solid;border-color:#86efac;background:var(--green-soft);cursor:default}
+.v6-upload-slot.done:hover{background:#dcfce7;border-color:var(--green)}
+.v6-upload-slot-label{flex:1;font-weight:600;color:var(--text)}
+.v6-upload-slot-status{font-size:11px;color:var(--green);font-weight:600;display:flex;align-items:center;gap:4px}
+.v6-upload-slot-empty{font-size:11px;color:var(--muted)}
+.v6-upload-required{color:var(--red);margin-left:2px;font-weight:700}
+.v6-upload-optional{color:var(--subtle);font-size:10px;margin-left:4px;font-weight:500}
+.v6-upload-progress{position:relative;display:none;height:3px;background:var(--primary);border-radius:0 0 6px 6px;margin:0 -12px -10px}
+.v6-upload-remove{margin-left:6px;background:transparent;border:none;color:var(--muted);font-size:11px;cursor:pointer;padding:2px 6px;border-radius:4px}
+.v6-upload-remove:hover{color:var(--red);background:#fff0f0}
+
+/* 추출 데이터 리스트 (카드 내부) */
+.v6-data-list{list-style:none;margin:8px 0 0;padding:8px 0 0;border-top:1px solid var(--line)}
+.v6-data-row{display:flex;align-items:flex-start;gap:8px;font-size:12px;padding:5px 0}
+.v6-data-check{width:14px;height:14px;border-radius:3px;background:var(--green);color:#fff;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;flex-shrink:0;margin-top:2px}
+.v6-data-check.warn{background:var(--amber)}
+.v6-data-check.miss{background:var(--red)}
+.v6-data-check.pend{background:var(--line);color:var(--muted)}
+.v6-data-key{color:var(--muted);width:90px;flex-shrink:0;font-weight:500}
+.v6-data-val{color:var(--text);flex:1;font-weight:500;line-height:1.4;word-break:break-word}
+.v6-data-val b{color:var(--primary);font-weight:700}
+
+/* 카드 하단 안내 */
+.v6-card-hint{margin-top:8px;padding:8px 10px;background:var(--bg);border-radius:5px;font-size:11px;color:var(--muted);line-height:1.5;border-left:2px solid var(--line)}
+
+/* 피해세대 블록 (카드4 내부 N개) */
+.v6-victim-block{padding:10px 12px;background:var(--bg);border-radius:6px;margin-bottom:8px;border:1px solid var(--line)}
+.v6-victim-block-title{font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;display:flex;align-items:center;justify-content:space-between}
+.v6-victim-remove{font-size:10px;padding:2px 8px;border:1px solid var(--line);border-radius:4px;background:#fff;color:var(--muted);cursor:pointer}
+.v6-victim-remove:hover{color:var(--red);border-color:var(--red)}
+.v6-attach-btn{margin-top:8px;width:100%;padding:10px;border:1.5px dashed var(--line);border-radius:6px;font-size:12px;color:var(--muted);font-weight:600;background:transparent;cursor:pointer;transition:all .12s}
+.v6-attach-btn:hover{border-color:var(--primary);color:var(--primary);background:var(--primary-soft)}
+
+/* 우측 룰엔진 사이드바 */
+.v6-engine-side{position:sticky;top:90px}
+.v6-engine-card{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.v6-engine-head{background:var(--text);color:#fff;padding:12px 16px;display:flex;align-items:center;justify-content:space-between}
+.v6-engine-head-title{font-size:12px;font-weight:700;letter-spacing:.02em}
+.v6-engine-pulse{display:flex;align-items:center;gap:6px;font-size:10px;color:rgba(255,255,255,.7)}
+.v6-pulse-dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:v6pulse 1.6s infinite}
+@keyframes v6pulse{0%,100%{opacity:.5}50%{opacity:1}}
+.v6-engine-body{padding:14px 16px}
+.v6-engine-result{padding:14px;background:var(--green-soft);border-radius:8px;margin-bottom:14px;text-align:center;border:1px solid #86efac}
+.v6-engine-result-label{font-size:11px;color:var(--green);font-weight:700;margin-bottom:4px;letter-spacing:.04em;text-transform:uppercase}
+.v6-engine-result-value{font-size:24px;font-weight:800;color:var(--green);letter-spacing:-.02em}
+.v6-engine-result.amber{background:var(--amber-soft);border-color:#fcd34d}
+.v6-engine-result.amber .v6-engine-result-label,.v6-engine-result.amber .v6-engine-result-value{color:var(--amber)}
+.v6-engine-result.red{background:var(--red-soft);border-color:#fca5a5}
+.v6-engine-result.red .v6-engine-result-label,.v6-engine-result.red .v6-engine-result-value{color:var(--red)}
+.v6-engine-result.gray{background:var(--bg);border-color:var(--line)}
+.v6-engine-result.gray .v6-engine-result-label,.v6-engine-result.gray .v6-engine-result-value{color:var(--muted)}
+.v6-engine-list{list-style:none;padding:0;margin:0}
+.v6-engine-row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line);font-size:12px}
+.v6-engine-row:last-child{border-bottom:none}
+.v6-engine-row-key{color:var(--muted);font-weight:500}
+.v6-engine-row-val{color:var(--text);font-weight:600;text-align:right}
+.v6-engine-row-val.green{color:var(--green)}
+.v6-engine-row-val.red{color:var(--red)}
+.v6-engine-row-val.amber{color:var(--amber)}
+.v6-engine-explain{margin-top:12px;padding:10px 12px;background:var(--bg);border-left:2px solid var(--primary);font-size:11px;line-height:1.55;color:var(--text);border-radius:0 4px 4px 0}
+.v6-engine-explain b{color:var(--text);font-weight:700}
+
+/* 약관 선택 카드 (기존 .ins-type-card 재사용) — v6 톤으로 보강 */
+.v6-policy-bar{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:12px}
+.v6-policy-bar-title{font-size:13px;font-weight:700;margin-bottom:8px;color:var(--text)}
+.v6-policy-bar-sub{font-size:11px;color:var(--muted);margin-bottom:10px}
+.v6-policy-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+@media (max-width:640px){.v6-policy-grid{grid-template-columns:1fr}}
+
+/* 케이스 헤더 (보험자료 탭 상단 — 사건 요약) */
+.v6-case-header{background:linear-gradient(135deg,var(--surface) 0%,var(--bg) 100%);border:1px solid var(--line);border-radius:10px;padding:14px 18px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.v6-case-header-info{flex:1;min-width:0}
+.v6-case-header-name{font-size:16px;font-weight:800;color:var(--text);margin-bottom:2px}
+.v6-case-header-sub{font-size:12px;color:var(--muted)}
+.v6-case-header-actions{display:flex;gap:8px}
+.v6-case-tag{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:3px 10px;border-radius:999px;background:var(--primary-soft);color:var(--primary);font-weight:700;margin-right:6px}
+
+/* 보고서 번호/제출일자 인라인 (v6: 컴팩트) */
+.v6-meta-bar{display:flex;gap:14px;align-items:center;font-size:12px;margin-top:6px;color:var(--muted)}
+.v6-meta-bar b{color:var(--text);font-weight:700}
+.v6-meta-bar input[type=date]{padding:4px 8px;border:1px solid var(--line);border-radius:4px;font-size:12px;font-family:inherit;background:var(--surface)}
+
+/* ══════════════════════════════════════════════════════════
+   v6 손해사정 보고서 양식 (화면 + 인쇄 공용)
+   클래스: report-doc / report-section / report-cover / report-meta-table 등
+   PDF 출력 시: A4, 12mm 마진, 컬러 보존
+   ══════════════════════════════════════════════════════════ */
+
+/* 보고서 컨테이너 */
+.report-doc{
+  background:#fff;
+  color:#1a1a1a;
+  font-family:'Pretendard','Malgun Gothic','Apple SD Gothic Neo',sans-serif;
+  font-size:13px;
+  line-height:1.65;
+  letter-spacing:-.005em;
+  max-width:794px;            /* A4 너비 (21cm @96dpi) */
+  margin:0 auto;
+  padding:24px 32px;
+  border:1px solid var(--line);
+  border-radius:8px;
+  box-shadow:0 4px 16px rgba(0,0,0,.04);
+}
+
+/* 섹션 (각 페이지 단위) */
+.report-section{padding:14px 0;border-bottom:1px solid #e5e5e5}
+.report-section:last-child{border-bottom:0}
+.report-section-title{
+  font-size:15px;font-weight:800;color:#1a1a1a;
+  padding:6px 10px;background:#f5f5f0;border-left:3px solid #2E5C4A;
+  margin-bottom:10px;letter-spacing:-.01em;
+}
+.report-subsection{margin-top:10px}
+.report-subsection-title{
+  font-size:13px;font-weight:700;color:#333;margin-bottom:6px;padding-left:4px;
+  border-left:2px solid #ccc;padding-left:8px;
+}
+
+/* 표지 */
+.report-cover{padding:30px 0 20px}
+.report-company-header{text-align:right;margin-bottom:24px;padding-bottom:14px;border-bottom:2px solid #2E5C4A}
+.report-company-name{font-size:18px;font-weight:800;color:#1B3A2D;letter-spacing:-.02em}
+.report-company-sub{font-size:11px;color:#666;margin-top:4px;line-height:1.5}
+.report-company-en{font-size:11px;color:#888;margin-top:2px;font-style:italic}
+.report-meta-line{display:flex;justify-content:space-between;font-size:12px;color:#444;margin-bottom:14px;padding:0 4px}
+.report-meta-line b{color:#1a1a1a;font-weight:700}
+
+/* 표지 메타 테이블 (수신/참조/제목) */
+.report-meta-table{
+  width:100%;border-collapse:collapse;margin-bottom:18px;
+  border:1px solid #d4d0c8;
+}
+.report-meta-table tr{border-bottom:1px solid #d4d0c8}
+.report-meta-table tr:last-child{border-bottom:0}
+.report-meta-table td{padding:8px 12px;font-size:12px}
+.report-meta-table td.lbl{
+  width:80px;background:#f5f5f0;font-weight:700;color:#444;
+  border-right:1px solid #d4d0c8;text-align:center;letter-spacing:.05em;
+}
+
+/* 본문 인사말 */
+.report-intro{padding:12px 14px;background:#fafaf7;border-radius:4px;margin:14px 0;font-size:12px;line-height:1.7}
+.report-intro b{color:#1a1a1a;font-weight:700}
+
+/* 손해사정사·조사자 서명 */
+.report-signatures{
+  margin-top:20px;padding:14px 16px;background:#fafaf7;border-radius:4px;
+  font-size:12px;line-height:1.8;
+}
+.report-signatures b{font-weight:700;color:#1a1a1a}
+
+/* 대표이사 직인 */
+.report-ceo-stamp{
+  margin-top:24px;padding:18px 16px;text-align:center;
+  border:1px solid #d4d0c8;border-radius:4px;background:#fff;
+}
+.report-ceo-stamp > div:first-child{font-size:18px;font-weight:800;color:#1B3A2D;letter-spacing:.4em;margin-bottom:8px}
+.report-ceo-stamp > div:last-child{font-size:13px;color:#444}
+.report-stamp-img{width:48px;height:48px;vertical-align:middle;margin-left:6px;display:inline-block}
+
+/* 키-밸류 표 (1.총괄표 등) */
+.report-kv-table{width:100%;border-collapse:collapse;margin-bottom:10px;border:1px solid #d4d0c8}
+.report-kv-table tr{border-bottom:1px solid #d4d0c8}
+.report-kv-table tr:last-child{border-bottom:0}
+.report-kv-table td{padding:7px 11px;font-size:12px;line-height:1.55;vertical-align:top}
+.report-kv-table td.lbl{
+  width:130px;background:#f5f5f0;font-weight:700;color:#444;
+  border-right:1px solid #d4d0c8;letter-spacing:.02em;
+}
+
+/* 숫자 표 (보장한도/손해액/지급보험금) */
+.report-num-table{width:100%;border-collapse:collapse;margin-bottom:10px;border:1px solid #d4d0c8;font-size:11.5px}
+.report-num-table th,.report-num-table td{
+  padding:6px 8px;border:1px solid #d4d0c8;text-align:center;line-height:1.4;
+}
+.report-num-table th{background:#f5f5f0;font-weight:700;color:#1a1a1a}
+.report-num-table td.lbl{background:#fafaf7;font-weight:600;color:#333;text-align:left;padding-left:10px}
+.report-unit-label{font-size:10px;color:#888;text-align:right;margin-top:-4px;margin-bottom:3px}
+
+/* 3컬럼 표 (구상권 등) */
+.report-three-col-table{width:100%;border-collapse:collapse;margin:8px 0;border:1px solid #d4d0c8;font-size:11.5px}
+.report-three-col-table th,.report-three-col-table td{
+  padding:6px 8px;border:1px solid #d4d0c8;text-align:left;
+}
+.report-three-col-table th{background:#f5f5f0;font-weight:700;text-align:center}
+
+/* 평문 라인 (법률상책임 검토 등 본문) */
+.report-plain-line{font-size:12px;line-height:1.75;padding:6px 4px;color:#1a1a1a}
+.report-plain-line + .report-plain-line{border-top:1px dashed #ddd;margin-top:4px}
+
+/* 사진 그리드 */
+.report-photo-group{margin:10px 0}
+.report-photo-label{font-size:12px;font-weight:700;color:#444;margin-bottom:6px;padding-left:4px;border-left:2px solid #2E5C4A;padding-left:8px}
+.report-photo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.report-photo{
+  width:100%;aspect-ratio:4/3;object-fit:cover;
+  border:1px solid #d4d0c8;border-radius:4px;background:#f5f5f0;
+}
+.report-photo-empty{
+  width:100%;aspect-ratio:4/3;border:1.5px dashed #d4d0c8;border-radius:4px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:11px;color:#aaa;background:#fafaf7;
+}
+
+/* 푸터 */
+.report-footer{padding:14px 0 4px;text-align:center;font-size:10px;color:#888;border-top:1px solid #e5e5e5;margin-top:14px}
+
+/* 편집 가능 필드 (연한 노란 배경) — 화면용 */
+.report-editable,
+.report-editable-input{
+  background:#fffbeb;
+  border:1px dashed #fcd34d;
+  border-radius:3px;
+  padding:3px 6px;
+  font:inherit;
+  color:#1a1a1a;
+  width:100%;
+  resize:vertical;
+  transition:all .12s;
+  letter-spacing:inherit;
+}
+.report-editable:focus,
+.report-editable-input:focus{
+  outline:none;
+  border-color:#2E5C4A;
+  background:#fff;
+  box-shadow:0 0 0 3px rgba(46,92,74,.1);
+}
+.report-editable-multi{min-height:42px}
+
+/* select 요소도 동일한 스타일 (사고원인 등) */
+select.report-editable-input{
+  cursor:pointer;
+  background:#fffbeb url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23999' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E") no-repeat right 8px center;
+  appearance:none;-webkit-appearance:none;-moz-appearance:none;
+  padding-right:22px;
+}
+
+/* 페이지 구분 */
+.page-break-after{page-break-after:always;break-after:page}
+.page-break-before{page-break-before:always;break-before:page}
+
+/* ══════════════════════════════════════════════════════════
+   인쇄 전용 CSS — A4 / 컬러 보존 / 편집 필드 정리
+   ══════════════════════════════════════════════════════════ */
+@page{
+  size:A4 portrait;
+  margin:12mm 14mm;
+}
+@media print{
+  /* 인쇄 시 화면 전용 요소 모두 숨김 */
+  .no-print,
+  .ins-step-bar,
+  .v6-case-header,
+  .v6-policy-bar,
+  .v6-engine-side,
+  .ins-action-bar,
+  .header,            /* 운영 사이트 상단바 */
+  .sidebar,           /* 운영 사이트 좌측 사이드바 */
+  .toast-container,
+  .modal,
+  button:not(.print-allowed){display:none !important}
+
+  /* body / 메인 영역을 풀폭으로 */
+  html,body{
+    background:#fff !important;
+    margin:0;padding:0;
+    font-family:'Pretendard','Malgun Gothic','Apple SD Gothic Neo',sans-serif;
+    -webkit-print-color-adjust:exact;
+    print-color-adjust:exact;
+  }
+  body.printing-report .main,
+  body.printing-report .content-area,
+  body.printing-report .screen{
+    margin:0 !important;padding:0 !important;width:100% !important;max-width:none !important;
+  }
+
+  /* 보고서 컨테이너 — 인쇄 시 박스/그림자 제거 */
+  .report-doc{
+    border:0 !important;
+    box-shadow:none !important;
+    border-radius:0 !important;
+    padding:0 !important;
+    max-width:none !important;
+    margin:0 !important;
+    font-size:11.5px;
+  }
+
+  /* 섹션 페이지 분할 — 같은 섹션 내부에서 분할되지 않게 */
+  .report-section{
+    page-break-inside:avoid;break-inside:avoid;
+    border-bottom:0 !important;
+    padding:8px 0 !important;
+  }
+
+  /* 표/사진은 강제로 깨지지 않게 */
+  .report-kv-table,
+  .report-num-table,
+  .report-meta-table,
+  .report-three-col-table{
+    page-break-inside:avoid;break-inside:avoid;
+  }
+  .report-photo,.report-photo-empty{
+    page-break-inside:avoid;break-inside:avoid;
+  }
+
+  /* 편집 필드: 노란 배경/점선 테두리 제거 → 깔끔한 인쇄 */
+  .report-editable,
+  .report-editable-input,
+  select.report-editable-input{
+    background:transparent !important;
+    border:0 !important;
+    padding:0 !important;
+    box-shadow:none !important;
+    color:#1a1a1a !important;
+    appearance:none;
+  }
+  /* select 화살표도 인쇄 시 숨김 */
+  select.report-editable-input{background-image:none !important;padding-right:0 !important}
+
+  /* 표지 회사 헤더 */
+  .report-company-header{border-bottom-width:1.5pt}
+
+  /* 첫 페이지 표지 → 다음 섹션은 새 페이지 */
+  .report-cover{padding:0 !important}
+
+  /* 색상 보존 — 라벨 배경, 직인 등 */
+  .report-section-title,
+  .report-kv-table td.lbl,
+  .report-meta-table td.lbl,
+  .report-num-table th,
+  .report-num-table td.lbl{
+    -webkit-print-color-adjust:exact !important;
+    print-color-adjust:exact !important;
+  }
+}
+
+/* 화면 인쇄 미리보기 모드 (body.printing-report) - 화면에서도 인쇄 시 숨김 효과 미리 적용 */
+body.printing-report .no-print{display:none !important}
+
 /* ════════════════════════════════════════════════
    v5.7.x: 회사·내 프로필 설정 페이지
    ════════════════════════════════════════════════ */
@@ -674,7 +1047,7 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
         </div>
         <div class="form-group">
           <label class="form-label">필요 업종 * <span style="font-size:11px;font-weight:400;color:var(--muted)">(최소 1개 선택)</span></label>
-          <div style="display:flex;gap:20px;padding:10px 0">
+          <div style="display:flex;flex-wrap:wrap;gap:20px;padding:10px 0">
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px">
               <input type="checkbox" id="ic_needs_detection" style="width:18px;height:18px;cursor:pointer"/>
               🔍 누수탐지
@@ -682,6 +1055,10 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px">
               <input type="checkbox" id="ic_needs_interior" style="width:18px;height:18px;cursor:pointer"/>
               🏠 인테리어/복구
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px">
+              <input type="checkbox" id="ic_needs_insurance" style="width:18px;height:18px;cursor:pointer"/>
+              📋 보험처리만
             </label>
           </div>
         </div>
@@ -1644,24 +2021,27 @@ async function submitIntake(){
   const region=document.getElementById('ic_region').value.trim();
   const needsDetection=document.getElementById('ic_needs_detection').checked;
   const needsInterior=document.getElementById('ic_needs_interior').checked;
+  const needsInsurance=document.getElementById('ic_needs_insurance').checked;  // v6
   const insurance=document.getElementById('ic_insurance').value;
   const symptom=document.getElementById('ic_symptom').value.trim();
   if(!name||!phone||!address){toast('고객명, 연락처, 주소는 필수입니다.','e'); return;}
-  if(!needsDetection && !needsInterior){
-    toast('필요 업종을 1개 이상 선택해 주세요. (누수탐지 또는 인테리어/복구)','e');
+  if(!needsDetection && !needsInterior && !needsInsurance){
+    toast('필요 업종을 1개 이상 선택해 주세요. (누수탐지 / 인테리어·복구 / 보험처리만)','e');
     return;
   }
 
-  // needs_* → service_scope 자동 매핑 (기존 CHECK 제약 호환)
-  const scope = needsInterior ? 'INSURANCE_DETECTION_RESTORE'
-              : needsDetection ? 'INSURANCE_DETECTION'
-              : 'UNSURE';
+  // needs_* → service_scope 매핑 (v6: 보험처리만 추가)
+  // 우선순위: 인테리어/복구 ≥ 탐지 > 보험처리만 (수리업종이 있으면 그쪽 scope 사용)
+  let scope;
+  if (needsInterior)        scope = 'INSURANCE_DETECTION_RESTORE';
+  else if (needsDetection)  scope = 'INSURANCE_DETECTION';
+  else if (needsInsurance)  scope = 'INSURANCE_ONLY';
+  else                      scope = 'UNSURE';
 
   if(!isReal){
     toast(`[MOCK] ${name} 접수 완료 (실제 저장 안 됨)`,'i');
     ['ic_name','ic_phone','ic_address','ic_region','ic_symptom'].forEach(id=>document.getElementById(id).value='');
-    document.getElementById('ic_needs_detection').checked=false;
-    document.getElementById('ic_needs_interior').checked=false;
+    ['ic_needs_detection','ic_needs_interior','ic_needs_insurance'].forEach(id=>document.getElementById(id).checked=false);
     return;
   }
 
@@ -1673,6 +2053,7 @@ async function submitIntake(){
     service_scope:scope,
     needs_detection:needsDetection,
     needs_interior:needsInterior,
+    needs_insurance:needsInsurance,    // v6: 보험처리만
     insurance_known:insurance,         // 구 컬럼 (v5.7에서 제거 예정)
     insurance_subscribed:insurance,    // 신 컬럼
     leak_symptom:symptom||null,
@@ -1686,8 +2067,7 @@ async function submitIntake(){
   if(error){ toast('접수 실패: '+error.message,'e'); return; }
   toast(`${name} 고객 접수 완료!`,'s');
   ['ic_name','ic_phone','ic_address','ic_region','ic_symptom'].forEach(id=>document.getElementById(id).value='');
-  document.getElementById('ic_needs_detection').checked=false;
-  document.getElementById('ic_needs_interior').checked=false;
+  ['ic_needs_detection','ic_needs_interior','ic_needs_insurance'].forEach(id=>document.getElementById(id).checked=false);
   go('caseList');
 }
 
@@ -3457,7 +3837,7 @@ if (typeof window.escapeHtml !== 'function') {
 }
 </script>
 
-<script src="./insurance-tab.js?v=5.6"></script>
+<script src="./insurance-tab.js?v=6.0"></script>
 <!-- v6 패치: 9케이스 검증 PASS 룰엔진 + 약관선택 모달 + 파트너 임포트 -->
 <script src="./sabi-rule-v6.js?v=6.0.0"></script>
 <script src="./insurance-tab-v6-patch.js?v=6.0.0"></script>
