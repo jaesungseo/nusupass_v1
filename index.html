@@ -419,6 +419,106 @@ select.form-control{cursor:pointer}
   .settings-form-label{padding:0}
 }
 
+/* ════════════════════════════════════════════════
+   v5.7.7: 프롬프트 관리 페이지 (superadmin only)
+   ════════════════════════════════════════════════ */
+.prompts-tabs-card{padding:0;overflow:hidden;margin-bottom:14px}
+.prompts-tab-list{
+  display:flex;border-bottom:1px solid var(--line);background:#fafafa;overflow-x:auto
+}
+.prompts-tab{
+  padding:12px 18px;border:none;background:transparent;cursor:pointer;
+  font-size:13px;font-weight:500;color:var(--muted);
+  border-bottom:2px solid transparent;margin-bottom:-1px;
+  white-space:nowrap;transition:all 0.12s;font-family:inherit
+}
+.prompts-tab:hover{background:#f1f5f9;color:var(--ink)}
+.prompts-tab.active{
+  color:var(--primary);border-bottom-color:var(--primary);
+  background:white;font-weight:700
+}
+.prompts-tab-key{
+  display:block;font-size:10px;color:var(--muted);
+  font-family:'JetBrains Mono', monospace;letter-spacing:0;
+  margin-top:2px;font-weight:400
+}
+
+/* 편집기 카드 */
+.prompt-editor-card{
+  background:white;border:1px solid var(--line);border-radius:8px;
+  padding:18px;margin-bottom:14px
+}
+.prompt-editor-meta{
+  display:grid;grid-template-columns:140px 1fr;gap:10px 16px;
+  font-size:12px;margin-bottom:14px;padding-bottom:14px;
+  border-bottom:1px dashed var(--line)
+}
+.prompt-editor-meta-key{color:var(--muted);font-weight:600}
+.prompt-editor-meta-val{color:var(--ink);word-break:break-word}
+.prompt-editor-meta-val code{
+  background:#f1f5f9;padding:2px 6px;border-radius:3px;
+  font-size:11px;font-family:'JetBrains Mono', monospace
+}
+
+.prompt-section-title{
+  font-size:12px;font-weight:700;color:var(--ink);
+  margin:14px 0 6px 0;display:flex;align-items:center;gap:6px
+}
+.prompt-section-sub{
+  font-size:11px;color:var(--muted);margin-bottom:6px;line-height:1.5
+}
+.prompt-textarea{
+  width:100%;min-height:160px;padding:10px 12px;
+  border:1px solid var(--line);background:#fafafa;
+  border-radius:6px;font-family:'JetBrains Mono', 'Pretendard', monospace;
+  font-size:12px;line-height:1.6;color:var(--ink);
+  resize:vertical;transition:border-color 0.12s
+}
+.prompt-textarea:focus{
+  outline:none;border-color:var(--primary);background:white;
+  box-shadow:0 0 0 2px var(--primary-soft)
+}
+.prompt-textarea.system{min-height:120px}
+.prompt-textarea.user{min-height:240px}
+
+.prompt-meta-grid{
+  display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:10px
+}
+.prompt-meta-item label{
+  display:block;font-size:11px;color:var(--muted);
+  font-weight:600;margin-bottom:4px
+}
+.prompt-meta-item input,.prompt-meta-item select{
+  width:100%;padding:7px 10px;border:1px solid var(--line);
+  border-radius:5px;font-size:12px;font-family:inherit;color:var(--ink)
+}
+
+.prompt-vars-info{
+  padding:10px 12px;background:#f1f5f9;border-radius:5px;margin-top:8px;
+  font-size:11px;color:var(--muted);line-height:1.55
+}
+.prompt-vars-info code{
+  background:white;padding:2px 6px;border-radius:3px;
+  font-family:'JetBrains Mono', monospace;color:var(--primary);
+  margin:0 2px
+}
+
+.prompt-action-bar{
+  position:sticky;bottom:0;background:white;
+  padding:14px 18px;margin-top:14px;border-top:1px solid var(--line);
+  display:flex;justify-content:space-between;align-items:center;
+  border-radius:0 0 8px 8px;gap:10px
+}
+.prompt-action-status{font-size:11px;color:var(--muted)}
+.prompt-action-status.dirty{color:#d97706;font-weight:600}
+.prompt-action-status.saved{color:#059669;font-weight:600}
+.prompt-action-meta{font-size:10px;color:var(--muted)}
+
+@media (max-width: 720px){
+  .prompt-editor-meta{grid-template-columns:1fr}
+  .prompt-meta-grid{grid-template-columns:1fr}
+}
+
 </style>
 </head>
 <body>
@@ -492,6 +592,10 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
         <button class="sb-btn" onclick="go('settings')">
           <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
           설정
+        </button>
+        <button class="sb-btn" id="navPrompts" onclick="go('prompts')" style="display:none;">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+          🔬 프롬프트 관리
         </button>
       </div>
       <!-- 파트너 메뉴 -->
@@ -849,6 +953,32 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
         <div style="display:flex;gap:8px;">
           <button class="btn btn-ghost btn-sm" id="btnSettingsReset">되돌리기</button>
           <button class="btn btn-primary btn-sm" id="btnSettingsSave" disabled>저장</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ───────── 관리자: 프롬프트 관리 (superadmin only) ───────── -->
+    <div class="screen" id="screen-prompts">
+      <div class="page-header">
+        <div>
+          <div class="page-title">🔬 프롬프트 관리</div>
+          <div class="page-sub">보고서 생성에 사용되는 4개 프롬프트. 수정 시 다음 보고서 생성부터 즉시 반영됩니다.</div>
+        </div>
+        <span style="font-size:11px;padding:4px 10px;background:#fef3c7;color:#92400e;border-radius:999px;font-weight:600;">superadmin only</span>
+      </div>
+
+      <!-- 프롬프트 4개 목록 (탭 형태) -->
+      <div class="card prompts-tabs-card">
+        <div class="prompts-tab-list" id="promptsTabList">
+          <!-- 동적 렌더링 -->
+        </div>
+      </div>
+
+      <!-- 선택된 프롬프트 편집 영역 -->
+      <div id="promptEditorBody">
+        <div class="empty">
+          <div class="empty-icon">⏳</div>
+          <div class="empty-text">로딩 중…</div>
         </div>
       </div>
     </div>
@@ -1383,6 +1513,13 @@ function showApp(){
   document.getElementById('userRole').textContent = curRole==='admin'?'관리자':'파트너';
   document.getElementById('adminNav').style.display = curRole==='admin'?'block':'none';
   document.getElementById('partnerNav').style.display = curRole==='partner'?'block':'none';
+
+  // superadmin 전용 메뉴 표시 (일반 admin·partner·고객엔 hide)
+  const navPrompts = document.getElementById('navPrompts');
+  if (navPrompts) {
+    navPrompts.style.display = (curRole==='admin' && curUser?.role_code === 'superadmin') ? '' : 'none';
+  }
+
   if(curRole==='admin') go('dashboard');
   else go('pHome');
 }
@@ -1412,6 +1549,7 @@ function go(screen){
   if(screen==='pHome') loadPartnerHome();
   if(screen==='pAssignments') loadPartnerAssignments();
   if(screen==='settings') loadSettings();
+  if(screen==='prompts') loadPrompts();
   if(screen==='insurance'){
     if(typeof loadInsuranceCaseSelector==='function'){
       loadInsuranceCaseSelector().catch(e=>{
@@ -3034,6 +3172,288 @@ function settings_onReset(){
   settings_updatePreview();
   settings_setStatus('saved','저장됨');
   document.getElementById('btnSettingsSave').disabled = true;
+}
+
+// ══════════════════════════════════════════════════════════
+// v5.7.7: 프롬프트 관리 (superadmin only)
+// ══════════════════════════════════════════════════════════
+let PROMPTS_STATE = {
+  list: [],                  // 4개 프롬프트
+  selectedKey: null,         // 현재 편집 중인 prompt_key
+  original: null,            // 되돌리기용 원본 (선택된 프롬프트의 직전 저장값)
+};
+
+const PROMPT_DISPLAY_ORDER = ['extract_policy', 'extract_insured', 'extract_victim', 'judge_report'];
+
+async function loadPrompts(){
+  if(!isReal){ toast('Supabase 연결이 필요합니다','e'); return; }
+
+  // role 가드 — superadmin만 접근. 다른 사람이 URL 직접 진입 시 차단.
+  if(curUser?.role_code !== 'superadmin'){
+    toast('이 페이지는 최고관리자만 접근 가능합니다.','e');
+    go('dashboard');
+    return;
+  }
+
+  try {
+    const { data, error } = await sb.from('prompt_templates')
+      .select('*')
+      .order('prompt_key');
+    if(error) throw error;
+    PROMPTS_STATE.list = data || [];
+
+    // 첫 진입 시 첫 프롬프트 선택
+    if(!PROMPTS_STATE.selectedKey && PROMPTS_STATE.list.length){
+      PROMPTS_STATE.selectedKey = PROMPT_DISPLAY_ORDER.find(
+        k => PROMPTS_STATE.list.some(p => p.prompt_key === k)
+      ) || PROMPTS_STATE.list[0].prompt_key;
+    }
+
+    prompts_renderTabs();
+    prompts_renderEditor();
+  } catch(err){
+    console.error('[prompts] load', err);
+    toast('프롬프트 로드 실패: '+(err.message||err),'e');
+  }
+}
+
+function prompts_renderTabs(){
+  const tabList = document.getElementById('promptsTabList');
+  if(!tabList) return;
+
+  // 정해진 순서대로 정렬
+  const sorted = PROMPT_DISPLAY_ORDER
+    .map(k => PROMPTS_STATE.list.find(p => p.prompt_key === k))
+    .filter(Boolean);
+
+  tabList.innerHTML = sorted.map(p => `
+    <button class="prompts-tab ${p.prompt_key === PROMPTS_STATE.selectedKey ? 'active' : ''}"
+            onclick="prompts_selectTab('${p.prompt_key}')">
+      ${escapeHtml(p.display_name)}
+      <span class="prompts-tab-key">${escapeHtml(p.prompt_key)}</span>
+    </button>
+  `).join('');
+}
+
+function prompts_selectTab(key){
+  // dirty 상태면 확인
+  if(prompts_isDirty()){
+    if(!confirm('저장되지 않은 변경사항이 있습니다. 다른 프롬프트로 이동할까요?')) return;
+  }
+  PROMPTS_STATE.selectedKey = key;
+  prompts_renderTabs();
+  prompts_renderEditor();
+}
+
+function prompts_renderEditor(){
+  const body = document.getElementById('promptEditorBody');
+  if(!body) return;
+
+  const p = PROMPTS_STATE.list.find(x => x.prompt_key === PROMPTS_STATE.selectedKey);
+  if(!p){
+    body.innerHTML = '<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">프롬프트가 없습니다</div></div>';
+    return;
+  }
+
+  // 원본 캡처 (되돌리기용)
+  PROMPTS_STATE.original = {
+    system_prompt: p.system_prompt || '',
+    user_prompt_template: p.user_prompt_template || '',
+    ai_model: p.ai_model || 'claude-sonnet-4-6',
+    max_tokens: p.max_tokens || 4000,
+    temperature: p.temperature || 0,
+    is_active: p.is_active,
+  };
+
+  const expectedVars = Array.isArray(p.expected_variables) ? p.expected_variables : [];
+  const updatedAt = p.updated_at ? new Date(p.updated_at).toLocaleString('ko-KR') : '-';
+
+  body.innerHTML = `
+    <div class="prompt-editor-card">
+      <!-- 메타 정보 -->
+      <div class="prompt-editor-meta">
+        <div class="prompt-editor-meta-key">키</div>
+        <div class="prompt-editor-meta-val"><code>${escapeHtml(p.prompt_key)}</code></div>
+
+        <div class="prompt-editor-meta-key">이름</div>
+        <div class="prompt-editor-meta-val">${escapeHtml(p.display_name)}</div>
+
+        <div class="prompt-editor-meta-key">설명</div>
+        <div class="prompt-editor-meta-val" style="font-size:11px;color:var(--muted);">${escapeHtml(p.description || '-')}</div>
+
+        <div class="prompt-editor-meta-key">출력 형식</div>
+        <div class="prompt-editor-meta-val"><code>${escapeHtml(p.output_format || 'TEXT')}</code></div>
+
+        <div class="prompt-editor-meta-key">기대 변수</div>
+        <div class="prompt-editor-meta-val">
+          ${expectedVars.length
+            ? expectedVars.map(v => `<code>{{${escapeHtml(v)}}}</code>`).join(' ')
+            : '<span style="color:var(--muted);font-size:11px;">없음</span>'}
+        </div>
+      </div>
+
+      <!-- 시스템 프롬프트 -->
+      <div class="prompt-section-title">⚙️ 시스템 프롬프트</div>
+      <div class="prompt-section-sub">AI의 역할·규칙·원칙. 비어 있어도 됨.</div>
+      <textarea class="prompt-textarea system" id="promptSystemPrompt"
+                oninput="prompts_onChange()">${escapeHtml(p.system_prompt || '')}</textarea>
+
+      <!-- 사용자 프롬프트 템플릿 -->
+      <div class="prompt-section-title">💬 사용자 프롬프트 (템플릿)</div>
+      <div class="prompt-section-sub">변수는 <code style="background:#f1f5f9;padding:1px 4px;border-radius:2px;font-size:11px;">{{key}}</code> 형식. 보고서 생성 시 실제 값으로 치환됩니다.</div>
+      <textarea class="prompt-textarea user" id="promptUserPrompt"
+                oninput="prompts_onChange()">${escapeHtml(p.user_prompt_template || '')}</textarea>
+
+      ${expectedVars.length ? `
+        <div class="prompt-vars-info">
+          <b>사용 가능한 변수:</b> ${expectedVars.map(v => `<code>{{${escapeHtml(v)}}}</code>`).join(' ')}
+        </div>
+      ` : ''}
+
+      <!-- 호출 메타 -->
+      <div class="prompt-section-title">🔧 호출 설정</div>
+      <div class="prompt-meta-grid">
+        <div class="prompt-meta-item">
+          <label>AI 모델</label>
+          <select id="promptAiModel" onchange="prompts_onChange()">
+            <option value="claude-sonnet-4-6" ${p.ai_model==='claude-sonnet-4-6'?'selected':''}>claude-sonnet-4-6</option>
+            <option value="claude-opus-4-6" ${p.ai_model==='claude-opus-4-6'?'selected':''}>claude-opus-4-6</option>
+            <option value="claude-opus-4-7" ${p.ai_model==='claude-opus-4-7'?'selected':''}>claude-opus-4-7</option>
+            <option value="claude-haiku-4-5" ${p.ai_model==='claude-haiku-4-5'?'selected':''}>claude-haiku-4-5</option>
+          </select>
+        </div>
+        <div class="prompt-meta-item">
+          <label>Max Tokens</label>
+          <input type="number" id="promptMaxTokens" value="${p.max_tokens || 4000}"
+                 min="100" max="32000" step="100" oninput="prompts_onChange()">
+        </div>
+        <div class="prompt-meta-item">
+          <label>Temperature</label>
+          <input type="number" id="promptTemperature" value="${p.temperature || 0}"
+                 min="0" max="1" step="0.1" oninput="prompts_onChange()">
+        </div>
+      </div>
+
+      <!-- 액션 푸터 -->
+      <div class="prompt-action-bar">
+        <div>
+          <span class="prompt-action-status" id="promptStatus">저장됨</span>
+          <div class="prompt-action-meta">최종 수정: ${escapeHtml(updatedAt)}</div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-ghost btn-sm" onclick="prompts_onReset()">되돌리기</button>
+          <button class="btn btn-primary btn-sm" id="btnPromptSave" onclick="prompts_onSave()" disabled>저장</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function prompts_isDirty(){
+  if(!PROMPTS_STATE.original) return false;
+  const sys = document.getElementById('promptSystemPrompt');
+  if(!sys) return false; // 에디터 미렌더링 상태
+  const usr = document.getElementById('promptUserPrompt');
+  const model = document.getElementById('promptAiModel');
+  const maxT = document.getElementById('promptMaxTokens');
+  const temp = document.getElementById('promptTemperature');
+
+  return sys.value !== PROMPTS_STATE.original.system_prompt
+    || usr.value !== PROMPTS_STATE.original.user_prompt_template
+    || model.value !== PROMPTS_STATE.original.ai_model
+    || parseInt(maxT.value, 10) !== PROMPTS_STATE.original.max_tokens
+    || parseFloat(temp.value) !== parseFloat(PROMPTS_STATE.original.temperature);
+}
+
+function prompts_onChange(){
+  const dirty = prompts_isDirty();
+  const status = document.getElementById('promptStatus');
+  const btn = document.getElementById('btnPromptSave');
+  if(dirty){
+    status.className = 'prompt-action-status dirty';
+    status.textContent = '저장되지 않은 변경사항';
+    btn.disabled = false;
+  } else {
+    status.className = 'prompt-action-status saved';
+    status.textContent = '저장됨';
+    btn.disabled = true;
+  }
+}
+
+function prompts_onReset(){
+  if(!prompts_isDirty()) return;
+  if(!confirm('변경 사항을 되돌리시겠습니까?')) return;
+  document.getElementById('promptSystemPrompt').value = PROMPTS_STATE.original.system_prompt;
+  document.getElementById('promptUserPrompt').value = PROMPTS_STATE.original.user_prompt_template;
+  document.getElementById('promptAiModel').value = PROMPTS_STATE.original.ai_model;
+  document.getElementById('promptMaxTokens').value = PROMPTS_STATE.original.max_tokens;
+  document.getElementById('promptTemperature').value = PROMPTS_STATE.original.temperature;
+  prompts_onChange();
+}
+
+async function prompts_onSave(){
+  const p = PROMPTS_STATE.list.find(x => x.prompt_key === PROMPTS_STATE.selectedKey);
+  if(!p){ toast('프롬프트를 찾을 수 없습니다','e'); return; }
+
+  const payload = {
+    system_prompt: document.getElementById('promptSystemPrompt').value,
+    user_prompt_template: document.getElementById('promptUserPrompt').value,
+    ai_model: document.getElementById('promptAiModel').value,
+    max_tokens: parseInt(document.getElementById('promptMaxTokens').value, 10),
+    temperature: parseFloat(document.getElementById('promptTemperature').value),
+    updated_by: curUser?.id || null,
+  };
+
+  // 검증
+  if(!payload.user_prompt_template.trim()){
+    toast('사용자 프롬프트는 비울 수 없습니다','e');
+    return;
+  }
+  if(payload.max_tokens < 100 || payload.max_tokens > 32000){
+    toast('Max Tokens는 100~32000 사이여야 합니다','e');
+    return;
+  }
+  if(payload.temperature < 0 || payload.temperature > 1){
+    toast('Temperature는 0~1 사이여야 합니다','e');
+    return;
+  }
+
+  document.getElementById('btnPromptSave').disabled = true;
+  try {
+    const { error } = await sb.from('prompt_templates')
+      .update(payload)
+      .eq('id', p.id);
+    if(error) throw error;
+
+    // 메모리 갱신
+    Object.assign(p, payload);
+    p.updated_at = new Date().toISOString();
+    PROMPTS_STATE.original = {
+      system_prompt: payload.system_prompt,
+      user_prompt_template: payload.user_prompt_template,
+      ai_model: payload.ai_model,
+      max_tokens: payload.max_tokens,
+      temperature: payload.temperature,
+      is_active: p.is_active,
+    };
+
+    toast(`"${p.display_name}" 저장됨 — 다음 보고서 생성부터 반영`,'s');
+    prompts_renderEditor(); // 메타·시간 갱신
+  } catch(err){
+    console.error('[prompts save]', err);
+    toast('저장 실패: '+(err.message||err),'e');
+    document.getElementById('btnPromptSave').disabled = false;
+  }
+}
+
+// HTML escape (전역에 이미 있으면 재정의 X)
+if (typeof window.escapeHtml !== 'function') {
+  window.escapeHtml = function(s){
+    if(s == null) return '';
+    return String(s).replace(/[&<>"']/g, c => ({
+      '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+    })[c]);
+  };
 }
 </script>
 
