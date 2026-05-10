@@ -848,6 +848,22 @@ select.form-control{cursor:pointer}
   max-width:794px;                                    /* A4 폭 @96dpi */
   margin:0 auto;                                      /* 중앙 정렬 */
 }
+/* v6.1.7: 누수소견서 탭에서는 leak-doc 자체가 종이 카드 → v6-page-card는 투명 */
+#tab-content-leak .v6-page-card{
+  background:transparent;
+  border:0;
+  padding:0;
+  box-shadow:none;
+  min-height:0;
+  max-width:none;
+}
+#tab-content-leak .v6-output-pages{
+  padding:0;
+  background:transparent;
+  border:0;
+  display:flex;
+  justify-content:center;
+}
 #screen-insurance .v6-page-num{
   position:absolute;bottom:14px;right:24px;
   font-size:10px;color:var(--ins-ink-3);
@@ -946,68 +962,86 @@ select.form-control{cursor:pointer}
 #screen-insurance .leak-doc{
   background:#FBFAF5;
   font-family:'Pretendard','Malgun Gothic',sans-serif;
-  font-size:13px;
-  line-height:1.65;
+  font-size:11px;
+  line-height:1.45;
   color:var(--ins-ink);
+  /* v6.1.7: A4 종이 카드 스타일 — 화면에서도 인쇄 결과와 거의 동일하게 보이도록 */
+  width:210mm;
+  max-width:100%;
+  min-height:297mm;
+  margin:0 auto;
+  padding:14mm 18mm;
+  box-shadow:0 1px 3px rgba(0,0,0,0.06), 0 6px 18px rgba(0,0,0,0.08);
+  box-sizing:border-box;
 }
 #screen-insurance .leak-header{
   text-align:center;
-  border-bottom:2px solid var(--ins-ink);
-  padding-bottom:16px;
-  margin-bottom:24px;
+  border-bottom:1.5px solid var(--ins-ink);
+  padding-bottom:10px;
+  margin-bottom:14px;
 }
 #screen-insurance .leak-title-ko{
-  font-size:24px;font-weight:700;
-  letter-spacing:0.4em;
-  margin-bottom:6px;
+  font-size:18px;font-weight:700;
+  letter-spacing:0.3em;
+  margin-bottom:3px;
   color:var(--ins-ink);
 }
 #screen-insurance .leak-title-num{
-  font-size:11px;color:var(--ins-ink-3);
+  font-size:9.5px;color:var(--ins-ink-3);
 }
 #screen-insurance .leak-section-title{
-  font-size:13px;font-weight:700;color:var(--ins-ink);
+  font-size:11px;font-weight:700;color:var(--ins-ink);
   border-left:3px solid var(--ins-ink);
-  padding:4px 10px;
-  margin:14px 0 8px;
+  padding:2px 8px;
+  margin:8px 0 4px;
   background:#F4F2EE;
 }
 #screen-insurance .leak-table{
   width:100%;border-collapse:collapse;
   border:1px solid #d4d0c8;
-  font-size:12.5px;
+  font-size:10.5px;
 }
 #screen-insurance .leak-table tr{border-bottom:1px solid #e5e2db}
 #screen-insurance .leak-table tr:last-child{border-bottom:0}
-#screen-insurance .leak-table td{padding:8px 12px;line-height:1.55;vertical-align:top}
+#screen-insurance .leak-table td{padding:4px 8px;line-height:1.35;vertical-align:top}
 #screen-insurance .leak-table td.lbl{
-  width:120px;background:#F4F2EE;font-weight:600;color:#444;
+  width:90px;background:#F4F2EE;font-weight:600;color:#444;
   border-right:1px solid #d4d0c8;
 }
 #screen-insurance .leak-stamp-area{
-  margin-top:32px;
+  margin-top:14px;
   text-align:right;
-  padding-right:60px;
+  padding-right:24px;
   display:flex;
   align-items:center;
   justify-content:flex-end;
-  gap:14px;
+  gap:10px;
 }
 #screen-insurance .leak-stamp-line{
-  font-size:12.5px;color:var(--ins-ink);
+  font-size:10px;color:var(--ins-ink);
 }
 #screen-insurance .leak-stamp{
   display:inline-flex;
-  width:60px;height:60px;
-  border:2px solid var(--ins-red);
+  width:48px;height:48px;
+  border:1.5px solid var(--ins-red);
   border-radius:50%;
   color:var(--ins-red);
-  font-size:9px;font-weight:700;
+  font-size:7.5px;font-weight:700;
   align-items:center;justify-content:center;
   transform:rotate(-8deg);
   letter-spacing:-0.02em;
   line-height:1.1;
   text-align:center;
+}
+#screen-insurance .leak-stamp-img{
+  width:48px;height:48px;
+}
+#screen-insurance .leak-doc p{
+  font-size:9.5px;
+  margin-top:10px;
+}
+#screen-insurance .doc-section{
+  margin:0;
 }
 
 /* 출력 화면 헤더 (수신/참조/제목 인라인) */
@@ -4829,7 +4863,7 @@ if (typeof window.escapeHtml !== 'function') {
 }
 </script>
 
-<script src="./insurance-tab.js?v=6.1.6"></script>
+<script src="./insurance-tab.js?v=6.1.7"></script>
 <!-- v6 패치: 9케이스 검증 PASS 룰엔진 + 약관선택 모달 + 파트너 임포트 -->
 <script src="./sabi-rule-v6.js?v=6.0.0"></script>
 <script src="./insurance-tab-v6-patch.js?v=6.0.0"></script>
