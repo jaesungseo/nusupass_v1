@@ -3489,8 +3489,9 @@ function s3InsertSnippet(text) {
 
 // v6.1.2: STEP 3 탭 전환 (손해사정서 / 누수소견서)
 function s3SwitchTab(tabName) {
-  // v6.1.5: 현재 활성 탭 추적
+  // v6.1.6: 현재 활성 탭 추적 + 디버깅 로그
   _currentReportTab = tabName;
+  console.log('[v6.1.6 탭 전환] _currentReportTab =', tabName);
   // 탭 버튼 active 토글
   document.querySelectorAll('.v6-output-tab').forEach(b => b.classList.remove('active'));
   document.getElementById(`tab-btn-${tabName}`)?.classList.add('active');
@@ -4322,9 +4323,12 @@ async function s3SaveReport() {
 
 // ─── PDF 인쇄 (window.print + @media print) ───────────────
 async function s3ExportPdf() {
-  // v6.1.5: 현재 활성 탭에 따라 인쇄 대상 분기
+  // v6.1.6: 디버깅용 콘솔 로그 — 어떤 분기를 타는지 즉시 확인 가능
+  console.log('[v6.1.6 PDF 다운로드] _currentReportTab =', _currentReportTab);
+
   if (_currentReportTab === 'leak') {
     // 누수소견서 탭 → window.print() + body 클래스로 누수소견서만 인쇄되게
+    console.log('[v6.1.6 PDF 다운로드] → 누수소견서 인쇄 분기 (printing-leak)');
     document.body.classList.add('printing-leak');
     try {
       window.print();
@@ -4335,9 +4339,11 @@ async function s3ExportPdf() {
   }
 
   // 손해사정서 탭 → iframe 안 보고서 인쇄
+  console.log('[v6.1.6 PDF 다운로드] → 손해사정서 iframe 인쇄 분기');
   const iframe = document.getElementById('reportFrame');
   if (!iframe) {
     // 폴백: 기존 방식 (iframe 없는 환경)
+    console.warn('[v6.1.6 PDF 다운로드] iframe 없음, 폴백 모드');
     document.body.classList.add('printing-report');
     try { window.print(); }
     finally { setTimeout(() => document.body.classList.remove('printing-report'), 500); }
@@ -4393,5 +4399,6 @@ function s3UpdateReportField(field, value) {
   }
 }
 window.s3ExportPdf = s3ExportPdf;
+window.s3SwitchTab = s3SwitchTab;
 window.s3InjectReportData = s3InjectReportData;
 window.s3UpdateReportField = s3UpdateReportField;
