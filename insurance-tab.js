@@ -655,6 +655,7 @@ function insStep1HTML() {
     .map(n => `<option ${cl.insurer_name===n?'selected':''}>${n}</option>`)
     .join('') + `<option value="기타">기타 (직접 입력)</option>`;
 
+  // v6: 보고서 본문에서 select로 표시되므로 여기서도 옵션 생성 (보고서 미리보기용으로 재사용)
   const causeOpts = INS_CAUSES
     .map(c => `<option value="${c}" ${(cl.accident_cause_type||'')===c?'selected':''}>${c}</option>`)
     .join('');
@@ -685,9 +686,13 @@ function insStep1HTML() {
     : `<div class="empty" style="padding:12px"><div class="empty-text">파트너가 수리완료 보고서를 아직 제출하지 않았습니다</div></div>`;
 
   return `
-  <!-- ── 섹션 A: 기본 정보 ── -->
+  <!-- ── 섹션 A: 기본 정보 (v6 단순화 — 보고서번호 + 제출일자만) ── -->
+  <!-- 수신/참조/사고원인은 보고서 본문에서 직접 편집. 손해사정사·담당자는 회사/개인 설정에서 자동 반영. -->
   <div class="card">
-    <div style="font-size:14px;font-weight:900;margin-bottom:14px">📋 보고서 기본 정보</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div style="font-size:14px;font-weight:900">📋 보고서 기본 정보</div>
+      <div style="font-size:11px;color:var(--muted)">수신·참조·사고원인은 분석 후 보고서 본문에서 편집</div>
+    </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <div class="form-group">
         <label class="form-label">보고서 번호</label>
@@ -698,36 +703,6 @@ function insStep1HTML() {
         <label class="form-label">제출일자 *</label>
         <input class="form-control" type="date" id="s1-date" value="${cl.submit_date||today}"/>
       </div>
-      <div class="form-group">
-        <label class="form-label">수신 보험사 *</label>
-        <select class="form-control" id="s1-insurer" onchange="s1InsurerChange(this.value)">
-          <option value="">— 선택 —</option>${insurerOpts}
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">참조 (담당팀/담당자)</label>
-        <input class="form-control" id="s1-contact" value="${cl.insurer_contact||''}" placeholder="예: 일반보험팀 OOO 과장"/>
-      </div>
-    </div>
-    <div id="s1-insurer-custom-wrap" style="display:none;margin-top:-6px;margin-bottom:12px">
-      <label class="form-label">보험사명 직접 입력</label>
-      <input class="form-control" id="s1-insurer-custom" placeholder="보험사명 입력"/>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <div class="form-group">
-        <label class="form-label">사고원인 분류 *</label>
-        <select class="form-control" id="s1-cause" onchange="s1CauseChange(this.value)">
-          ${causeOpts}
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">조사자</label>
-        <input class="form-control" id="s1-investigator" value="${co.investigator_name||co.adjuster_name||'서재성'}"/>
-      </div>
-    </div>
-    <div id="s1-cause-custom-wrap" style="display:none;margin-top:-6px">
-      <label class="form-label">사고원인 직접 입력</label>
-      <input class="form-control" id="s1-cause-custom" placeholder="사고원인 입력"/>
     </div>
   </div>
 
@@ -785,12 +760,7 @@ function insStep1HTML() {
   </div>`;
 }
 
-function s1InsurerChange(v) {
-  document.getElementById('s1-insurer-custom-wrap').style.display = v==='기타'?'block':'none';
-}
-function s1CauseChange(v) {
-  document.getElementById('s1-cause-custom-wrap').style.display = v==='기타(직접입력)'?'block':'none';
-}
+// v6: s1InsurerChange/s1CauseChange는 STEP 1에서 보험사·사고원인 입력 제거되며 더 이상 사용되지 않음
 function s1SelectType(val, el) {
   document.querySelectorAll('.ins-type-card').forEach(c => c.classList.remove('ins-type-selected'));
   el.classList.add('ins-type-selected');
@@ -799,22 +769,20 @@ function s1SelectType(val, el) {
 }
 
 async function s1Save() {
-  let insurer = document.getElementById('s1-insurer').value;
-  if (insurer === '기타') insurer = document.getElementById('s1-insurer-custom')?.value?.trim()||'';
-  if (!insurer) { toast('보험사를 선택해 주세요.', 'e'); return; }
-
+  // v6: 보험사·참조·사고원인은 보고서 본문에서 편집하므로 STEP 1에서는 검증/저장하지 않음
+  // 약관구분(insurance_type)은 분석 로직의 핵심 입력이므로 여기서 결정
   const insType = document.querySelector('input[name="ins-type"]:checked')?.value || 'family_daily_old';
-  let cause = document.getElementById('s1-cause').value;
-  if (cause === '기타(직접입력)') cause = document.getElementById('s1-cause-custom')?.value?.trim()||'기타';
+  const submitDate = document.getElementById('s1-date').value;
 
   try {
+    // RPC: 보고서번호 채번 + 제출일자 저장 (보험사 필드는 빈값 전달, 추후 보고서 본문에서 채움)
     const { data, error } = await sb.rpc('rpc_start_insurance_report', {
       p_claim_id:        _insClaim.id,
-      p_insurer_name:    insurer,
-      p_insurer_contact: document.getElementById('s1-contact').value||null,
-      p_cause_type:      cause,
-      p_investigator:    document.getElementById('s1-investigator').value,
-      p_submit_date:     document.getElementById('s1-date').value,
+      p_insurer_name:    _insClaim.insurer_name || '',  // 기존값 유지 또는 빈값
+      p_insurer_contact: _insClaim.insurer_contact || null,
+      p_cause_type:      _insClaim.accident_cause_type || '미지정',  // AI 분석 후 보고서에서 확정
+      p_investigator:    (_insCompany?.investigator_name || _insCompany?.adjuster_name || '서재성'),
+      p_submit_date:     submitDate,
     });
     if (error) throw error;
 
@@ -824,8 +792,9 @@ async function s1Save() {
       .eq('id', _insClaim.id);
     if (upErr) throw new Error('약관 구분 저장 실패: ' + upErr.message);
 
-    _insClaim = { ..._insClaim, report_no: data?.report_no, insurer_name: insurer,
-      insurance_type: insType, insurance_tab_status: 'docs_pending' };
+    _insClaim = { ..._insClaim, report_no: data?.report_no,
+      insurance_type: insType, insurance_tab_status: 'docs_pending',
+      submit_date: submitDate };
     toast('저장 완료! 서류 분석을 시작합니다.', 's');
     _insStep = 2; insRender();
     // 저장 직후 자동으로 Claude 분석 시작
@@ -2857,6 +2826,15 @@ function renderReportSection1_Summary(cl, r, fd, pa, rc, ded, pay, prevCost) {
     : '';
   const accLoc = r.accident_location_from_doc || pa.attacker_unit || cl.victim_address || '';
   const accCause = pa.leak_cause || cl.accident_cause_type || r.accident_cause_detail || '';
+  // v6: 사고원인 select 옵션 (현재값이 표준 13개에 없으면 "(현재) ___" 항목 추가)
+  const causeStandardList = (typeof INS_CAUSES !== 'undefined') ? INS_CAUSES : [];
+  const isStandardCause = causeStandardList.includes(accCause);
+  const causeSelectHTML = `
+    <select class="report-editable-input" id="rep-cause" style="width:100%;font-family:inherit;font-size:inherit;">
+      ${!accCause ? `<option value="" selected>— 사고원인 선택 —</option>` : ''}
+      ${!isStandardCause && accCause ? `<option value="${escapeHtml(accCause)}" selected>(현장 입력) ${escapeHtml(accCause)}</option>` : ''}
+      ${causeStandardList.map(c => `<option value="${escapeHtml(c)}" ${c===accCause?'selected':''}>${escapeHtml(c)}</option>`).join('')}
+    </select>`;
   const victimRows = (_insVictims || []).length > 0 
     ? (_insVictims || []).map((v, i) => `피해자${i+1}: ${v.victim_name || '-'}`).join(' / ')
     : '';
@@ -2873,7 +2851,7 @@ function renderReportSection1_Summary(cl, r, fd, pa, rc, ded, pay, prevCost) {
       <tr><td class="lbl">바. 자 기 부 담 금</td><td>${money(ded)} / 대물 ${money(ded)}, 대인 없음</td></tr>
       <tr><td class="lbl">사. 사 고 일 시</td><td>${accDate}</td></tr>
       <tr><td class="lbl">아. 사 고 장 소</td><td>${escapeHtml(accLoc)}</td></tr>
-      <tr><td class="lbl">자. 사 고 원 인</td><td>${escapeHtml(accCause)}</td></tr>
+      <tr><td class="lbl">자. 사 고 원 인</td><td>${causeSelectHTML}</td></tr>
       <tr><td class="lbl">차. 보 험 조 건</td><td>${typeLabel}</td></tr>
       ${victimRows ? `<tr><td class="lbl">카. 피 해 자</td><td>${escapeHtml(victimRows)}</td></tr>` : ''}
     </table>
@@ -3225,6 +3203,7 @@ async function s3SaveReport() {
       insurer_name:         g('rep-insurer'),
       insurer_contact:      g('rep-insurer-contact'),
       report_recipient:     g('rep-recipient'),
+      accident_cause_type:  g('rep-cause'),  // v6: 사고원인은 보고서 본문 select에서 입력
       report_no:            reportNo,
       submit_date:          new Date().toISOString().split('T')[0],
       liability_reasoning:  g('rep-liab-reason'),
