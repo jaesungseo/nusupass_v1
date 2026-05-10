@@ -384,8 +384,15 @@ select.form-control{cursor:pointer}
   margin-bottom:10px;text-transform:uppercase
 }
 .settings-preview-line{margin-bottom:4px}
+.settings-pv-stamp-anchor{
+  position:relative;display:inline-block
+}
 .settings-pv-stamp{
-  display:inline-block;width:24px;height:24px;vertical-align:middle;margin-left:4px
+  position:absolute;top:50%;left:50%;
+  transform:translate(-50%,-50%);
+  width:28px;height:28px;
+  pointer-events:none;
+  mix-blend-mode:multiply
 }
 .settings-pv-stamp img{width:100%;height:100%;object-fit:contain}
 .settings-preview-company{
@@ -824,8 +831,7 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
         <div class="settings-preview-box">
           <div class="settings-preview-title">발신부 (보고서 1페이지 하단)</div>
           <div class="settings-preview-line">
-            손해사정사 : <span id="pv-officer">_____</span> / 등록번호 : <span id="pv-license">_____</span>
-            <span class="settings-pv-stamp" id="pvStampSlot"></span>
+            손해사정사 : <span id="pv-officer">_____</span> <span class="settings-pv-stamp-anchor">(인)<span class="settings-pv-stamp" id="pvStampSlot"></span></span> / 등록번호 : <span id="pv-license">_____</span>
           </div>
           <div class="settings-preview-line">담당자 : <span id="pv-handler">_____</span></div>
           <div class="settings-preview-line">H.P : <span id="pv-phone">_____</span></div>
