@@ -3234,6 +3234,7 @@ let _insHandler       = null;   // v6.1.4: 본인(담당자) 정보 — admin_us
 let _insCurrentReportData = null;
 let _reportRecipient = '';   // 수신 (보험사명)
 let _reportDept = '';         // 참조 (손해사정팀 등)
+let _currentReportTab = 'report';  // v6.1.5: 출력 탭 추적 ('report' | 'leak')
 
 // 유틸: 날짜·시간 포맷
 function fmtDate(d) {
@@ -3488,6 +3489,8 @@ function s3InsertSnippet(text) {
 
 // v6.1.2: STEP 3 탭 전환 (손해사정서 / 누수소견서)
 function s3SwitchTab(tabName) {
+  // v6.1.5: 현재 활성 탭 추적
+  _currentReportTab = tabName;
   // 탭 버튼 active 토글
   document.querySelectorAll('.v6-output-tab').forEach(b => b.classList.remove('active'));
   document.getElementById(`tab-btn-${tabName}`)?.classList.add('active');
@@ -4319,8 +4322,19 @@ async function s3SaveReport() {
 
 // ─── PDF 인쇄 (window.print + @media print) ───────────────
 async function s3ExportPdf() {
-  // v6.1.4: iframe 기반 보고서 인쇄
-  // iframe 내부 contentWindow.print() 호출 → iframe만 인쇄됨
+  // v6.1.5: 현재 활성 탭에 따라 인쇄 대상 분기
+  if (_currentReportTab === 'leak') {
+    // 누수소견서 탭 → window.print() + body 클래스로 누수소견서만 인쇄되게
+    document.body.classList.add('printing-leak');
+    try {
+      window.print();
+    } finally {
+      setTimeout(() => document.body.classList.remove('printing-leak'), 500);
+    }
+    return;
+  }
+
+  // 손해사정서 탭 → iframe 안 보고서 인쇄
   const iframe = document.getElementById('reportFrame');
   if (!iframe) {
     // 폴백: 기존 방식 (iframe 없는 환경)

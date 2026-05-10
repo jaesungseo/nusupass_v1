@@ -1473,6 +1473,118 @@ body.printing-report .v6-page-card{
 }
 
 /* ════════════════════════════════════════════════
+   v6.1.5: 누수소견서 인쇄 모드 (A4 1장 압축)
+   ════════════════════════════════════════════════ */
+body.printing-leak{
+  background:#fff !important;
+}
+body.printing-leak .sidebar,
+body.printing-leak nav,
+body.printing-leak header,
+body.printing-leak #toastContainer,
+body.printing-leak #toast-container,
+body.printing-leak [class*="toast"],
+body.printing-leak #screen-insurance > .card,
+body.printing-leak .page-header,
+body.printing-leak .v6-output-actions,
+body.printing-leak .v6-output-tabs,
+body.printing-leak .v6-output-side,
+body.printing-leak #tab-content-report{
+  display:none !important;
+  visibility:hidden !important;
+}
+body.printing-leak .app{display:block !important}
+body.printing-leak .content{padding:0 !important;margin:0 !important;width:100% !important}
+body.printing-leak #screen-insurance{background:#fff !important;padding:0 !important}
+body.printing-leak .v6-output-grid{display:block !important;grid-template-columns:none !important}
+body.printing-leak #tab-content-leak{
+  display:block !important;
+  visibility:visible !important;
+}
+/* 누수소견서 본체 — A4 1장에 들어가도록 폰트/여백 축소 */
+body.printing-leak #screen-insurance .leak-doc{
+  background:#fff !important;
+  font-size:11px !important;
+  line-height:1.45 !important;
+  padding:14mm 16mm !important;
+  margin:0 !important;
+  max-width:none !important;
+}
+body.printing-leak #screen-insurance .leak-header{
+  padding-bottom:8px !important;
+  margin-bottom:10px !important;
+}
+body.printing-leak #screen-insurance .leak-title-ko{
+  font-size:18px !important;
+  letter-spacing:0.3em !important;
+  margin-bottom:3px !important;
+}
+body.printing-leak #screen-insurance .leak-title-num{
+  font-size:9.5px !important;
+}
+body.printing-leak #screen-insurance .leak-section-title{
+  font-size:11px !important;
+  padding:2px 8px !important;
+  margin:7px 0 4px !important;
+}
+body.printing-leak #screen-insurance .leak-table{
+  font-size:10.5px !important;
+}
+body.printing-leak #screen-insurance .leak-table td{
+  padding:4px 8px !important;
+  line-height:1.35 !important;
+}
+body.printing-leak #screen-insurance .leak-table td.lbl{
+  width:90px !important;
+}
+body.printing-leak #screen-insurance .doc-section{
+  margin:0 !important;
+}
+/* 인쇄 시 현장 사진 영역은 별도 페이지 — 1장 압축 위해 본 페이지에서는 제외 */
+body.printing-leak #screen-insurance .doc-section:has(.report-photo-grid){
+  display:none !important;
+}
+body.printing-leak #screen-insurance .leak-stamp-area{
+  margin-top:14px !important;
+  padding-right:30px !important;
+  gap:10px !important;
+}
+body.printing-leak #screen-insurance .leak-stamp-line{
+  font-size:10.5px !important;
+}
+body.printing-leak #screen-insurance .leak-stamp{
+  width:48px !important;
+  height:48px !important;
+  font-size:8px !important;
+}
+body.printing-leak #screen-insurance .leak-stamp-img{
+  width:48px !important;
+  height:48px !important;
+}
+body.printing-leak #screen-insurance .leak-doc p{
+  margin-top:10px !important;
+  font-size:9.5px !important;
+}
+@page{
+  size:A4;
+  margin:0;
+}
+@media print{
+  body.printing-leak{
+    margin:0 !important;
+    padding:0 !important;
+  }
+  body.printing-leak #tab-content-leak{
+    page-break-after:avoid !important;
+    break-after:avoid !important;
+  }
+  body.printing-leak #screen-insurance .leak-doc{
+    page-break-inside:avoid !important;
+    break-inside:avoid !important;
+  }
+}
+
+/* ════════════════════════════════════════════════
    v5.7.x: 회사·내 프로필 설정 페이지
    ════════════════════════════════════════════════ */
 .settings-card{margin-bottom:14px;padding:0;overflow:hidden}
@@ -4697,7 +4809,7 @@ if (typeof window.escapeHtml !== 'function') {
 }
 </script>
 
-<script src="./insurance-tab.js?v=6.1.4"></script>
+<script src="./insurance-tab.js?v=6.1.5"></script>
 <!-- v6 패치: 9케이스 검증 PASS 룰엔진 + 약관선택 모달 + 파트너 임포트 -->
 <script src="./sabi-rule-v6.js?v=6.0.0"></script>
 <script src="./insurance-tab-v6-patch.js?v=6.0.0"></script>

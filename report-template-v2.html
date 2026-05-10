@@ -682,7 +682,7 @@ function renderPage2(){
   return `
 <section class="page" data-page="2">
   <h2 class="sec-title">1. 총괄표</h2>
-  <table class="t summary-matrix">
+  <table class="t summary-matrix" data-matrix="summary">
     <thead>
       <tr>
         <th style="width:90px">구분</th>
@@ -694,29 +694,29 @@ function renderPage2(){
       </tr>
     </thead>
     <tbody>
-      <tr>
+      <tr data-row="prevention">
         <td class="lbl">손해방지비용</td>
-        <td class="dash">-</td>
-        <td class="dash">-</td>
-        <td class="dash">-</td>
-        <td class="dash">-</td>
-        <td class="dash">-</td>
+        <td class="dash" data-field="prevention.limit">-</td>
+        <td class="dash" data-field="prevention.damage">-</td>
+        <td class="dash" data-field="prevention.liable">-</td>
+        <td class="dash" data-field="prevention.deduct">-</td>
+        <td class="dash" data-field="prevention.payout">-</td>
       </tr>
-      <tr>
+      <tr data-row="property">
         <td class="lbl">대물배상</td>
-        <td class="val">${escapeHtml(D.summary.limitProperty)}</td>
-        <td class="dash">${escapeHtml(D.summary.damage)}</td>
-        <td class="dash">${escapeHtml(D.summary.liable)}</td>
-        <td class="dash">${escapeHtml(D.summary.deduct)}</td>
-        <td class="dash">${escapeHtml(D.summary.payout)}</td>
+        <td class="val" data-field="property.limit">${escapeHtml(D.summary.limitProperty)}</td>
+        <td class="dash" data-field="property.damage">${escapeHtml(D.summary.damage)}</td>
+        <td class="dash" data-field="property.liable">${escapeHtml(D.summary.liable)}</td>
+        <td class="dash" data-field="property.deduct">${escapeHtml(D.summary.deduct)}</td>
+        <td class="dash" data-field="property.payout">${escapeHtml(D.summary.payout)}</td>
       </tr>
-      <tr>
+      <tr data-row="total">
         <td class="lbl">합계</td>
-        <td class="val">${escapeHtml(D.summary.limitProperty)}</td>
-        <td class="dash">${escapeHtml(D.summary.damage)}</td>
-        <td class="dash">${escapeHtml(D.summary.liable)}</td>
-        <td class="dash">${escapeHtml(D.summary.deduct)}</td>
-        <td class="dash">${escapeHtml(D.summary.payout)}</td>
+        <td class="val" data-field="total.limit">${escapeHtml(D.summary.limitProperty)}</td>
+        <td class="dash" data-field="total.damage">${escapeHtml(D.summary.damage)}</td>
+        <td class="dash" data-field="total.liable">${escapeHtml(D.summary.liable)}</td>
+        <td class="dash" data-field="total.deduct">${escapeHtml(D.summary.deduct)}</td>
+        <td class="dash" data-field="total.payout">${escapeHtml(D.summary.payout)}</td>
       </tr>
       <tr>
         <td class="lbl">지급처</td>
@@ -994,7 +994,7 @@ function renderPage7(){
   return `
 <section class="page" data-page="7">
   <h2 class="sec-title">6. 손해액평가</h2>
-  <table class="t summary-matrix">
+  <table class="t summary-matrix" data-matrix="damage-eval">
     <thead>
       <tr>
         <th style="width:90px">구분</th>
@@ -1006,29 +1006,29 @@ function renderPage7(){
       </tr>
     </thead>
     <tbody>
-      <tr>
+      <tr data-row="prevention">
         <td class="lbl">손해방지비용</td>
-        <td class="dash">-</td>
-        <td class="dash">-</td>
-        <td class="dash">-</td>
-        <td class="dash">-</td>
-        <td class="dash">-</td>
+        <td class="dash" data-field="prevention.limit">-</td>
+        <td class="dash" data-field="prevention.damage">-</td>
+        <td class="dash" data-field="prevention.liable">-</td>
+        <td class="dash" data-field="prevention.deduct">-</td>
+        <td class="dash" data-field="prevention.payout">-</td>
       </tr>
-      <tr>
+      <tr data-row="property">
         <td class="lbl">대물배상</td>
-        <td class="dash">-</td>
-        <td class="dash">-</td>
-        <td class="dash">-</td>
-        <td class="dash">-</td>
-        <td class="dash">-</td>
+        <td class="val" data-field="property.limit">${escapeHtml(D.summary.limitProperty)}</td>
+        <td class="dash" data-field="property.damage">${escapeHtml(D.summary.damage)}</td>
+        <td class="dash" data-field="property.liable">${escapeHtml(D.summary.liable)}</td>
+        <td class="dash" data-field="property.deduct">${escapeHtml(D.summary.deduct)}</td>
+        <td class="dash" data-field="property.payout">${escapeHtml(D.summary.payout)}</td>
       </tr>
-      <tr>
+      <tr data-row="total">
         <td class="lbl">합계</td>
-        <td class="dash">-</td>
-        <td class="dash">-</td>
-        <td class="dash">-</td>
-        <td class="dash">-</td>
-        <td class="dash">-</td>
+        <td class="val" data-field="total.limit">${escapeHtml(D.summary.limitProperty)}</td>
+        <td class="dash" data-field="total.damage">${escapeHtml(D.summary.damage)}</td>
+        <td class="dash" data-field="total.liable">${escapeHtml(D.summary.liable)}</td>
+        <td class="dash" data-field="total.deduct">${escapeHtml(D.summary.deduct)}</td>
+        <td class="dash" data-field="total.payout">${escapeHtml(D.summary.payout)}</td>
       </tr>
     </tbody>
   </table>
@@ -1061,6 +1061,9 @@ function renderAll(){
 
   // v6.1.4: 모든 본문 셀을 contenteditable로 만들어 수기 수정 가능
   applyEditableCells();
+
+  // v6.1.5: 1.총괄표 ↔ 6.손해액평가 매트릭스 양방향 연동
+  applyMatrixSync();
 }
 
 // v6.1.4: 수기 수정 가능한 셀 일괄 마킹
@@ -1088,17 +1091,85 @@ function applyEditableCells(){
   });
 }
 
-// v6.1.4: 수기 수정 안내 (단독 뷰가 아니라 iframe embed 모드일 때만)
-function showEditHint(){
-  if (!document.body.classList.contains('embed')) return;
-  if (document.getElementById('editHint')) return;
-  const hint = document.createElement('div');
-  hint.id = 'editHint';
-  hint.style.cssText = 'position:sticky;top:0;left:0;right:0;background:#fff3e0;border-bottom:1px solid #f59e0b;padding:8px 16px;font-size:11px;color:#92400e;z-index:100;text-align:center';
-  hint.innerHTML = '✎ 본문 영역을 클릭하면 직접 수정할 수 있습니다. 수정 내용은 PDF 출력에 반영됩니다.';
-  document.body.insertBefore(hint, document.body.firstChild);
+// v6.1.5: 1.총괄표 ↔ 6.손해액평가 양방향 연동
+// data-matrix="summary"(P2) ↔ data-matrix="damage-eval"(P7) 같은 data-field끼리 동기화
+function applyMatrixSync(){
+  const summaryTable = document.querySelector('[data-matrix="summary"]');
+  const damageTable = document.querySelector('[data-matrix="damage-eval"]');
+  if (!summaryTable || !damageTable) return;
+
+  // 양 테이블의 [data-field] 셀들을 키로 매핑
+  function getCells(table){
+    const map = {};
+    table.querySelectorAll('[data-field]').forEach(c => {
+      map[c.getAttribute('data-field')] = c;
+    });
+    return map;
+  }
+  const sCells = getCells(summaryTable);
+  const dCells = getCells(damageTable);
+
+  // 한쪽 셀의 값을 다른 쪽으로 전파 (총합 행은 자동 계산도 함께)
+  let syncing = false;  // 무한 루프 방지
+  function syncFromCell(srcCell, srcMap, dstMap){
+    if (syncing) return;
+    syncing = true;
+    try {
+      const field = srcCell.getAttribute('data-field');
+      const text = srcCell.textContent.trim();
+      // 1) 짝꿍 셀에 동일하게 반영
+      if (dstMap[field] && dstMap[field].textContent.trim() !== text) {
+        dstMap[field].textContent = text;
+      }
+      // 2) 합계 자동 계산 — prevention.X + property.X = total.X
+      //    field가 prevention.X 또는 property.X 이면 양쪽 합산해서 total.X에도 반영
+      const m = field.match(/^(prevention|property)\.(.+)$/);
+      if (m) {
+        const colKey = m[2];
+        const totalField = `total.${colKey}`;
+        // 양 테이블 모두에서 prevention/property 값 가져와 합산 시도
+        [srcMap, dstMap].forEach(map => {
+          const pCell = map[`prevention.${colKey}`];
+          const rCell = map[`property.${colKey}`];
+          const tCell = map[totalField];
+          if (!pCell || !rCell || !tCell) return;
+          const pVal = parseAmount(pCell.textContent);
+          const rVal = parseAmount(rCell.textContent);
+          if (pVal === null && rVal === null) {
+            tCell.textContent = '-';
+          } else {
+            const sum = (pVal || 0) + (rVal || 0);
+            tCell.textContent = sum.toLocaleString();
+          }
+        });
+      }
+    } finally {
+      syncing = false;
+    }
+  }
+
+  // 숫자 셀 → 정수 (콤마/원 제거. "-" 나 빈값은 null)
+  function parseAmount(s){
+    if (!s) return null;
+    const trimmed = s.trim();
+    if (!trimmed || trimmed === '-' || trimmed === '—') return null;
+    const cleaned = trimmed.replace(/[^\d-]/g, '');
+    if (!cleaned) return null;
+    const n = parseInt(cleaned, 10);
+    return isNaN(n) ? null : n;
+  }
+
+  // 양쪽 테이블의 모든 [data-field] 셀에 input 리스너 등록
+  Object.values(sCells).forEach(c => {
+    c.addEventListener('input', () => syncFromCell(c, sCells, dCells));
+  });
+  Object.values(dCells).forEach(c => {
+    c.addEventListener('input', () => syncFromCell(c, dCells, sCells));
+  });
 }
-showEditHint();
+
+// v6.1.5: 편집 안내 바 제거 (사용자 요청)
+// (이전 v6.1.4의 showEditHint() 함수는 의도적으로 삭제됨)
 
 // 운영 사이트에서 iframe.contentWindow.postMessage({ type:'setCase', data:{...} }) 로 데이터 주입
 window.addEventListener('message', (e) => {
