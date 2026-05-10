@@ -374,7 +374,9 @@ const COVERAGE_RESULT_VALUES = ['부책','면책','판단유보'];
 // ─────────────────────────────────────────────
 let _insClaim    = null;
 let _insCaseId   = null;
-let _insField    = null;   // 파트너 수리 자료
+let _insField    = null;   // 파트너 수리 자료 (호환 유지: 첫 번째 또는 detection 우선)
+let _insPartners = [];     // v6.1: 다중 파트너 배열 — [{id, purpose, work_status, repair_cost, ...}]
+let _insImportedPartners = new Set();  // v6.1: 임포트 토글 상태 (assignment_id Set)
 let _insCompany  = null;   // company_settings
 let _insUploaded = {};     // { doc_code: { id, file_path, doc_name } }
 let _insStep     = 1;
@@ -389,6 +391,7 @@ let _insPartnerAccident = null;  // v5.5: 파트너 현장 파악 사고일시 {
 // ─────────────────────────────────────────────
 async function openInsuranceTab(caseId, caseNo) {
   _insClaim = null; _insCaseId = caseId; _insField = null;
+  _insPartners = []; _insImportedPartners = new Set();  // v6.1: 다중 파트너 초기화
   _insCompany = null; _insUploaded = {}; _insStep = 1;
   _insResult = {}; _insDraft = null; _insAnalyzing = false;
   _insVictims = [];
@@ -399,12 +402,19 @@ async function openInsuranceTab(caseId, caseNo) {
     `<div class="loading"><span class="spinner"></span> 불러오는 중…</div>`;
 
   try {
-    const [claim, field, company] = await Promise.all([
+    const [claim, field, partners, company] = await Promise.all([
       insEnsureClaim(caseId),
       insFetchField(caseId),
+      insFetchAllPartners(caseId),  // v6.1: 다중 파트너 로드
       insFetchCompany(),
     ]);
     _insClaim = claim; _insField = field; _insCompany = company;
+    _insPartners = partners;
+
+    // v6.1: 보고서 제출된 파트너는 기본적으로 임포트 ON, 미제출은 OFF
+    _insPartners.forEach(p => {
+      if (p.has_report) _insImportedPartners.add(p.id);
+    });
 
     const uploads = await insFetchUploads(claim.id);
     uploads.forEach(u => { _insUploaded[u.doc_code] = u; });
@@ -472,6 +482,30 @@ async function insFetchField(caseId) {
     .eq('case_id', caseId).in('work_status',['repair_done','repair_completed'])
     .order('work_done_at',{ascending:false}).limit(1).maybeSingle();
   return data;
+}
+
+// v6.1: 다중 파트너 로드 — 한 케이스의 모든 파트너 배정 (탐지/인테리어)
+//   - 각 파트너의 보고서 상태(work_status)와 핵심 필드 모두 포함
+//   - assignment_purpose로 detection/restore 구분
+async function insFetchAllPartners(caseId) {
+  const { data, error } = await sb.from('partner_assignments')
+    .select(`
+      id, case_id, partner_company_id, assignment_status, work_status, assignment_purpose,
+      repair_cost, repair_opinion, work_done_at, work_started_at, visited_at, accident_occurred_at,
+      attacker_unit, victim_unit, leak_area_type, leak_cause,
+      accident_datetime_at_site, accident_datetime_source, accident_datetime_note,
+      partner_companies(company_name)
+    `)
+    .eq('case_id', caseId)
+    .neq('assignment_status', 'cancelled')
+    .order('created_at', { ascending: true });
+  if (error) { console.warn('[v6.1] 파트너 다중 로드 실패:', error); return []; }
+  // 회사명 평탄화
+  return (data || []).map(p => ({
+    ...p,
+    partner_name: p.partner_companies?.company_name || '파트너',
+    has_report: ['repair_done','repair_completed'].includes(p.work_status),
+  }));
 }
 async function insFetchUploads(claimId) {
   const { data } = await sb.from('insurance_doc_uploads')
@@ -875,19 +909,57 @@ function insStep1HTML() {
        </ul>`
     : '';
 
-  // 파트너 보고서 카드 컨텐츠
-  const partnerCardHTML = fd
-    ? `<ul class="v6-data-list">
-        ${fd.accident_occurred_at ? `<li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">사고일자</div><div class="v6-data-val">${fmtDate(fd.accident_occurred_at)} (가해세대 진술 기준)</div></li>` : ''}
-        ${fd.leak_cause ? `<li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">사고원인</div><div class="v6-data-val">${escapeHtml(fd.leak_cause)}</div></li>` : ''}
-        ${fd.leak_area_type ? `<li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">누수부위</div><div class="v6-data-val">${escapeHtml(fd.leak_area_type)}</div></li>` : ''}
-        ${(fd.attacker_unit || fd.victim_unit) ? `<li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">가/피해세대</div><div class="v6-data-val">${escapeHtml(fd.attacker_unit || '—')} → ${escapeHtml(fd.victim_unit || '—')}</div></li>` : ''}
-        ${fd.repair_cost ? `<li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">수리금액</div><div class="v6-data-val">${Number(fd.repair_cost).toLocaleString()}원</div></li>` : ''}
-        ${fd.work_done_at ? `<li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">수리완료일</div><div class="v6-data-val">${fmtDate(fd.work_done_at)}</div></li>` : ''}
-        ${fd.repair_opinion ? `<li class="v6-data-row" style="align-items:flex-start"><div class="v6-data-check">✓</div><div class="v6-data-key">수리소견</div><div class="v6-data-val" style="white-space:pre-wrap">${escapeHtml(fd.repair_opinion)}</div></li>` : ''}
-       </ul>
-       <div class="v6-card-hint">ⓘ <b>외부 케이스</b>(파트너 미경유)인 경우 → 누수소견서 / 수리사진을 별도 업로드</div>`
-    : `<div class="v6-card-hint" style="border-left-color:var(--amber);background:var(--amber-soft);color:var(--amber)">⚠ 파트너가 수리완료 보고서를 아직 제출하지 않았습니다 — 보험처리만 케이스라면 외부 자료 첨부 필요</div>`;
+  // v6.1: 파트너 보고서 카드 — 다중 파트너 임포트 토글
+  //   - _insPartners 배열 모두 표시 (탐지/인테리어 등)
+  //   - 체크박스로 임포트 선택, 미체크는 무시
+  //   - 보고서 미제출 파트너는 회색 처리, 토글 비활성
+  const partnerListHTML = (_insPartners && _insPartners.length > 0)
+    ? _insPartners.map(p => {
+        const purposeLabel = p.assignment_purpose === 'restore' ? '🏠 인테리어/복구'
+                          : p.assignment_purpose === 'detection' ? '🔍 누수탐지'
+                          : '🔧 파트너';
+        const checked = _insImportedPartners.has(p.id);
+        const disabled = !p.has_report;
+        const statusBadge = p.has_report
+          ? '<span style="font-size:10px;padding:2px 8px;border-radius:999px;background:var(--ins-green-soft);color:var(--ins-green);font-weight:600">보고서 제출됨</span>'
+          : '<span style="font-size:10px;padding:2px 8px;border-radius:999px;background:var(--ins-bg-soft);color:var(--ins-ink-3);font-weight:600">보고서 미제출</span>';
+        return `
+          <div style="padding:12px 14px;border:1px solid var(--ins-line);border-radius:5px;margin-bottom:8px;background:${disabled?'var(--ins-bg-soft)':'var(--ins-bg-card)'};opacity:${disabled?'.7':'1'}">
+            <label style="display:flex;align-items:center;gap:10px;cursor:${disabled?'not-allowed':'pointer'}">
+              <input type="checkbox" ${checked?'checked':''} ${disabled?'disabled':''}
+                onchange="s1TogglePartner('${p.id}', this.checked)"
+                style="width:16px;height:16px;accent-color:var(--ins-accent);cursor:${disabled?'not-allowed':'pointer'}">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:13px;font-weight:600;color:var(--ins-ink)">${escapeHtml(p.partner_name)} · ${purposeLabel}</div>
+                ${p.has_report ? `<div style="font-size:11px;color:var(--ins-ink-3);margin-top:2px">
+                  ${p.repair_cost ? `수리금액 ${Number(p.repair_cost).toLocaleString()}원` : ''}
+                  ${p.work_done_at ? ` · 완료일 ${fmtDate(p.work_done_at)}` : ''}
+                </div>` : ''}
+              </div>
+              ${statusBadge}
+            </label>
+            ${p.has_report && checked ? `
+              <ul class="v6-data-list" style="margin-top:10px">
+                ${p.accident_occurred_at ? `<li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">사고일자</div><div class="v6-data-val">${fmtDate(p.accident_occurred_at)}</div></li>` : ''}
+                ${p.leak_cause ? `<li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">사고원인</div><div class="v6-data-val">${escapeHtml(p.leak_cause)}</div></li>` : ''}
+                ${p.leak_area_type ? `<li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">누수부위</div><div class="v6-data-val">${escapeHtml(p.leak_area_type)}</div></li>` : ''}
+                ${(p.attacker_unit || p.victim_unit) ? `<li class="v6-data-row"><div class="v6-data-check">✓</div><div class="v6-data-key">가/피해세대</div><div class="v6-data-val">${escapeHtml(p.attacker_unit||'—')} → ${escapeHtml(p.victim_unit||'—')}</div></li>` : ''}
+                ${p.repair_opinion ? `<li class="v6-data-row" style="align-items:flex-start"><div class="v6-data-check">✓</div><div class="v6-data-key">수리소견</div><div class="v6-data-val" style="white-space:pre-wrap;font-size:11px">${escapeHtml(p.repair_opinion)}</div></li>` : ''}
+              </ul>
+            ` : ''}
+          </div>`;
+      }).join('')
+    : `<div class="v6-card-hint" style="border-left-color:var(--ins-amber);background:var(--ins-amber-soft);color:var(--ins-amber);padding:10px 12px">
+        ⚠ 이 케이스에 배정된 파트너가 없습니다 — <b>외부 케이스</b>(직접 접수)인 경우 누수소견서/수리사진을 별도 업로드하세요
+      </div>`;
+
+  const importedCount = _insPartners.filter(p => _insImportedPartners.has(p.id) && p.has_report).length;
+  const partnerCardHTML = `
+    ${partnerListHTML}
+    ${_insPartners.length > 0 ? `
+      <div class="v6-card-hint">
+        ⓘ 체크된 파트너 보고서만 분석에 사용됩니다 · 현재 <b>${importedCount}건</b> 임포트
+      </div>` : ''}`;
 
   // 카드 헤더 헬퍼
   const cardHead = (groupKey, statusText, statusCls) => {
@@ -918,46 +990,74 @@ function insStep1HTML() {
   const insType = cl.insurance_type || 'family_daily_old';
   const insTypeLabel = INS_TYPE_LABELS[insType] || '미선택';
 
+  // v6.1: 카드 단계 번호를 시각화 (① ② ③ ④ ⑤)
+  // 단계 ①은 약관 선택 (v6PolicyBarHTML), ②~⑤는 카드들
+
+  // 파트너 카드 헤더 (v6.1 다중 파트너용 단계 번호)
+  const partnerCardHead = `
+    <div class="v6-data-card-header">
+      <div class="v6-data-card-icon v6-icon-partner">②</div>
+      <div style="flex:1;min-width:0">
+        <div class="v6-data-card-title">파트너 보고서 임포트</div>
+        <div class="v6-data-card-meta">탐지/인테리어 파트너 보고서 선택 임포트</div>
+      </div>
+      <span class="v6-data-card-status ${_insPartners.length > 0 && importedCount > 0 ? 'v6-status-ok' : 'v6-status-pend'}">
+        ${_insPartners.length === 0 ? '없음' : importedCount > 0 ? `${importedCount}건` : '미선택'}
+      </span>
+    </div>`;
+
+  // 카드 헤더에 단계 번호 prefix 붙이기
+  const cardHeadWithStep = (groupKey, statusText, statusCls, stepNum) => {
+    const g = INS_DOC_GROUPS[groupKey];
+    return `<div class="v6-data-card-header">
+      <div class="v6-data-card-icon ${g.cls}" style="font-weight:700">${stepNum}</div>
+      <div style="flex:1;min-width:0">
+        <div class="v6-data-card-title">${g.title}</div>
+        <div class="v6-data-card-meta">${g.sub}</div>
+      </div>
+      <span class="v6-data-card-status ${statusCls||'v6-status-pend'}">${statusText||'대기'}</span>
+    </div>`;
+  };
+
   return `
   ${v6CaseHeaderHTML({ editableDate: true })}
+
+  <!-- ① 약관 선택 (가장 먼저) -->
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:0 4px">
+    <div style="width:24px;height:24px;border-radius:50%;background:var(--ins-accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700">①</div>
+    <div style="font-size:13px;font-weight:600;color:var(--ins-ink)">약관 구분 선택</div>
+  </div>
   ${v6PolicyBarHTML(false)}
 
   <div class="v6-collect-grid">
-    <!-- 좌측: 데이터 카드 4개 -->
+    <!-- 좌측: ②~⑤ 단계 카드 -->
     <div class="v6-collect-stack">
 
-      <!-- 카드 1: 파트너 보고서 (자동 임포트, 업로드 슬롯 없음) -->
+      <!-- ② 파트너 보고서 임포트 (다중) -->
       <div class="v6-data-card">
-        <div class="v6-data-card-header">
-          <div class="v6-data-card-icon v6-icon-partner">🔧</div>
-          <div style="flex:1;min-width:0">
-            <div class="v6-data-card-title">파트너 보고서 · 자동 임포트</div>
-            <div class="v6-data-card-meta">${fd?.partner_name || '한라누수'}${fd?.partner_role?` (${fd.partner_role})`:''}</div>
-          </div>
-          <span class="v6-data-card-status ${fd?'v6-status-ok':'v6-status-pend'}">${fd?'자동완료':'대기'}</span>
-        </div>
+        ${partnerCardHead}
         ${partnerCardHTML}
       </div>
 
-      <!-- 카드 2: 계약 서류 -->
+      <!-- ③ 계약 서류 -->
       <div class="v6-data-card">
-        ${cardHead('policy', policyStatus, policyCls)}
+        ${cardHeadWithStep('policy', policyStatus, policyCls, '③')}
         ${policyDocs.map(renderSlot).join('')}
         ${policyExtractedHTML}
         <div class="v6-card-hint">→ 보고서 1pg 증권번호 + 3pg 보험계약사항 표 자동 채움</div>
       </div>
 
-      <!-- 카드 3: 피보험자(가해세대) 서류 -->
+      <!-- ④ 피보험자(가해세대) 서류 -->
       <div class="v6-data-card">
-        ${cardHead('insured', insuredStatus, insuredCls)}
+        ${cardHeadWithStep('insured', insuredStatus, insuredCls, '④')}
         ${insuredDocs.map(renderSlot).join('')}
         ${insuredExtractedHTML}
         <div class="v6-card-hint">→ 보고서 4pg "가. 피보험자 개요" 6필드 + 지위 판정값 (룰엔진 입력)</div>
       </div>
 
-      <!-- 카드 4: 피해세대 서류 -->
+      <!-- ⑤ 피해세대 서류 -->
       <div class="v6-data-card">
-        ${cardHead('victim', victimStatus, victimCls)}
+        ${cardHeadWithStep('victim', victimStatus, victimCls, '⑤')}
         <div class="v6-victim-block">
           <div class="v6-victim-block-title">
             <span>피해세대 1${(fd?.victim_unit)?` · ${escapeHtml(fd.victim_unit)}`:''}</span>
@@ -984,7 +1084,9 @@ function insStep1HTML() {
   </div>
 
   <div class="ins-action-bar" style="margin-top:16px">
-    <span style="font-size:12px;color:var(--muted)">필수 ${reqDone}/${reqTotal} · 약관 ${insTypeLabel}</span>
+    <span style="font-size:12px;color:var(--ins-ink-3)">
+      약관 <b>${insTypeLabel}</b> · 파트너 <b>${importedCount}건</b> · 서류 <b>${reqDone}/${reqTotal}</b>
+    </span>
     <button class="btn btn-primary" onclick="s1Save()" ${allReq?'':'disabled style="opacity:.5;cursor:not-allowed"'}>
       저장 후 분석·판단 →
     </button>
@@ -997,6 +1099,22 @@ function s1SelectType(val, el) {
   el.classList.add('ins-type-selected');
   el.querySelector('input[type=radio]').checked = true;
   _insClaim = { ..._insClaim, insurance_type: val };
+}
+
+// v6.1: 파트너 임포트 토글 (STEP 1 ②카드)
+function s1TogglePartner(partnerId, checked) {
+  if (checked) {
+    _insImportedPartners.add(partnerId);
+  } else {
+    _insImportedPartners.delete(partnerId);
+  }
+  // 첫 임포트된 파트너를 _insField에 반영 (분석 시 우선 사용)
+  // 우선순위: detection > restore > 첫 번째
+  const importedDetection = _insPartners.find(p => p.has_report && _insImportedPartners.has(p.id) && p.assignment_purpose === 'detection');
+  const importedRestore   = _insPartners.find(p => p.has_report && _insImportedPartners.has(p.id) && p.assignment_purpose === 'restore');
+  const firstImported     = _insPartners.find(p => p.has_report && _insImportedPartners.has(p.id));
+  _insField = importedDetection || importedRestore || firstImported || null;
+  insRender();
 }
 
 async function s1Save() {

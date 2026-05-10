@@ -319,7 +319,113 @@ select.form-control{cursor:pointer}
 .ins-step-sub{font-size:10px;color:var(--subtle);margin-top:2px}
 
 /* ══════════════════════════════════════════════════════════
-   v6 보험자료 탭 — 카드 구조 (운영 색상 톤)
+   v6.1 프로토타입 톤 — 보험자료 탭 전용 (#screen-insurance 한정)
+   다른 탭(접수/목록/설정)에는 영향 없음
+   ══════════════════════════════════════════════════════════ */
+#screen-insurance{
+  /* 프로토타입 색상 토큰 — 이 탭 안에서만 var(--ins-*) 우선 적용 */
+  --ins-bg:        #FAFAF7;
+  --ins-bg-card:   #FFFFFF;
+  --ins-bg-soft:   #F4F2EE;
+  --ins-bg-elev:   #F8F6F2;
+  --ins-ink:       #1A1A1A;
+  --ins-ink-2:     #4A4A4A;
+  --ins-ink-3:     #8A8A8A;
+  --ins-ink-4:     #BFBFBF;
+  --ins-line:      #E8E5DF;
+  --ins-line-2:    #D4D0C8;
+  --ins-accent:    #2E5C4A;
+  --ins-accent-soft:#E5EDE9;
+  --ins-accent-2:  #1B3A2D;
+  --ins-gold:      #B59544;
+  --ins-green:     #4A7C59;
+  --ins-green-soft:#E8F0EA;
+  --ins-amber:     #B07823;
+  --ins-amber-soft:#F5EAD8;
+  --ins-red:       #A03A2C;
+  --ins-red-soft:  #F4E2DE;
+  --ins-shadow:    0 1px 2px rgba(20,20,15,0.04), 0 4px 12px rgba(20,20,15,0.04);
+
+  /* 탭 전체 배경을 베이지로 */
+  background:var(--ins-bg);
+  color:var(--ins-ink);
+  letter-spacing:-0.005em;
+  min-height:100vh;
+  padding:0;
+}
+/* 화면 컨테이너 패딩 — 운영 .screen 기본값 무력화하고 프로토타입과 비슷하게 */
+#screen-insurance.screen{padding:24px 28px}
+
+/* page-header (보험자료 탭 헤더) — 프로토타입 톤 */
+#screen-insurance .page-header{padding:0 0 16px;margin-bottom:0;border-bottom:1px solid var(--ins-line)}
+#screen-insurance .page-title{font-size:20px;font-weight:700;color:var(--ins-ink);letter-spacing:-0.01em}
+#screen-insurance .page-sub{font-size:12px;color:var(--ins-ink-3);margin-top:4px}
+
+/* 카드 일반 (.card) — 베이지 배경에 흰 카드 */
+#screen-insurance .card{
+  background:var(--ins-bg-card) !important;
+  border:1px solid var(--ins-line) !important;
+  border-radius:8px !important;
+  box-shadow:var(--ins-shadow);
+  padding:16px 18px;
+}
+
+/* form-control (입력 필드) — 프로토타입 톤 */
+#screen-insurance .form-control{
+  background:var(--ins-bg-card);
+  border:1px solid var(--ins-line-2);
+  border-radius:5px;
+  color:var(--ins-ink);
+  padding:8px 10px;
+  font-size:13px;
+  transition:border-color .12s,box-shadow .12s;
+}
+#screen-insurance .form-control:focus{
+  outline:none;border-color:var(--ins-accent);
+  box-shadow:0 0 0 3px var(--ins-accent-soft);
+}
+#screen-insurance .form-label{font-size:11px;font-weight:600;color:var(--ins-ink-3);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px}
+
+/* 버튼 — 프로토타입 톤 (그린 액센트) */
+#screen-insurance .btn-primary{
+  background:var(--ins-accent);color:#fff;
+  border-radius:5px;font-weight:600;padding:8px 14px;
+  transition:background .12s;
+}
+#screen-insurance .btn-primary:hover{background:var(--ins-accent-2)}
+#screen-insurance .btn-primary:disabled{background:var(--ins-ink-4);cursor:not-allowed}
+#screen-insurance .btn-ghost{
+  background:transparent;color:var(--ins-ink-2);
+  border:1px solid var(--ins-line-2);border-radius:5px;
+  padding:7px 12px;font-weight:500;
+}
+#screen-insurance .btn-ghost:hover{background:var(--ins-bg-soft);border-color:var(--ins-accent)}
+#screen-insurance .btn-sm{font-size:12px;padding:6px 10px}
+
+/* 단계바 — 프로토타입 톤 */
+#screen-insurance .ins-step-bar{
+  background:var(--ins-bg-card);
+  box-shadow:var(--ins-shadow);
+  border:1px solid var(--ins-line);
+  border-radius:8px;
+}
+#screen-insurance .ins-step{padding:14px 8px}
+#screen-insurance .ins-step-active .ins-step-dot{background:var(--ins-accent)}
+#screen-insurance .ins-step-active .ins-step-label,
+#screen-insurance .ins-step-active .ins-step-num{color:var(--ins-accent)}
+#screen-insurance .ins-step-done .ins-step-dot{background:var(--ins-green)}
+#screen-insurance .ins-step-done .ins-step-label,
+#screen-insurance .ins-step-done .ins-step-num{color:var(--ins-green)}
+#screen-insurance .ins-step-num{font-size:10px;color:var(--ins-ink-3)}
+#screen-insurance .ins-step-label{font-size:12px;font-weight:700;color:var(--ins-ink-2)}
+
+/* 빈 상태 */
+#screen-insurance .empty{background:var(--ins-bg-card);border:1px dashed var(--ins-line-2);border-radius:8px;padding:40px 20px;text-align:center}
+#screen-insurance .empty-icon{font-size:36px;color:var(--ins-ink-4);margin-bottom:12px}
+#screen-insurance .empty-text{color:var(--ins-ink-3);font-size:13px}
+
+/* ══════════════════════════════════════════════════════════
+   v6 보험자료 탭 — 카드 구조 (프로토타입 톤 재정의)
    ══════════════════════════════════════════════════════════ */
 
 /* 좌측 카드 / 우측 룰엔진 그리드 */
@@ -432,6 +538,175 @@ select.form-control{cursor:pointer}
 .v6-meta-bar{display:flex;gap:14px;align-items:center;font-size:12px;margin-top:6px;color:var(--muted)}
 .v6-meta-bar b{color:var(--text);font-weight:700}
 .v6-meta-bar input[type=date]{padding:4px 8px;border:1px solid var(--line);border-radius:4px;font-size:12px;font-family:inherit;background:var(--surface)}
+
+/* ══════════════════════════════════════════════════════════
+   v6.1 프로토타입 톤 — v6-* 클래스 색상 덮어쓰기
+   #screen-insurance scope로 한정 (다른 탭 영향 X)
+   ══════════════════════════════════════════════════════════ */
+
+/* 데이터 카드 */
+#screen-insurance .v6-data-card{
+  background:var(--ins-bg-card);
+  border:1px solid var(--ins-line);
+  border-radius:6px;
+  box-shadow:none;
+  padding:16px 18px;
+}
+#screen-insurance .v6-data-card-icon.v6-icon-partner{background:var(--ins-accent-soft);color:var(--ins-accent)}
+#screen-insurance .v6-data-card-icon.v6-icon-policy{background:var(--ins-bg-soft);color:var(--ins-ink-2)}
+#screen-insurance .v6-data-card-icon.v6-icon-insured{background:#FEF3C7;color:#92400E}
+#screen-insurance .v6-data-card-icon.v6-icon-victim{background:var(--ins-amber-soft);color:var(--ins-amber)}
+#screen-insurance .v6-data-card-title{color:var(--ins-ink);font-size:13px;font-weight:600}
+#screen-insurance .v6-data-card-meta{color:var(--ins-ink-3);font-size:11px}
+#screen-insurance .v6-data-card-status.v6-status-ok{background:var(--ins-green-soft);color:var(--ins-green);border:0}
+#screen-insurance .v6-data-card-status.v6-status-warn{background:var(--ins-amber-soft);color:var(--ins-amber);border:0}
+#screen-insurance .v6-data-card-status.v6-status-pend{background:var(--ins-bg-soft);color:var(--ins-ink-3);border:0}
+
+/* 업로드 슬롯 */
+#screen-insurance .v6-upload-slot{
+  border:1px dashed var(--ins-line-2);
+  border-radius:5px;
+  background:var(--ins-bg-elev);
+  padding:8px 10px;
+  font-size:12px;
+}
+#screen-insurance .v6-upload-slot:hover{border-color:var(--ins-accent);background:var(--ins-accent-soft)}
+#screen-insurance .v6-upload-slot-over{border-color:var(--ins-accent);background:var(--ins-accent-soft)}
+#screen-insurance .v6-upload-slot.done{
+  border-style:solid;border-color:#86efac;
+  background:#F4FBF6;
+}
+#screen-insurance .v6-upload-slot.done:hover{background:#E8F0EA}
+#screen-insurance .v6-upload-slot-label{color:var(--ins-ink-2);font-weight:500}
+#screen-insurance .v6-upload-slot-status{color:var(--ins-green);font-weight:500;font-size:11px}
+#screen-insurance .v6-upload-slot-empty{color:var(--ins-ink-3)}
+#screen-insurance .v6-upload-required{color:var(--ins-red)}
+#screen-insurance .v6-upload-optional{color:var(--ins-ink-4)}
+
+/* 데이터 리스트 (분석 결과 행) */
+#screen-insurance .v6-data-list{border-top:1px solid var(--ins-line);padding-top:10px;margin-top:8px}
+#screen-insurance .v6-data-row{font-size:12px;padding:4px 0}
+#screen-insurance .v6-data-check{background:var(--ins-green)}
+#screen-insurance .v6-data-check.warn{background:var(--ins-amber)}
+#screen-insurance .v6-data-check.miss{background:var(--ins-red)}
+#screen-insurance .v6-data-key{color:var(--ins-ink-3)}
+#screen-insurance .v6-data-val{color:var(--ins-ink)}
+#screen-insurance .v6-data-val b{color:var(--ins-accent)}
+
+/* 카드 하단 안내 */
+#screen-insurance .v6-card-hint{
+  background:var(--ins-bg-soft);
+  border-left:2px solid var(--ins-line-2);
+  color:var(--ins-ink-3);
+}
+
+/* 피해세대 블록 */
+#screen-insurance .v6-victim-block{
+  background:var(--ins-bg-elev);
+  border:1px solid var(--ins-line);
+  border-radius:5px;
+}
+#screen-insurance .v6-victim-block-title{color:var(--ins-ink);font-size:12px;font-weight:600}
+#screen-insurance .v6-attach-btn{
+  border:1.5px dashed var(--ins-line-2);
+  color:var(--ins-ink-3);
+  background:transparent;
+}
+#screen-insurance .v6-attach-btn:hover{border-color:var(--ins-accent);color:var(--ins-accent);background:var(--ins-accent-soft)}
+
+/* 룰엔진 사이드바 */
+#screen-insurance .v6-engine-card{
+  background:var(--ins-bg-card);
+  border:1px solid var(--ins-line);
+  border-radius:6px;
+  box-shadow:var(--ins-shadow);
+  overflow:hidden;
+}
+#screen-insurance .v6-engine-head{background:var(--ins-ink);color:#fff;padding:14px 18px}
+#screen-insurance .v6-engine-head-title{font-size:12px;font-weight:600;letter-spacing:0.02em}
+#screen-insurance .v6-pulse-dot{background:var(--ins-green)}
+#screen-insurance .v6-engine-body{padding:18px}
+#screen-insurance .v6-engine-result{padding:12px;border-radius:6px;margin-bottom:16px;text-align:center;border:0}
+#screen-insurance .v6-engine-result.gray{background:var(--ins-bg-soft)}
+#screen-insurance .v6-engine-result.gray .v6-engine-result-label,
+#screen-insurance .v6-engine-result.gray .v6-engine-result-value{color:var(--ins-ink-3)}
+#screen-insurance .v6-engine-result:not(.gray):not(.amber):not(.red){background:var(--ins-green-soft)}
+#screen-insurance .v6-engine-result:not(.gray):not(.amber):not(.red) .v6-engine-result-label,
+#screen-insurance .v6-engine-result:not(.gray):not(.amber):not(.red) .v6-engine-result-value{color:var(--ins-green)}
+#screen-insurance .v6-engine-result.amber{background:var(--ins-amber-soft)}
+#screen-insurance .v6-engine-result.amber .v6-engine-result-label,
+#screen-insurance .v6-engine-result.amber .v6-engine-result-value{color:var(--ins-amber)}
+#screen-insurance .v6-engine-result.red{background:var(--ins-red-soft)}
+#screen-insurance .v6-engine-result.red .v6-engine-result-label,
+#screen-insurance .v6-engine-result.red .v6-engine-result-value{color:var(--ins-red)}
+#screen-insurance .v6-engine-result-label{font-size:11px;font-weight:500;letter-spacing:0.04em;margin-bottom:4px}
+#screen-insurance .v6-engine-result-value{font-size:22px;font-weight:700;letter-spacing:-0.02em}
+#screen-insurance .v6-engine-row{padding:8px 0;border-bottom:1px solid var(--ins-line);font-size:12px}
+#screen-insurance .v6-engine-row-key{color:var(--ins-ink-3)}
+#screen-insurance .v6-engine-row-val{color:var(--ins-ink);font-weight:500}
+#screen-insurance .v6-engine-row-val.green{color:var(--ins-green)}
+#screen-insurance .v6-engine-row-val.amber{color:var(--ins-amber)}
+#screen-insurance .v6-engine-row-val.red{color:var(--ins-red)}
+#screen-insurance .v6-engine-explain{
+  background:var(--ins-bg-soft);
+  border-left:2px solid var(--ins-accent);
+  color:var(--ins-ink-2);
+  font-size:11px;line-height:1.55;
+  padding:10px 12px;border-radius:0 4px 4px 0;
+}
+#screen-insurance .v6-engine-explain b{color:var(--ins-ink)}
+
+/* 약관 선택 바 */
+#screen-insurance .v6-policy-bar{
+  background:var(--ins-bg-card);
+  border:1px solid var(--ins-line);
+  border-radius:6px;
+  box-shadow:var(--ins-shadow);
+}
+#screen-insurance .v6-policy-bar-title{color:var(--ins-ink);font-size:13px;font-weight:600}
+#screen-insurance .v6-policy-bar-sub{color:var(--ins-ink-3)}
+#screen-insurance .ins-type-card{
+  background:var(--ins-bg-elev);
+  border:1.5px solid var(--ins-line);
+  border-radius:5px;
+  padding:12px;
+  transition:all .15s;
+}
+#screen-insurance .ins-type-card:hover{border-color:var(--ins-accent);background:var(--ins-accent-soft)}
+#screen-insurance .ins-type-card.ins-type-selected{
+  border-color:var(--ins-accent);
+  background:var(--ins-accent-soft);
+  box-shadow:0 0 0 2px rgba(46,92,74,.1);
+}
+#screen-insurance .ins-type-card.ins-type-selected > div:nth-child(2){color:var(--ins-accent) !important}
+
+/* 케이스 헤더 */
+#screen-insurance .v6-case-header{
+  background:var(--ins-bg-card);
+  border:1px solid var(--ins-line);
+  border-radius:6px;
+  box-shadow:var(--ins-shadow);
+}
+#screen-insurance .v6-case-header-name{color:var(--ins-ink);font-size:18px;font-weight:700;letter-spacing:-0.01em}
+#screen-insurance .v6-case-header-sub{color:var(--ins-ink-3)}
+#screen-insurance .v6-case-tag{background:var(--ins-accent-soft);color:var(--ins-accent);font-weight:600}
+#screen-insurance .v6-meta-bar{color:var(--ins-ink-3)}
+#screen-insurance .v6-meta-bar b{color:var(--ins-ink)}
+#screen-insurance .v6-meta-bar input[type=date]{
+  background:var(--ins-bg-card);border:1px solid var(--ins-line-2);color:var(--ins-ink);
+}
+
+/* ins-banner (안내 배너) */
+#screen-insurance .ins-banner-success{background:var(--ins-green-soft);color:var(--ins-green);border:1px solid #86efac}
+#screen-insurance .ins-banner-warn{background:var(--ins-amber-soft);color:var(--ins-amber);border:1px solid #fcd34d}
+#screen-insurance .ins-banner-info{background:var(--ins-accent-soft);color:var(--ins-accent);border:1px solid #cfd9d4}
+
+/* 액션바 */
+#screen-insurance .ins-action-bar{
+  border-top:1px solid var(--ins-line);
+  margin-top:20px;padding-top:14px;
+  display:flex;justify-content:space-between;align-items:center;
+}
 
 /* ══════════════════════════════════════════════════════════
    v6 손해사정 보고서 양식 (화면 + 인쇄 공용)
@@ -3874,7 +4149,7 @@ if (typeof window.escapeHtml !== 'function') {
 }
 </script>
 
-<script src="./insurance-tab.js?v=6.0.2"></script>
+<script src="./insurance-tab.js?v=6.1"></script>
 <!-- v6 패치: 9케이스 검증 PASS 룰엔진 + 약관선택 모달 + 파트너 임포트 -->
 <script src="./sabi-rule-v6.js?v=6.0.0"></script>
 <script src="./insurance-tab-v6-patch.js?v=6.0.0"></script>
