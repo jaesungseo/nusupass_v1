@@ -1204,8 +1204,20 @@ select.report-editable-input{
   size:A4 portrait;
   margin:12mm 14mm;
 }
+/* ════════════════════════════════════════════════════════════════
+   v6.1.3 인쇄 CSS — 전면 재작성
+   원칙: #insuranceTabBody만 살리고 나머지는 모두 숨긴다.
+        Ctrl+P 직접 호출과 s3ExportPdf() 양쪽 모두 같은 결과 보장.
+   ════════════════════════════════════════════════════════════════ */
+
+/* @page 규격: A4, 여백 12mm */
+@page{
+  size:A4;
+  margin:12mm 12mm 14mm 12mm;
+}
+
 @media print{
-  /* ─── 1단계: 운영 사이트 + v6.1.1 추가 컴포넌트 모두 숨김 ─── */
+  /* ─── 1단계: 페이지 외 모든 것 숨김 ─── */
   .sidebar,
   .sb-brand, .sb-user, .sb-nav, .sb-group, .sb-btn, .sb-footer,
   .no-print,
@@ -1216,21 +1228,26 @@ select.report-editable-input{
   .v6-engine-card,
   .ins-action-bar,
   .toast-container, #toastContainer, #toast-container,
+  [class*="toast"],                /* 모든 toast 변종 */
   .modal, .modal-backdrop,
-  .ins-modal-overlay,            /* v6.1.1 모달 */
-  .v6-output-header,             /* v6.1.1 출력 헤더 (수신/참조/제목 입력) */
-  .v6-action-side,               /* v6.1.1 우측 액션 사이드 */
-  .v6-action-card,               /* v6.1.1 액션 카드들 */
-  .v6-output-tabs,               /* v6.1.1 누수소견서/손해사정서 탭 */
+  .ins-modal-overlay,
+  .v6-output-header,
+  .v6-action-side,
+  .v6-action-card,
+  .v6-output-tabs,
   .page-header,
-  #insuranceCaseSelect,          /* 사건 선택 셀렉트박스 */
+  /* 사건 선택 셀렉트박스 + 그 부모 카드 (insuranceTabBody 위 형제 .card) */
+  #screen-insurance > .card,
+  #insuranceCaseSelect,
   select[id*="caseSelect"],
+  /* 누수소견서 탭(display:none이지만 명시적으로 차단) */
+  #tab-content-leak,
   button:not(.print-allowed){
     display:none !important;
     visibility:hidden !important;
   }
 
-  /* ─── 2단계: 그리드 레이아웃 → 단일 컬럼 풀폭 ─── */
+  /* ─── 2단계: 레이아웃 평탄화 — 보험자료 탭 외 다른 화면도 안전하게 ─── */
   html,body{
     background:#fff !important;
     margin:0 !important;padding:0 !important;
@@ -1253,31 +1270,50 @@ select.report-editable-input{
     margin:0 !important;padding:0 !important;
     width:100% !important;max-width:none !important;
   }
-  /* 보험자료 탭 베이지 배경 → 흰색 */
-  #screen-insurance{background:#fff !important;padding:0 !important}
-  #screen-insurance.screen{padding:0 !important}
+  #screen-insurance,
+  #screen-insurance.screen{
+    background:#fff !important;
+    padding:0 !important;
+  }
+  #insuranceTabBody{
+    margin:0 !important;
+    padding:0 !important;
+    background:#fff !important;
+  }
 
-  /* v6.1.1 출력 그리드 → 단일 컬럼 (액션 사이드 숨김 후) */
+  /* ─── 3단계: v6 출력 그리드 → 단일 컬럼 ─── */
   .v6-output-grid,
-  .v6-collect-grid{
+  .v6-collect-grid,
+  #screen-insurance .v6-output-grid,
+  #screen-insurance .v6-collect-grid{
     display:block !important;
     grid-template-columns:none !important;
     gap:0 !important;
   }
 
-  /* v6.1.1 출력 페이지 컨테이너 → 스크롤 제거, 풀폭 */
+  /* ─── 4단계: ⭐ 핵심 — v6-output-pages 스크롤/높이 강제 해제 ─── */
+  /* specificity 충돌 방지를 위해 가장 구체적인 셀렉터로 재정의 */
   .v6-output-pages,
-  #screen-insurance .v6-output-pages{
+  #screen-insurance .v6-output-pages,
+  #report-print.v6-output-pages,
+  body #screen-insurance #report-print.v6-output-pages{
     display:block !important;
     max-height:none !important;
+    height:auto !important;
     overflow:visible !important;
+    overflow-y:visible !important;
     padding:0 !important;
+    margin:0 !important;
     gap:0 !important;
+    background:transparent !important;
+    border:0 !important;
+    border-radius:0 !important;
   }
 
-  /* v6.1.1 .v6-page-card → 평면화 (테두리/그림자/min-height 제거하고 자연 흐름) */
+  /* ─── 5단계: ⭐ 핵심 — v6-page-card 페이지 강제 분할 + 평면화 ─── */
   .v6-page-card,
-  #screen-insurance .v6-page-card{
+  #screen-insurance .v6-page-card,
+  #report-print .v6-page-card{
     background:#fff !important;
     border:0 !important;
     box-shadow:none !important;
@@ -1285,13 +1321,22 @@ select.report-editable-input{
     padding:0 !important;
     margin:0 !important;
     min-height:0 !important;
+    width:100% !important;
+    max-width:100% !important;
+    /* 카드 단위 강제 페이지 분할 */
     page-break-after:always !important;
     break-after:page !important;
+    page-break-inside:auto !important;  /* 카드 내부는 분할 허용 (사진 페이지 등) */
+    break-inside:auto !important;
   }
-  .v6-page-card:last-child{page-break-after:auto !important}
-  .v6-page-num{display:none !important}    /* "1 / 7" 표시는 인쇄 시 숨김 — @page에서 페이지 번호 처리 */
+  .v6-page-card:last-child,
+  #report-print .v6-page-card:last-child{
+    page-break-after:auto !important;
+    break-after:auto !important;
+  }
+  .v6-page-num{display:none !important}
 
-  /* ─── 3단계: 보고서 컨테이너 — 깔끔하게 ─── */
+  /* ─── 6단계: 보고서 컨테이너 ─── */
   .report-doc{
     border:0 !important;
     box-shadow:none !important;
@@ -1303,25 +1348,57 @@ select.report-editable-input{
     background:#fff !important;
   }
 
-  /* 섹션 페이지 분할 */
+  /* ─── 7단계: 섹션 분할 ─── */
   .report-section{
     page-break-inside:avoid;break-inside:avoid;
     border-bottom:0 !important;
     padding:8px 0 !important;
   }
   .report-section.page-break-after,
-  .report-cover{page-break-after:always !important;break-after:page !important}
+  .report-cover{
+    page-break-after:always !important;
+    break-after:page !important;
+  }
 
-  /* 표/사진 분할 방지 */
+  /* ─── 8단계: 표/사진 분할 정책 ─── */
+  /* 표는 분할 방지 유지 */
   .report-kv-table, .report-num-table,
   .report-meta-table, .report-three-col-table{
     page-break-inside:avoid;break-inside:avoid;
   }
-  .report-photo,.report-photo-empty{
-    page-break-inside:avoid;break-inside:avoid;
+
+  /* ⭐ 사진 그룹: 분할 허용 (한 그룹이 페이지보다 길면 다음 페이지로 흘러야 함) */
+  .report-photo-group{
+    page-break-inside:auto !important;
+    break-inside:auto !important;
+    margin:6px 0 !important;
+  }
+  /* ⭐ 사진 그리드: 인쇄용 2컬럼 (화면은 3컬럼 유지) */
+  .report-photo-grid{
+    display:grid !important;
+    grid-template-columns:repeat(2, 1fr) !important;
+    gap:6px !important;
+    page-break-inside:auto !important;
+    break-inside:auto !important;
+  }
+  /* ⭐ 개별 사진만 분할 보호 — 한 장씩은 잘리지 않게 */
+  .report-photo,
+  .report-photo-empty{
+    page-break-inside:avoid !important;
+    break-inside:avoid !important;
+    /* 인쇄 시 사진 크기: 2컬럼 기준 약 90mm 폭 → 비율 4/3로 약 67mm 높이 */
+    width:100% !important;
+    aspect-ratio:4/3 !important;
+    object-fit:cover !important;
+    max-width:none !important;
+  }
+  .report-photo-label{
+    page-break-after:avoid !important;
+    break-after:avoid !important;
+    font-size:11px !important;
   }
 
-  /* 편집 필드: 노란 배경/점선 제거 */
+  /* ─── 9단계: 편집 필드 평탄화 ─── */
   .report-editable,
   .report-editable-input,
   select.report-editable-input{
@@ -1331,14 +1408,16 @@ select.report-editable-input{
     box-shadow:none !important;
     color:#1a1a1a !important;
     appearance:none !important;
+    -webkit-appearance:none !important;
   }
-  select.report-editable-input{background-image:none !important;padding-right:0 !important}
+  select.report-editable-input{
+    background-image:none !important;
+    padding-right:0 !important;
+  }
 
-  /* 표지 회사 헤더 */
+  /* ─── 10단계: 표지/색상 보존 ─── */
   .report-company-header{border-bottom-width:1.5pt}
   .report-cover{padding:0 !important}
-
-  /* 색상 보존 */
   .report-section-title,
   .report-kv-table td.lbl,
   .report-meta-table td.lbl,
@@ -1350,7 +1429,11 @@ select.report-editable-input{
   }
 }
 
-/* 화면에서 인쇄 모드 미리보기 (s3ExportPdf가 body에 .printing-report toggle) */
+/* ════════════════════════════════════════════════════════════════
+   화면 인쇄 모드 미리보기 (body.printing-report) — @media print와 동일 효과
+   s3ExportPdf()가 body에 .printing-report toggle. Ctrl+P 직접 호출 시 미적용.
+   주: 진리 기준은 @media print. 여기는 보조 (window.print() 호출 직전 화면 정리용)
+   ════════════════════════════════════════════════════════════════ */
 body.printing-report .no-print,
 body.printing-report .sidebar,
 body.printing-report .v6-case-header,
@@ -1360,13 +1443,34 @@ body.printing-report .ins-action-bar,
 body.printing-report .ins-step-bar,
 body.printing-report .v6-output-header,
 body.printing-report .v6-action-side,
-body.printing-report .v6-output-tabs{display:none !important}
+body.printing-report .v6-output-tabs,
+body.printing-report .toast-container,
+body.printing-report #toastContainer,
+body.printing-report #toast-container,
+body.printing-report [class*="toast"],
+body.printing-report #screen-insurance > .card,
+body.printing-report .page-header,
+body.printing-report #tab-content-leak{display:none !important}
 body.printing-report .app{display:block !important}
 body.printing-report .content{padding:0 !important;margin:0 !important;width:100% !important}
 body.printing-report #screen-insurance{background:#fff !important;padding:0 !important}
 body.printing-report .v6-output-grid{display:block !important}
-body.printing-report .v6-output-pages{max-height:none !important;overflow:visible !important;padding:0 !important;gap:0 !important}
-body.printing-report .v6-page-card{border:0 !important;box-shadow:none !important;padding:0 !important;min-height:0 !important}
+body.printing-report .v6-output-pages{
+  max-height:none !important;
+  height:auto !important;
+  overflow:visible !important;
+  padding:0 !important;
+  gap:0 !important;
+  background:transparent !important;
+  border:0 !important;
+}
+body.printing-report .v6-page-card{
+  border:0 !important;
+  box-shadow:none !important;
+  padding:0 !important;
+  margin:0 !important;
+  min-height:0 !important;
+}
 
 /* ════════════════════════════════════════════════
    v5.7.x: 회사·내 프로필 설정 페이지
@@ -4593,7 +4697,7 @@ if (typeof window.escapeHtml !== 'function') {
 }
 </script>
 
-<script src="./insurance-tab.js?v=6.1.2"></script>
+<script src="./insurance-tab.js?v=6.1.4"></script>
 <!-- v6 패치: 9케이스 검증 PASS 룰엔진 + 약관선택 모달 + 파트너 임포트 -->
 <script src="./sabi-rule-v6.js?v=6.0.0"></script>
 <script src="./insurance-tab-v6-patch.js?v=6.0.0"></script>

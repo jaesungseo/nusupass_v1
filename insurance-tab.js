@@ -3186,6 +3186,11 @@ async function s2Save() {
 let _insPartnerReport = null;   // 파트너 수리완료 보고 (assignment 레코드 일부)
 let _insRepairPhotos  = { before: [], during: [], after: [] };  // signed URLs
 
+// v6.1.4: 보고서 양식(report-template-v2.html iframe)에 주입할 데이터
+let _insCurrentReportData = null;
+let _reportRecipient = '';   // 수신 (보험사명)
+let _reportDept = '';         // 참조 (손해사정팀 등)
+
 // 유틸: 날짜·시간 포맷
 function fmtDate(d) {
   if (!d) return '';
@@ -3297,6 +3302,11 @@ function insStep3HTML() {
   const pay = (r.coverage_result === '부책' || cl.coverage_result === '부책') ? Math.max(0, rc - ded) : 0;
   const prevCost = cl.damage_prevention_cost || 0;
 
+  // v6.1.4: 보고서 양식(iframe)에 주입할 데이터 빌드
+  _reportRecipient = cl.report_recipient || cl.insurer_name || 'DB손해보험';
+  _reportDept = cl.report_cc || '손해사정팀';
+  _insCurrentReportData = buildReportData(cl, r, co, _insPartners, victims, photos);
+
   // 헤더 상태 배지
   const covVal = r.coverage_result || cl.coverage_result;
   const coverageBadge = covVal === '부책'
@@ -3321,23 +3331,23 @@ function insStep3HTML() {
       <input type="text" id="rep-recipient" 
         value="${escapeHtml(cl.report_recipient || cl.insurer_name || 'DB손해보험')}" 
         placeholder="보험사명"
-        oninput="document.getElementById('cover-recipient').textContent=this.value||'—'">
+        oninput="s3UpdateReportField('recipient', this.value)">
     </label>
     <label>
       <span>참조</span>
       <input type="text" id="rep-cc" 
         value="${escapeHtml(cl.report_cc || '손해사정팀')}" 
         placeholder="부서명 / 담당자" style="width:200px"
-        oninput="document.getElementById('cover-cc').textContent=this.value||'—'">
+        oninput="s3UpdateReportField('dept', this.value)">
     </label>
     <label>
       <span>제목</span>
       <input type="text" id="rep-title" 
         value="${escapeHtml(cl.report_title || '누수사고 손해사정서')}" 
         placeholder="보고서 제목" style="width:240px"
-        oninput="document.getElementById('cover-title').textContent=this.value||'—'">
+        oninput="s3UpdateReportField('title', this.value)">
     </label>
-    <span style="margin-left:auto;font-size:11px;color:var(--ins-ink-3)">→ 변경 시 표지에 즉시 반영</span>
+    <span style="margin-left:auto;font-size:11px;color:var(--ins-ink-3)">→ 변경 시 양식에 즉시 반영</span>
   </div>
 
   <!-- 좌(보고서 페이지들) + 우(액션 사이드) -->
@@ -3362,39 +3372,17 @@ function insStep3HTML() {
         </button>
       </div>
 
-      <!-- 탭 컨텐츠 1: 손해사정서 (7페이지) -->
+      <!-- 탭 컨텐츠 1: 손해사정서 (report-template-v2.html iframe 임베드 — v6.1.4) -->
       <div id="tab-content-report" style="display:block">
-        <div id="report-print" class="report-doc v6-output-pages">
-          <div class="v6-page-card report-cover-wrap">
-            ${renderReportCover(cl, co, victims)}
-            <div class="v6-page-num">1 / 7</div>
-          </div>
-          <div class="v6-page-card">
-            ${renderReportSection1_Summary(cl, r, fd, pa, rc, ded, pay, prevCost)}
-            <div class="v6-page-num">2 / 7</div>
-          </div>
-          <div class="v6-page-card">
-            ${renderReportSection2_Contract(cl, r)}
-            <div class="v6-page-num">3 / 7</div>
-          </div>
-          <div class="v6-page-card">
-            ${renderReportSection3_General(r, cl, victims)}
-            <div class="v6-page-num">4 / 7</div>
-          </div>
-          <div class="v6-page-card">
-            ${renderReportSection4_Accident(cl, r, pa, photos)}
-            <div class="v6-page-num">5 / 7</div>
-          </div>
-          <div class="v6-page-card">
-            ${renderReportSection5_Liability(cl, r)}
-            <div class="v6-page-num">6 / 7</div>
-          </div>
-          <div class="v6-page-card">
-            ${renderReportSection6_Damage(rc, ded, pay)}
-            ${renderReportSection7_Attachments()}
-            ${renderReportFooter(co)}
-            <div class="v6-page-num">7 / 7</div>
-          </div>
+        <iframe
+          id="reportFrame"
+          src="./report-template-v2.html?embed=1&case=${encodeURIComponent(cl.case_no || 'SMPL_01_백석균')}&recipient=${encodeURIComponent(_reportRecipient || (r.report_cc || '보험사'))}&dept=${encodeURIComponent(_reportDept || '손해사정팀')}&title=${encodeURIComponent(r.report_title || '누수사고 손해사정서')}"
+          style="width:100%;height:1400px;border:1px solid var(--ins-line);border-radius:6px;background:white;display:block;"
+          title="손해사정서 양식 (SMPL_01 기반 v6.1.4)"
+          onload="s3InjectReportData()"
+        ></iframe>
+        <div style="margin-top:8px;font-size:11px;color:var(--ins-muted);text-align:center">
+          ⓘ 양식: SMPL_01 백석균 양식 정본 7페이지 · 우측 PDF 다운로드 버튼으로 인쇄
         </div>
       </div>
 
@@ -4040,6 +4028,125 @@ function renderReportFooter(co) {
   </div>`;
 }
 
+// ════════════════════════════════════════════════════════════════
+// v6.1.4: 보고서 데이터 빌더
+// 운영 데이터를 report-template-v2.html의 D 객체 스키마로 변환
+// (cl=claim, r=result, co=company, partners, victims, photos)
+// ════════════════════════════════════════════════════════════════
+function buildReportData(cl, r, co, partners, victims, photos) {
+  cl = cl || {};
+  r = r || {};
+  co = co || {};
+  partners = partners || [];
+  victims = victims || [];
+  photos = photos || { before: [], during: [], after: [] };
+
+  // 마무리 시점 데이터
+  const todayStr = new Date().toISOString().slice(0,10).replace(/-/g,'.');
+  const accDate = (r.accident_datetime || cl.accident_at || '').slice(0,10).replace(/-/g,'.');
+  const accDateLong = accDate ? accDate.replace(/(\d{4})\.(\d{2})\.(\d{2})/, '$1년 $2월 $3일') : '';
+
+  // 증권번호 마스킹 (앞 5자리 + **** + 뒤 3자리)
+  const policyNoMasked = (() => {
+    const p = r.policy_no || '';
+    if (!p) return '';
+    if (p.length < 8) return p;
+    return p.slice(0,5) + '****' + p.slice(-3);
+  })();
+
+  // 동거인 (배열 → 표시 문자열)
+  const cohabsRaw = r.cohabitants || r.insured_cohabitants || [];
+  const cohabsStr = Array.isArray(cohabsRaw)
+    ? cohabsRaw.map(c => typeof c === 'string' ? c : (c.name + (c.relation ? `(${c.relation})` : ''))).join(', ')
+    : (cohabsRaw || '-');
+
+  // 첨부자료 기본값
+  const defaultAttachments = ['보험증권', '보험청구서', '누수소견서', '가/피해자 자료 일체', '위임장', '선임권동의서', '..'];
+
+  return {
+    coverNo: r.report_no || `NP-${(cl.case_no || '0000000').replace(/[^0-9]/g,'').slice(-7) || '0000000'}`,
+    coverDate: todayStr.replace(/(\d{4})\.(\d{2})\.(\d{2})/, '$1년 $2월 $3일'),
+    insuredName: r.insured_name || cl.insured_name || '-',
+    accDate: accDateLong || '-',
+    accAddr: r.accident_address || cl.accident_address || '-',
+    policyNoMasked: policyNoMasked,
+    officer: co.adjuster_name || co.officer_name || co.ceo_name || 'OOO',
+    officerCert: co.adjuster_cert_no || co.officer_cert_no || '000000000',
+    officerHp: co.adjuster_phone || co.officer_phone || co.phone || '010-0000-0000',
+    officerEmail: co.adjuster_email || co.email || 'nusupass.cs@gmail.com',
+    company: co.company_name || '누수패스손해사정㈜',
+    ceo: co.ceo_name || 'OOO',
+    summary: {
+      limitProperty: (r.coverage_limit || r.limit_property || 0).toLocaleString(),
+      damage: '-', liable: '-', deduct: '-', payout: '-'
+    },
+    payment: {
+      lossAmt: '0,000,000',
+      agreeAmt: '0,000,000',
+      deductAmt: '0,000,000',
+      finalAmt: '0,000,000',
+      bank: '00', acct: '', holder: 'OOO',
+      jumin: '000000-0******', deductFee: '₩', relation: '피해자'
+    },
+    contract: [
+      { label: '보험종목',   value: r.policy_product || '-', note: '' },
+      { label: '증권번호',   value: policyNoMasked || (r.policy_no || '-'), note: '' },
+      { label: '피보험자',   value: r.insured_name || '-', note: '' },
+      { label: '보험기간',   value: r.policy_period || '-', note: '' },
+      { label: '소재지',     value: r.policy_address || '-', note: r.policy_address && r.accident_address && r.policy_address !== r.accident_address ? '사고장소와 불일치' : '' },
+      { label: '사고장소',   value: r.accident_address || '-', note: r.policy_address && r.accident_address && r.policy_address !== r.accident_address ? '증권주소지와 불일치' : '' },
+      { label: '보상한도',   value: r.coverage_limit ? `₩${Number(r.coverage_limit).toLocaleString()}` : '-', note: '' },
+      { label: '자기부담금', value: r.deductible ? `₩${Number(r.deductible).toLocaleString()}` : '-', note: '대물사고시' },
+      { label: '특약조건',   value: r.policy_type === 'GUHYUNG' ? '가족일상생활배상책임(구형)' : r.policy_type === 'SHINHYUNG' ? '가족일상생활배상책임(신형)' : r.policy_type === 'ILBAECHEK' ? '일상생활배상책임' : '-', note: '' },
+      { label: '사고일자',   value: accDate || '-', note: '' },
+      { label: '중복보험',   value: r.duplicate_check || '확인필요', note: '' },
+    ],
+    insuredInfo: [
+      { label: '성명',             value: r.insured_name || '-' },
+      { label: '주민번호',         value: r.insured_jumin || '-' },
+      { label: '연락처',           value: r.insured_phone || '-' },
+      { label: '주민등록등본\n소재지', value: r.insured_address || '-' },
+      { label: '동거인',           value: cohabsStr || '-' },
+      { label: '건물소유자',       value: r.building_owner || '-' },
+      { label: '피보험자지위',     value: r.insured_status || '-' },
+    ],
+    victims: (victims.length ? victims : [{ victim_name:'', victim_jumin:'', victim_phone:'', victim_address:'', victim_owner:'', victim_note:'' }]).map(v => ({
+      info: [
+        { label: '성명',       value: v.victim_name || '-' },
+        { label: '주민번호',   value: v.victim_jumin || '-' },
+        { label: '연락처',     value: v.victim_phone || '-' },
+        { label: '소재지',     value: v.victim_address || '-' },
+        { label: '건물소유자', value: v.victim_owner || '-' },
+        { label: '기타사항',   value: v.victim_note || v.damage_status || '-' },
+      ]
+    })),
+    accident: {
+      date: accDate || '-',
+      addr: r.accident_address || cl.accident_address || '-',
+      cause: r.leak_cause || '-',
+      desc: r.accident_summary || r.investigator_opinion || '-',
+      photos: {
+        before: (photos.before || []).slice(0, 2).map(p => ({ url: p.url || '' })),
+        during: (photos.during || []).slice(0, 2).map(p => ({ url: p.url || '' })),
+        after:  (photos.after  || []).slice(0, 2).map(p => ({ url: p.url || '' })),
+      }
+    },
+    liability: {
+      establish: r.liability_decision || '-',
+      lawCite: r.law_cite || '민법 제750조 (일반 불법행위 책임) 및 제758조 (공작물 책임)',
+      lawReason: r.liability_reason || '-',
+      coverDecision: r.cover_decision || '-',
+      coverReason: r.cover_reason || '-',
+      faultRatio: r.fault_ratio || '0%',
+      faultReview: r.fault_review || '-',
+      mitigation: r.mitigation_decision || '-',
+      mitigationReview: r.mitigation_review || '-'
+    },
+    attachments: r.attachments && r.attachments.length ? r.attachments : defaultAttachments
+  };
+}
+window.buildReportData = buildReportData;
+
 // ─── HTML escape (XSS 방지) ────────────────────────────────
 function escapeHtml(s) {
   if (s === null || s === undefined) return '';
@@ -4105,10 +4212,65 @@ async function s3SaveReport() {
 
 // ─── PDF 인쇄 (window.print + @media print) ───────────────
 async function s3ExportPdf() {
-  document.body.classList.add('printing-report');
+  // v6.1.4: iframe 기반 보고서 인쇄
+  // iframe 내부 contentWindow.print() 호출 → iframe만 인쇄됨
+  const iframe = document.getElementById('reportFrame');
+  if (!iframe) {
+    // 폴백: 기존 방식 (iframe 없는 환경)
+    document.body.classList.add('printing-report');
+    try { window.print(); }
+    finally { setTimeout(() => document.body.classList.remove('printing-report'), 500); }
+    return;
+  }
   try {
+    iframe.contentWindow.focus();
+    iframe.contentWindow.print();
+  } catch (e) {
+    console.warn('iframe print failed, fallback to window.print()', e);
     window.print();
-  } finally {
-    setTimeout(() => document.body.classList.remove('printing-report'), 500);
   }
 }
+
+// v6.1.4: 현재 케이스의 데이터를 iframe(report-template-v2.html)에 주입
+function s3InjectReportData() {
+  const iframe = document.getElementById('reportFrame');
+  if (!iframe || !iframe.contentWindow) return;
+  // 현재 보고서 데이터를 _insCurrentReportData에 모아두면 iframe에 postMessage
+  if (typeof _insCurrentReportData !== 'undefined' && _insCurrentReportData) {
+    try {
+      iframe.contentWindow.postMessage({
+        type: 'setCase',
+        data: _insCurrentReportData
+      }, '*');
+    } catch (e) {
+      console.warn('s3InjectReportData postMessage failed', e);
+    }
+  }
+}
+
+// v6.1.4: 수신/참조/제목 변경 시 iframe URL 갱신 (양식에 즉시 반영)
+function s3UpdateReportField(field, value) {
+  const iframe = document.getElementById('reportFrame');
+  if (!iframe) return;
+  if (field === 'recipient') _reportRecipient = value || '';
+  if (field === 'dept') _reportDept = value || '';
+  // URL 파라미터 갱신해서 iframe 재로딩 (postMessage로도 가능하나 URL이 양식과 단방향 결합되어 있어 URL 갱신이 가장 확실)
+  try {
+    const url = new URL(iframe.src, location.href);
+    if (field === 'recipient') url.searchParams.set('recipient', value || '');
+    if (field === 'dept') url.searchParams.set('dept', value || '');
+    if (field === 'title') url.searchParams.set('title', value || '');
+    // src를 변경하지 않고도 postMessage로 빠른 갱신
+    if (iframe.contentWindow) {
+      iframe.contentWindow.postMessage({
+        type: 'setHeader',
+        data: { recipient: _reportRecipient, dept: _reportDept, title: field === 'title' ? value : undefined }
+      }, '*');
+    }
+  } catch (e) {
+    console.warn('s3UpdateReportField failed', e);
+  }
+}
+window.s3ExportPdf = s3ExportPdf;
+window.s3InjectReportData = s3InjectReportData;
+window.s3UpdateReportField = s3UpdateReportField;
