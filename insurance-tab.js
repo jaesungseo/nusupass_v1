@@ -2332,8 +2332,48 @@ ${typeCtx}
       }
     }
 
-    // ── Call 3a: 피해자 인적 정보 (등본 + 가족관계증명서) ──
-    showExtracting('피해자 인적 정보 추출 중...', 60);
+    // ── Call 3a: 피해자 건축물대장 + 등기부 (1차, 90% 케이스 — 직하층 청구권자=건물소유자) ──
+    showExtracting('피해자 건축물대장·등기부 추출 중...', 60);
+    const victimOwnerDocs = [];
+    for (const code of ['ownership_doc_victim', 'ownership_doc_victim_2', 'ownership_victim']) {
+      const up = _insUploaded[code];
+      if (up && !Array.isArray(up) && up.file_path) {
+        const b64 = await fetchBase64(up.file_path);
+        if (b64) victimOwnerDocs.push({ b64, mt: docMediaType(up.file_path), name: up.doc_name || code });
+      }
+    }
+    if (victimOwnerDocs.length > 0) {
+      const contentArr = victimOwnerDocs.map(d => {
+        const isPdf = d.mt === 'application/pdf';
+        const item = { type: isPdf ? 'document' : 'image',
+                       source: { type:'base64', media_type:d.mt, data:d.b64 } };
+        if (isPdf) item.title = d.name;
+        return item;
+      });
+      contentArr.push({ type:'text', text:
+`첨부 서류(피해자 건축물대장·등기부등본)를 분석하여 아래 JSON 추출.
+누수 사고에서 직하층 청구권자는 대부분 건물 소유자이므로, 소유자가 청구권자(피해자)일 가능성이 높습니다.
+정보 없으면 빈 문자열.
+{
+  "victim_owner_name": "피해세대 건물 소유자 (소유권 이전일 있으면 함께. 예: 이현옥 (소유권이전 2008.01.16))",
+  "victim_owner_name_only": "건물 소유자 성명만 (괄호 없이. 예: 이현옥)",
+  "victim_building_address": "피해세대 건물 주소 (건축물대장·등기부 기준)"
+}`});
+      const r3a = await callClaudeMulti(contentArr, SYS);
+      if (r3a) {
+        addCandidate('victim_owner_name_v0', r3a.victim_owner_name, '건축물대장/등기부');
+        // 1차로 피해자 성명·주소 채움 (소유자=피해자 가정 — Call 3b의 등본이 있으면 덮어씀)
+        if (r3a.victim_owner_name_only) {
+          addCandidate('victim_name_v0', r3a.victim_owner_name_only, '건축물대장/등기부 (소유자)');
+        }
+        if (r3a.victim_building_address) {
+          addCandidate('victim_address_v0', r3a.victim_building_address, '건축물대장/등기부');
+        }
+      }
+    }
+
+    // ── Call 3b: 피해자 등본·가족관계 (2차 보완, 임차인 청구 케이스 — 10%) ──
+    showExtracting('피해자 등본·가족관계 추출 중...', 75);
     const victimPersonalDocs = [];
     for (const code of ['family_doc_victim', 'family_doc_victim_2']) {
       const up = _insUploaded[code];
@@ -2354,45 +2394,16 @@ ${typeCtx}
 `첨부 서류(피해자 주민등록등본·가족관계증명서)를 분석하여 아래 JSON 추출.
 정보 없으면 빈 문자열.
 {
-  "victim_name": "피해자 성명",
+  "victim_name": "피해자 본인 성명 (등본상 청구권자)",
   "victim_rrn": "주민등록번호 (마스킹 포함)",
-  "victim_address": "피해자 소재지 (등본상 주소)"
-}`});
-      const r3a = await callClaudeMulti(contentArr, SYS);
-      if (r3a) {
-        addCandidate('victim_name_v0', r3a.victim_name, '주민등록등본');
-        addCandidate('victim_rrn_v0', r3a.victim_rrn, '주민등록등본');
-        addCandidate('victim_address_v0', r3a.victim_address, '주민등록등본');
-      }
-    }
-
-    // ── Call 3b: 피해자 소유자 정보 (건축물대장 + 등기부등본) ──
-    showExtracting('피해자 소유자 정보 추출 중...', 75);
-    const victimOwnerDocs = [];
-    for (const code of ['ownership_doc_victim', 'ownership_doc_victim_2', 'ownership_victim']) {
-      const up = _insUploaded[code];
-      if (up && !Array.isArray(up) && up.file_path) {
-        const b64 = await fetchBase64(up.file_path);
-        if (b64) victimOwnerDocs.push({ b64, mt: docMediaType(up.file_path), name: up.doc_name || code });
-      }
-    }
-    if (victimOwnerDocs.length > 0) {
-      const contentArr = victimOwnerDocs.map(d => {
-        const isPdf = d.mt === 'application/pdf';
-        const item = { type: isPdf ? 'document' : 'image',
-                       source: { type:'base64', media_type:d.mt, data:d.b64 } };
-        if (isPdf) item.title = d.name;
-        return item;
-      });
-      contentArr.push({ type:'text', text:
-`첨부 서류(피해자 건축물대장·등기부등본)를 분석하여 아래 JSON 추출.
-정보 없으면 빈 문자열.
-{
-  "victim_owner_name": "피해세대 건물 소유자 (소유권 이전일 있으면 함께. 예: 이현옥 (소유권이전 2008.01.16))"
+  "victim_address": "피해자 실거주지 (등본상 주소)"
 }`});
       const r3b = await callClaudeMulti(contentArr, SYS);
       if (r3b) {
-        addCandidate('victim_owner_name_v0', r3b.victim_owner_name, '건축물대장/등기부');
+        // 등본 있으면 우선 적용 (1차 건축물대장 결과를 덮어씀)
+        addCandidate('victim_name_v0', r3b.victim_name, '주민등록등본');
+        addCandidate('victim_rrn_v0', r3b.victim_rrn, '주민등록등본');
+        addCandidate('victim_address_v0', r3b.victim_address, '주민등록등본');
       }
     }
 
