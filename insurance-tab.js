@@ -2262,19 +2262,18 @@ ${typeCtx}
       }
     }
 
-    // ── Call 2: 피보험자 공공서류 (통합 슬롯 — 등본/가족관계 + 건축물대장/등기부) ──
-    showExtracting('피보험자 공공서류 추출 중...', 35);
-    const insuredDocs = [];
-    for (const code of ['family_doc', 'family_doc_2', 'ownership_insured', 'ownership_insured_2',
-                         'resident_reg', 'family_cert', 'ownership_accident']) {
+    // ── Call 2a: 피보험자 인적 정보 (등본 + 가족관계증명서) ──
+    showExtracting('피보험자 인적 정보 추출 중...', 30);
+    const insuredPersonalDocs = [];
+    for (const code of ['family_doc', 'family_doc_2', 'resident_reg', 'family_cert']) {
       const up = _insUploaded[code];
       if (up && !Array.isArray(up) && up.file_path) {
         const b64 = await fetchBase64(up.file_path);
-        if (b64) insuredDocs.push({ b64, mt: docMediaType(up.file_path), name: up.doc_name || code });
+        if (b64) insuredPersonalDocs.push({ b64, mt: docMediaType(up.file_path), name: up.doc_name || code });
       }
     }
-    if (insuredDocs.length > 0) {
-      const contentArr = insuredDocs.map(d => {
+    if (insuredPersonalDocs.length > 0) {
+      const contentArr = insuredPersonalDocs.map(d => {
         const isPdf = d.mt === 'application/pdf';
         const item = { type: isPdf ? 'document' : 'image',
                        source: { type:'base64', media_type:d.mt, data:d.b64 } };
@@ -2282,42 +2281,39 @@ ${typeCtx}
         return item;
       });
       contentArr.push({ type:'text', text:
-`첨부 서류(주민등록등본·가족관계증명서·건축물대장·등기부등본)를 종합 분석하여 아래 JSON을 추출하세요.
-정보가 없거나 추출 불가능한 항목은 빈 문자열로.
+`첨부 서류(주민등록등본·가족관계증명서)를 종합 분석하여 아래 JSON을 추출하세요.
+정보 없으면 빈 문자열.
 {
   "insured_full_name": "피보험자 본인 성명 (등본 기준)",
   "insured_rrn": "주민등록번호 (마스킹 포함)",
   "insured_phone": "연락처 (있으면)",
   "insured_registered_address": "피보험자 실거주지 (등본상 주소)",
   "insured_cohabitants": "동거인 목록 (성명+관계, 쉼표 구분. 예: 김세연(배우자), 백지훈(부))",
-  "family_relation_text": "가족관계 (가족관계증명서 기준. 예: 백석균(본인) - 김세연(배우자))",
-  "insured_owner_name": "사고세대 건물 소유자 (건축물대장/등기부등본 기준. 소유권 이전일 있으면 함께)"
+  "family_relation_text": "가족관계 (가족관계증명서 기준. 예: 백석균(본인) - 김세연(배우자))"
 }`});
-      const r2 = await callClaudeMulti(contentArr, SYS);
-      if (r2) {
-        addCandidate('insured_full_name', r2.insured_full_name, '주민등록등본');
-        addCandidate('insured_rrn', r2.insured_rrn, '주민등록등본');
-        addCandidate('insured_phone', r2.insured_phone, '주민등록등본');
-        addCandidate('insured_registered_address', r2.insured_registered_address, '주민등록등본');
-        addCandidate('insured_cohabitants', r2.insured_cohabitants, '주민등록등본');
-        addCandidate('family_relation_text', r2.family_relation_text, '가족관계증명서');
-        addCandidate('insured_owner_name', r2.insured_owner_name, '건축물대장/등기부');
+      const r2a = await callClaudeMulti(contentArr, SYS);
+      if (r2a) {
+        addCandidate('insured_full_name', r2a.insured_full_name, '주민등록등본');
+        addCandidate('insured_rrn', r2a.insured_rrn, '주민등록등본');
+        addCandidate('insured_phone', r2a.insured_phone, '주민등록등본');
+        addCandidate('insured_registered_address', r2a.insured_registered_address, '주민등록등본');
+        addCandidate('insured_cohabitants', r2a.insured_cohabitants, '주민등록등본');
+        addCandidate('family_relation_text', r2a.family_relation_text, '가족관계증명서');
       }
     }
 
-    // ── Call 3: 피해자 공공서류 ──
-    showExtracting('피해자 공공서류 추출 중...', 60);
-    const victimDocs = [];
-    for (const code of ['family_doc_victim', 'family_doc_victim_2', 'ownership_doc_victim', 'ownership_doc_victim_2',
-                         'ownership_victim']) {
+    // ── Call 2b: 피보험자 소유자 정보 (건축물대장 + 등기부등본) ──
+    showExtracting('피보험자 소유자 정보 추출 중...', 45);
+    const insuredOwnerDocs = [];
+    for (const code of ['ownership_insured', 'ownership_insured_2', 'ownership_accident']) {
       const up = _insUploaded[code];
       if (up && !Array.isArray(up) && up.file_path) {
         const b64 = await fetchBase64(up.file_path);
-        if (b64) victimDocs.push({ b64, mt: docMediaType(up.file_path), name: up.doc_name || code });
+        if (b64) insuredOwnerDocs.push({ b64, mt: docMediaType(up.file_path), name: up.doc_name || code });
       }
     }
-    if (victimDocs.length > 0) {
-      const contentArr = victimDocs.map(d => {
+    if (insuredOwnerDocs.length > 0) {
+      const contentArr = insuredOwnerDocs.map(d => {
         const isPdf = d.mt === 'application/pdf';
         const item = { type: isPdf ? 'document' : 'image',
                        source: { type:'base64', media_type:d.mt, data:d.b64 } };
@@ -2325,31 +2321,111 @@ ${typeCtx}
         return item;
       });
       contentArr.push({ type:'text', text:
-`첨부 서류(피해자 주민등록등본·건축물대장·등기부등본)를 종합 분석하여 아래 JSON을 추출하세요.
-정보가 없으면 빈 문자열.
+`첨부 서류(건축물대장·등기부등본)를 분석하여 아래 JSON 추출.
+정보 없으면 빈 문자열.
 {
-  "victim_name": "피해자 성명",
-  "victim_rrn": "주민등록번호 (마스킹 포함)",
-  "victim_address": "피해자 소재지 (등본상 주소)",
-  "victim_owner_name": "피해세대 건물 소유자 (건축물대장/등기부 기준)"
+  "insured_owner_name": "사고세대 건물 소유자 (소유권 이전일 있으면 함께. 예: 김인수 (소유권이전 2013.06.28))"
 }`});
-      const r3 = await callClaudeMulti(contentArr, SYS);
-      if (r3) {
-        addCandidate('victim_name_v0', r3.victim_name, '주민등록등본');
-        addCandidate('victim_rrn_v0', r3.victim_rrn, '주민등록등본');
-        addCandidate('victim_address_v0', r3.victim_address, '주민등록등본');
-        addCandidate('victim_owner_name_v0', r3.victim_owner_name, '건축물대장/등기부');
+      const r2b = await callClaudeMulti(contentArr, SYS);
+      if (r2b) {
+        addCandidate('insured_owner_name', r2b.insured_owner_name, '건축물대장/등기부');
       }
     }
 
-    // ── Call 4: 누수소견서 + 청구서 + 경위서 ──
-    showExtracting('사고 자료 추출 중...', 85);
-    const incidentDocs = [];
-    for (const code of ['leak_opinion_external', 'claim_form', 'incident_statement']) {
+    // ── Call 3a: 피해자 인적 정보 (등본 + 가족관계증명서) ──
+    showExtracting('피해자 인적 정보 추출 중...', 60);
+    const victimPersonalDocs = [];
+    for (const code of ['family_doc_victim', 'family_doc_victim_2']) {
       const up = _insUploaded[code];
       if (up && !Array.isArray(up) && up.file_path) {
         const b64 = await fetchBase64(up.file_path);
-        if (b64) incidentDocs.push({ b64, mt: docMediaType(up.file_path), name: up.doc_name || code });
+        if (b64) victimPersonalDocs.push({ b64, mt: docMediaType(up.file_path), name: up.doc_name || code });
+      }
+    }
+    if (victimPersonalDocs.length > 0) {
+      const contentArr = victimPersonalDocs.map(d => {
+        const isPdf = d.mt === 'application/pdf';
+        const item = { type: isPdf ? 'document' : 'image',
+                       source: { type:'base64', media_type:d.mt, data:d.b64 } };
+        if (isPdf) item.title = d.name;
+        return item;
+      });
+      contentArr.push({ type:'text', text:
+`첨부 서류(피해자 주민등록등본·가족관계증명서)를 분석하여 아래 JSON 추출.
+정보 없으면 빈 문자열.
+{
+  "victim_name": "피해자 성명",
+  "victim_rrn": "주민등록번호 (마스킹 포함)",
+  "victim_address": "피해자 소재지 (등본상 주소)"
+}`});
+      const r3a = await callClaudeMulti(contentArr, SYS);
+      if (r3a) {
+        addCandidate('victim_name_v0', r3a.victim_name, '주민등록등본');
+        addCandidate('victim_rrn_v0', r3a.victim_rrn, '주민등록등본');
+        addCandidate('victim_address_v0', r3a.victim_address, '주민등록등본');
+      }
+    }
+
+    // ── Call 3b: 피해자 소유자 정보 (건축물대장 + 등기부등본) ──
+    showExtracting('피해자 소유자 정보 추출 중...', 75);
+    const victimOwnerDocs = [];
+    for (const code of ['ownership_doc_victim', 'ownership_doc_victim_2', 'ownership_victim']) {
+      const up = _insUploaded[code];
+      if (up && !Array.isArray(up) && up.file_path) {
+        const b64 = await fetchBase64(up.file_path);
+        if (b64) victimOwnerDocs.push({ b64, mt: docMediaType(up.file_path), name: up.doc_name || code });
+      }
+    }
+    if (victimOwnerDocs.length > 0) {
+      const contentArr = victimOwnerDocs.map(d => {
+        const isPdf = d.mt === 'application/pdf';
+        const item = { type: isPdf ? 'document' : 'image',
+                       source: { type:'base64', media_type:d.mt, data:d.b64 } };
+        if (isPdf) item.title = d.name;
+        return item;
+      });
+      contentArr.push({ type:'text', text:
+`첨부 서류(피해자 건축물대장·등기부등본)를 분석하여 아래 JSON 추출.
+정보 없으면 빈 문자열.
+{
+  "victim_owner_name": "피해세대 건물 소유자 (소유권 이전일 있으면 함께. 예: 이현옥 (소유권이전 2008.01.16))"
+}`});
+      const r3b = await callClaudeMulti(contentArr, SYS);
+      if (r3b) {
+        addCandidate('victim_owner_name_v0', r3b.victim_owner_name, '건축물대장/등기부');
+      }
+    }
+
+    // ── Call 4a: 누수소견서 (단독, 가장 중요한 문서) ──
+    showExtracting('누수소견서 추출 중...', 85);
+    const leakDoc = _insUploaded['leak_opinion_external'];
+    if (leakDoc && !Array.isArray(leakDoc) && leakDoc.file_path) {
+      const b64 = await fetchBase64(leakDoc.file_path);
+      if (b64) {
+        const mt = docMediaType(leakDoc.file_path);
+        const r4a = await callClaudeDoc(b64, mt, '누수소견서', SYS,
+`누수소견서에서 아래 JSON 추출. 정보 없으면 빈 문자열.
+{
+  "accident_date": "사고일자 (예: 2025년 3월 3일 또는 YYYY.MM.DD)",
+  "accident_address": "사고장소 (사고 발생 주소 전체)",
+  "leak_report_text": "누수 위치·원인·수리소견 요약 (1~2문장)"
+}`);
+        if (r4a) {
+          addCandidate('accident_date', r4a.accident_date, '누수소견서');
+          addCandidate('accident_address', r4a.accident_address, '누수소견서');
+          _insClaim = { ..._insClaim, leak_report_text: r4a.leak_report_text };
+        }
+      }
+    }
+
+    // ── Call 4b: 청구서 + 경위서 + 파트너 보고서 ──
+    showExtracting('청구·경위 자료 추출 중...', 90);
+    const claimDocs = [];
+    for (const code of ['claim_form', 'incident_statement']) {
+      const up = _insUploaded[code];
+      if (up && !Array.isArray(up) && up.file_path) {
+        const b64 = await fetchBase64(up.file_path);
+        if (b64) claimDocs.push({ b64, mt: docMediaType(up.file_path), name: up.doc_name || code });
       }
     }
     // 파트너 임포트가 있으면 그것도 활용 (텍스트로 첨부)
@@ -2365,8 +2441,8 @@ ${typeCtx}
         if (p.repair_opinion) partnerText += `수리소견: ${p.repair_opinion}\n`;
       }
     }
-    if (incidentDocs.length > 0 || partnerText) {
-      const contentArr = incidentDocs.map(d => {
+    if (claimDocs.length > 0 || partnerText) {
+      const contentArr = claimDocs.map(d => {
         const isPdf = d.mt === 'application/pdf';
         const item = { type: isPdf ? 'document' : 'image',
                        source: { type:'base64', media_type:d.mt, data:d.b64 } };
@@ -2374,25 +2450,25 @@ ${typeCtx}
         return item;
       });
       contentArr.push({ type:'text', text:
-`첨부 서류(누수소견서·보험청구서·경위서) ${partnerText?'+ 파트너 보고서':''}를 종합 분석하여 아래 JSON 추출.
+`첨부 서류(보험청구서·경위서)${partnerText?' + 파트너 보고서':''}를 종합 분석하여 아래 JSON 추출.
 ${partnerText ? '\n[파트너 보고서 내용]' + partnerText + '\n' : ''}
-정보가 없으면 빈 문자열.
+정보 없으면 빈 문자열.
+${!_insUploaded['leak_opinion_external'] ? '※ 누수소견서가 없으므로 accident_date/accident_address도 함께 추출하세요.\n' : ''}
 {
-  "accident_date": "사고일자 (예: 2025년 3월 3일 10시 00분 또는 YYYY.MM.DD)",
-  "accident_address": "사고장소 (사고 발생 주소 전체)",
-  "leak_report_text": "누수소견서 요약 (누수 위치·원인·수리소견 종합)",
-  "incident_report_text": "경위서 요약",
+  ${!_insUploaded['leak_opinion_external'] ? '"accident_date": "사고일자",\n  "accident_address": "사고장소 (주소 전체)",\n  ' : ''}
+  "incident_report_text": "경위서 요약 (1~2문장)",
   "accident_summary": "사고 경위 요약 (1~2문장)"
 }`});
-      const r4 = await callClaudeMulti(contentArr, SYS);
-      if (r4) {
-        addCandidate('accident_date', r4.accident_date, '누수소견서/경위서');
-        addCandidate('accident_address', r4.accident_address, '누수소견서/경위서');
-        // leak_report_text, incident_report_text는 분석 시 사용
+      const r4b = await callClaudeMulti(contentArr, SYS);
+      if (r4b) {
+        // 누수소견서가 없을 때만 청구서/경위서에서 사고일자·장소 추출
+        if (!_insUploaded['leak_opinion_external']) {
+          addCandidate('accident_date', r4b.accident_date, '청구서/경위서');
+          addCandidate('accident_address', r4b.accident_address, '청구서/경위서');
+        }
         _insClaim = { ..._insClaim,
-          leak_report_text: r4.leak_report_text,
-          incident_report_text: r4.incident_report_text,
-          accident_summary: r4.accident_summary
+          incident_report_text: r4b.incident_report_text,
+          accident_summary: r4b.accident_summary,
         };
       }
     }
@@ -3615,6 +3691,43 @@ async function callClaudeDoc(b64, mediaType, title, system, prompt) {
 // v6.2: 여러 문서 + 텍스트를 한 번의 호출로 보냄 (교차 분석용)
 async function callClaudeMulti(contentArr, system) {
   // contentArr는 이미 { type:'document'|'image'|'text', source/text, ... } 형태
+
+  // v6.2.7: body 크기 사전 체크 (Vercel Hobby 한도 4.5MB 우회)
+  // 합계 base64 데이터가 3MB 넘으면 미리 경고하고 자동 분할 시도
+  const totalDataLen = contentArr.reduce((sum, c) => sum + (c.source?.data?.length || 0), 0);
+  const VERCEL_HOBBY_LIMIT = 3.5 * 1024 * 1024;  // 안전 마진 (4.5MB 한도 — JSON overhead)
+
+  if (totalDataLen > VERCEL_HOBBY_LIMIT) {
+    // 자동 분할: PDF/이미지 항목을 N개씩 쪼개 호출 후 결과 병합
+    console.warn(`[Multi API] body 크기 ${(totalDataLen/1024/1024).toFixed(2)}MB가 한도(${(VERCEL_HOBBY_LIMIT/1024/1024).toFixed(2)}MB) 초과. 자동 분할 호출.`);
+    const docItems = contentArr.filter(c => c.type === 'document' || c.type === 'image');
+    const textItem = contentArr.find(c => c.type === 'text');
+    if (docItems.length <= 1) {
+      // 분할 불가 (단일 PDF가 너무 큼) — 그대로 시도
+      console.warn('[Multi API] 단일 PDF가 크기 한도 초과. 그대로 시도.');
+    } else {
+      // 각 PDF/이미지를 단독 호출 후 결과 merge
+      const results = {};
+      for (let i = 0; i < docItems.length; i++) {
+        const item = docItems[i];
+        const subContent = [item];
+        if (textItem) subContent.push(textItem);
+        try {
+          const subResult = await _callMultiRaw(subContent, system);
+          Object.assign(results, subResult);
+        } catch (subErr) {
+          console.warn(`[Multi API] 분할 호출 ${i+1}/${docItems.length} 실패:`, subErr.message);
+        }
+      }
+      return results;
+    }
+  }
+
+  return _callMultiRaw(contentArr, system);
+}
+
+// v6.2.7: 실제 API 호출 (분리해서 callClaudeMulti가 재사용 가능)
+async function _callMultiRaw(contentArr, system) {
   const resp = await fetch('/api/claude', {
     method: 'POST', headers: {'Content-Type':'application/json'},
     body: JSON.stringify({
@@ -3623,7 +3736,6 @@ async function callClaudeMulti(contentArr, system) {
     }),
   });
   if (!resp.ok) {
-    // v6.2.5: 디버깅용 — 응답 본문 읽어서 콘솔에 표시
     let detail = '';
     try { detail = await resp.text(); } catch(e) {}
     console.error('[Multi API 오류]', resp.status, resp.statusText, detail);
@@ -3634,6 +3746,10 @@ async function callClaudeMulti(contentArr, system) {
       dataLen: c.source?.data?.length || 0,
       textLen: c.text?.length || 0,
     })));
+    // 413이면 안내 메시지 명확하게
+    if (resp.status === 413) {
+      throw new Error(`Multi API 413 — PDF 크기가 Vercel 한도 초과 (총 ${(contentArr.reduce((s,c) => s+(c.source?.data?.length||0), 0)/1024/1024).toFixed(2)}MB). Vercel Pro 업그레이드 필요.`);
+    }
     throw new Error(`Multi API 오류 ${resp.status} — ${detail.substring(0, 200)}`);
   }
   const res = await resp.json();
