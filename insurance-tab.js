@@ -2094,6 +2094,92 @@ function s2GoBackToStep1() {
 window.s2GoBackToStep1 = s2GoBackToStep1;
 
 // ─────────────────────────────────────────────
+// v6.2: 룰 기반 자동 판정 헬퍼 (LLM 안 씀)
+// ─────────────────────────────────────────────
+
+// 보험기간 부합 여부 — 날짜 비교
+// periodStr: "2012.06.22 ~ 2098.06.22" 또는 "2012-06-22 ~ 2098-06-22"
+// accidentDateStr: "2025년 3월 3일 10시 00분", "2025.03.03", "2025-03-03" 등
+function _calcInsurancePeriodMatch(periodStr, accidentDateStr) {
+  try {
+    // 보험기간 파싱
+    const periodParts = periodStr.split(/[~–-]/).map(s => s.trim());
+    if (periodParts.length < 2) return null;
+    const parseDate = (s) => {
+      // 다양한 형식 지원
+      const cleaned = String(s)
+        .replace(/년|월/g, '.')
+        .replace(/일.*$/, '')
+        .replace(/\s/g, '')
+        .replace(/\./g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
+      // YYYY-MM-DD 형식으로 변환
+      const m = cleaned.match(/(\d{4})-?(\d{1,2})-?(\d{1,2})/);
+      if (!m) return null;
+      const d = new Date(`${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`);
+      return isNaN(d.getTime()) ? null : d;
+    };
+    const start = parseDate(periodParts[0]);
+    const end   = parseDate(periodParts[1]);
+    const acc   = parseDate(accidentDateStr);
+    if (!start || !end || !acc) return null;
+    const accStr = `${acc.getFullYear()}.${String(acc.getMonth()+1).padStart(2,'0')}.${String(acc.getDate()).padStart(2,'0')}`;
+    if (acc >= start && acc <= end) {
+      return `일치 (사고일 ${accStr})`;
+    } else {
+      return `불일치 (사고일 ${accStr} — 보험기간 ${periodStr})`;
+    }
+  } catch (e) {
+    console.warn('[v6.2] 보험기간 부합 계산 실패:', e);
+    return null;
+  }
+}
+
+// 사고 발생지 부합 여부 — 주소 비교 (시·구 단위)
+function _calcAccidentLocationMatch(policyAddr, accidentAddr) {
+  try {
+    // 시·도 + 구 추출
+    const extractRegion = (addr) => {
+      const s = String(addr).replace(/\s+/g, ' ').trim();
+      // 시·도 (서울, 경기도, 인천시, 부산광역시 등)
+      const sido = s.match(/(서울|경기|인천|부산|대구|광주|대전|울산|세종|강원|충북|충남|전북|전남|경북|경남|제주)[가-힣]*?(?=\s|$|[가-힣]+(?:구|시|군))/);
+      // 구·시·군 (강남구, 수지구, 동두천시, 양평군 등)
+      // 단, 광역시·도 자체는 제외 (예: "서울특별시"는 안 됨)
+      const EXCLUDE = ['서울특별시','부산광역시','대구광역시','인천광역시','광주광역시','대전광역시','울산광역시','세종특별자치시','경기도','강원도','강원특별자치도','충청북도','충청남도','전라북도','전북특별자치도','전라남도','경상북도','경상남도','제주특별자치도'];
+      let guGun = '';
+      // 전체 주소에서 "X구", "X시", "X군" 패턴 모두 찾고 EXCLUDE 아닌 첫 번째 선택
+      const matches = s.matchAll(/([가-힣]+(?:구|시|군))/g);
+      for (const m of matches) {
+        if (!EXCLUDE.includes(m[1])) { guGun = m[1]; break; }
+      }
+      return {
+        sido: sido?.[1] || '',
+        guGun: guGun,
+        full: s,
+      };
+    };
+    const r1 = extractRegion(policyAddr);
+    const r2 = extractRegion(accidentAddr);
+    if (!r1.guGun || !r2.guGun) return null;
+    // 시·도 + 구·시·군 모두 같으면 일치
+    const sidoMatch = !r1.sido || !r2.sido || r1.sido === r2.sido;
+    const guGunMatch = r1.guGun === r2.guGun;
+    if (sidoMatch && guGunMatch) {
+      return `일치`;
+    } else {
+      // 어느 게 다른지 보여줌
+      const policyGu = r1.guGun;
+      const accGu = r2.guGun;
+      return `불일치 (증권 소재지: ${policyGu} / 사고장소: ${accGu})`;
+    }
+  } catch (e) {
+    console.warn('[v6.2] 사고 발생지 부합 계산 실패:', e);
+    return null;
+  }
+}
+
+// ─────────────────────────────────────────────
 // v6.2: s2Extract — 추출 4-Call만 실행, 분석은 안 함
 // (s1Save에서 호출됨. STEP 2 진입 후 후보값을 _extractedCandidates에 채움)
 // ─────────────────────────────────────────────
@@ -2291,6 +2377,24 @@ ${partnerText ? '\n[파트너 보고서 내용]' + partnerText + '\n' : ''}
           accident_summary: r4.accident_summary
         };
       }
+    }
+
+    // ── 룰 기반 자동 판정 (LLM 안 씀) ──
+    // 1. 보험기간 부합 여부: [보험기간] vs [사고일자]
+    showExtracting('자동 판정 중...', 95);
+    const periodVal = _extractedCandidates['insurance_period']?.[0]?.value;
+    const accidentDateVal = _extractedCandidates['accident_date']?.[0]?.value;
+    if (periodVal && accidentDateVal) {
+      const periodMatch = _calcInsurancePeriodMatch(periodVal, accidentDateVal);
+      if (periodMatch) addCandidate('insurance_period_match', periodMatch, '룰 기반 자동');
+    }
+
+    // 2. 사고 발생지 부합 여부: [보험증권 소재지] vs [사고장소]
+    const policyAddr = _extractedCandidates['policy_address']?.[0]?.value;
+    const accAddr = _extractedCandidates['accident_address']?.[0]?.value;
+    if (policyAddr && accAddr) {
+      const locMatch = _calcAccidentLocationMatch(policyAddr, accAddr);
+      if (locMatch) addCandidate('accident_location_match', locMatch, '룰 기반 자동');
     }
 
     showExtracting('완료', 100);
