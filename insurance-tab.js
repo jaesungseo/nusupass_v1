@@ -1333,9 +1333,27 @@ function insStep1HTML() {
   };
 
   // ─── 통합 슬롯 (한 슬롯에 파일 2개) ───
+  // v6.2.14: _insUploaded에 family_doc과 family_doc_2가 별도 키로 저장됨
+  // baseCode와 baseCode_2 (또는 baseCode 배열 형태) 모두 보고 합쳐서 표시
   const renderMultiSlot = (doc, requiredOverride) => {
-    const up = _insUploaded[doc.code];
-    const files = Array.isArray(up) ? up : (up ? [up] : []);
+    const baseCode = doc.code;
+    const code2 = baseCode + '_2';
+    let files = [null, null];
+
+    // 케이스 A: baseCode가 배열 형태로 저장됨 (insUpload 직후 메모리)
+    const baseVal = _insUploaded[baseCode];
+    if (Array.isArray(baseVal)) {
+      files[0] = baseVal[0] || null;
+      files[1] = baseVal[1] || null;
+    } else if (baseVal) {
+      // 케이스 B: baseCode가 단일 객체 (사건 로드 직후 DB에서 가져온 상태)
+      files[0] = baseVal;
+    }
+    // 추가: code_2 키로도 별도 저장되어 있으면 [1]에 채우기
+    if (_insUploaded[code2] && !files[1]) {
+      files[1] = _insUploaded[code2];
+    }
+
     const required = (requiredOverride !== undefined) ? requiredOverride : doc.required;
     const btnClass = required ? 'v62-file-btn-required' : 'v62-file-btn-optional';
     const inputClass = required ? 'required' : '';
@@ -1697,7 +1715,12 @@ async function insRemoveDoc(code, fileIdx) {
     }
     // 3. 로컬 상태 정리
     delete _insUploaded[resolvedCode];
-    // baseCode 배열에서도 제거
+    // v6.2.14: baseCode와 baseCode_2 둘 다 정리 (DB로드 직후엔 단일 키, insUpload 후엔 배열 형태)
+    // 케이스 A: baseCode가 단일 객체로 저장됨 (fileIdx=0 케이스)
+    if (fileIdx === 0 && _insUploaded[code] && !Array.isArray(_insUploaded[code])) {
+      delete _insUploaded[code];
+    }
+    // 케이스 B: baseCode가 배열 형태로 저장됨
     if (Array.isArray(_insUploaded[code])) {
       _insUploaded[code][fileIdx || 0] = null;
       // 빈 배열이면 키 제거
@@ -1778,20 +1801,25 @@ async function insUpload(file, code, name, baseCode, fileIdx) {
 
     _insUploaded[code] = row;
     // v6.2: 통합 슬롯이면 baseCode 배열에도 저장 (UI 렌더링용)
+    // v6.2.14: 파일 2 업로드 시 파일 1 정보 손실 버그 수정
     if (baseCode && baseCode !== code) {
-      if (!Array.isArray(_insUploaded[baseCode])) {
-        _insUploaded[baseCode] = [];
+      // baseCode 자리에 이미 단일 객체가 있으면 [기존객체, null]로 변환 후 파일 2 추가
+      const existing = _insUploaded[baseCode];
+      if (!Array.isArray(existing)) {
+        // 기존 단일 객체를 [0]에 보존 (파일 1)
+        _insUploaded[baseCode] = existing ? [existing, null] : [null, null];
       }
       _insUploaded[baseCode][fileIdx || 0] = row;
     } else if (fileIdx === 0 || fileIdx === undefined) {
       // baseCode === code (fileIdx=0인 통합 슬롯 또는 일반 단일)
-      // 통합 슬롯이면 배열로, 단일이면 그대로
       const docDef2 = INS_DOCS.find(d => d.code === code);
       if (docDef2?.multipleFiles) {
-        if (!Array.isArray(_insUploaded[code])) {
-          _insUploaded[code] = [];
+        // 파일 2가 이미 있는 배열이면 [0]만 갱신, 아니면 새 배열
+        if (Array.isArray(_insUploaded[code])) {
+          _insUploaded[code][0] = row;
+        } else {
+          _insUploaded[code] = [row, null];
         }
-        _insUploaded[code][0] = row;
       }
     }
     clearInterval(t);
