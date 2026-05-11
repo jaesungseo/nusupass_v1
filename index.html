@@ -2078,6 +2078,323 @@ body.printing-leak #screen-insurance .leak-doc p{
 
 
 /* ════════════════════════════════════════════════
+   v6.2 STEP 2 — 사실정보 후보 검토·수정 (외부 시스템 패턴)
+   ════════════════════════════════════════════════ */
+
+/* 컨테이너 */
+.v62-step2-container{
+  max-width:760px;
+  margin:0 auto;
+  padding:24px;
+  background:#fff;
+  font-family:'Pretendard','Malgun Gothic',sans-serif;
+}
+
+/* 페이지 제목 */
+.v62-step2-title{
+  font-size:18px;
+  font-weight:700;
+  color:#111827;
+  margin:0 0 6px 0;
+}
+.v62-step2-subtitle{
+  font-size:12px;
+  color:#6b7280;
+  margin:0 0 24px 0;
+  line-height:1.5;
+}
+.v62-step2-subtitle strong{
+  color:#3b82f6;
+  font-weight:600;
+}
+
+/* 섹션 헤더 (파란 글씨 + 하단 파란 선) */
+.v62-fact-section{
+  margin-bottom:24px;
+}
+.v62-fact-section-header{
+  font-size:14px;
+  font-weight:700;
+  color:#1d4ed8;
+  padding-bottom:6px;
+  border-bottom:1px solid #93c5fd;
+  margin-bottom:14px;
+}
+
+/* 필드 */
+.v62-fact-field{
+  margin-bottom:14px;
+}
+.v62-fact-field-label{
+  font-size:12px;
+  font-weight:600;
+  color:#374151;
+  margin-bottom:4px;
+  display:block;
+}
+.v62-fact-field-input{
+  width:100%;
+  height:36px;
+  padding:0 12px;
+  font-size:13px;
+  border:1px solid #d1d5db;
+  border-radius:4px;
+  background:#fff;
+  color:#111827;
+  transition:border-color 0.15s;
+  box-sizing:border-box;
+}
+.v62-fact-field-input:focus{
+  outline:none;
+  border-color:#1d4ed8;
+  box-shadow:0 0 0 3px rgba(29,78,216,0.1);
+}
+.v62-fact-field-input.user-modified{
+  background:#fefce8;
+  border-color:#eab308;
+}
+.v62-fact-field-textarea{
+  width:100%;
+  min-height:60px;
+  padding:8px 12px;
+  font-size:13px;
+  border:1px solid #d1d5db;
+  border-radius:4px;
+  background:#fff;
+  color:#111827;
+  resize:vertical;
+  font-family:inherit;
+  box-sizing:border-box;
+}
+.v62-fact-field-textarea:focus{
+  outline:none;
+  border-color:#1d4ed8;
+  box-shadow:0 0 0 3px rgba(29,78,216,0.1);
+}
+
+/* 후보칩 영역 */
+.v62-candidates{
+  margin-top:6px;
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  align-items:center;
+}
+.v62-candidate-chip{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  padding:3px 10px;
+  background:#eef4ff;
+  color:#1d4ed8;
+  border:1px solid #bfdbfe;
+  border-radius:12px;
+  font-size:11px;
+  cursor:pointer;
+  transition:all 0.15s;
+  max-width:100%;
+}
+.v62-candidate-chip:hover{
+  background:#dbeafe;
+  border-color:#3b82f6;
+}
+.v62-candidate-chip-label{
+  font-weight:600;
+  color:#1d4ed8;
+}
+.v62-candidate-chip-value{
+  color:#374151;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  max-width:400px;
+}
+.v62-candidate-empty{
+  font-size:11px;
+  color:#9ca3af;
+}
+
+/* 출처 표시 (어느 PDF에서 추출됐는지) */
+.v62-candidate-source{
+  font-size:10px;
+  color:#9ca3af;
+  margin-left:4px;
+}
+
+/* 피해자 블록 헤더 (피해자 1, 피해자 2 ...) */
+.v62-fact-victim-header{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin-bottom:14px;
+  padding-bottom:6px;
+  border-bottom:1px solid #93c5fd;
+}
+.v62-fact-victim-title{
+  font-size:14px;
+  font-weight:700;
+  color:#1d4ed8;
+}
+.v62-fact-victim-badge{
+  font-size:10px;
+  font-weight:600;
+  padding:2px 8px;
+  background:#dcfce7;
+  color:#15803d;
+  border-radius:10px;
+}
+
+/* 하단 액션 바 */
+.v62-step2-actions{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  margin-top:32px;
+  padding-top:20px;
+  border-top:1px solid #e5e7eb;
+}
+.v62-back-btn{
+  padding:10px 16px;
+  background:#fff;
+  color:#374151;
+  border:1px solid #d1d5db;
+  border-radius:5px;
+  font-size:13px;
+  font-weight:500;
+  cursor:pointer;
+  transition:all 0.15s;
+}
+.v62-back-btn:hover{
+  background:#f3f4f6;
+  border-color:#9ca3af;
+}
+.v62-analyze-btn{
+  padding:10px 24px;
+  background:#3b82f6;
+  color:#fff;
+  border:0;
+  border-radius:5px;
+  font-size:13px;
+  font-weight:600;
+  cursor:pointer;
+  transition:all 0.15s;
+}
+.v62-analyze-btn:hover:not(:disabled){
+  background:#1d4ed8;
+  transform:translateY(-1px);
+  box-shadow:0 2px 8px rgba(59,130,246,0.25);
+}
+.v62-analyze-btn:disabled{
+  background:#9ca3af;
+  cursor:not-allowed;
+}
+
+/* 추출 진행 중 (로딩) */
+.v62-extracting{
+  text-align:center;
+  padding:60px 20px;
+  color:#6b7280;
+}
+.v62-extracting-spinner{
+  display:inline-block;
+  width:32px;
+  height:32px;
+  border:3px solid #e5e7eb;
+  border-top-color:#3b82f6;
+  border-radius:50%;
+  animation:v62-spin 0.8s linear infinite;
+  margin-bottom:16px;
+}
+@keyframes v62-spin{
+  to{ transform:rotate(360deg); }
+}
+.v62-extracting-text{
+  font-size:14px;
+  font-weight:600;
+  color:#374151;
+  margin-bottom:6px;
+}
+.v62-extracting-hint{
+  font-size:12px;
+  color:#9ca3af;
+}
+
+/* 분석 진행 중 (9단계 표시) */
+.v62-analyzing-overlay{
+  position:fixed;
+  inset:0;
+  background:rgba(255,255,255,0.95);
+  z-index:999;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-direction:column;
+}
+.v62-analyzing-progress{
+  background:#fff;
+  border:1px solid #e5e7eb;
+  border-radius:8px;
+  padding:24px 32px;
+  min-width:380px;
+  box-shadow:0 10px 30px rgba(0,0,0,0.1);
+}
+.v62-analyzing-title{
+  font-size:14px;
+  font-weight:700;
+  color:#111827;
+  margin-bottom:14px;
+}
+.v62-analyzing-step{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:6px 0;
+  font-size:12px;
+}
+.v62-analyzing-step-icon{
+  width:18px;
+  height:18px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:50%;
+  flex-shrink:0;
+}
+.v62-analyzing-step.done .v62-analyzing-step-icon{
+  background:#16a34a;
+  color:#fff;
+}
+.v62-analyzing-step.active .v62-analyzing-step-icon{
+  background:#3b82f6;
+  color:#fff;
+  animation:v62-pulse 1.5s ease-in-out infinite;
+}
+.v62-analyzing-step.pending .v62-analyzing-step-icon{
+  background:#e5e7eb;
+  color:#9ca3af;
+}
+@keyframes v62-pulse{
+  0%, 100%{ opacity:1; }
+  50%{ opacity:0.6; }
+}
+.v62-analyzing-step-label{
+  color:#374151;
+}
+.v62-analyzing-step.done .v62-analyzing-step-label{
+  color:#15803d;
+  font-weight:500;
+}
+.v62-analyzing-step.active .v62-analyzing-step-label{
+  color:#1d4ed8;
+  font-weight:600;
+}
+.v62-analyzing-step.pending .v62-analyzing-step-label{
+  color:#9ca3af;
+}
+
+
+/* ════════════════════════════════════════════════
    v5.7.x: 회사·내 프로필 설정 페이지
    ════════════════════════════════════════════════ */
 .settings-card{margin-bottom:14px;padding:0;overflow:hidden}
@@ -5302,7 +5619,7 @@ if (typeof window.escapeHtml !== 'function') {
 }
 </script>
 
-<script src="./insurance-tab.js?v=6.2.1"></script>
+<script src="./insurance-tab.js?v=6.2.3"></script>
 <!-- v6 패치: 9케이스 검증 PASS 룰엔진 + 약관선택 모달 + 파트너 임포트 -->
 <script src="./sabi-rule-v6.js?v=6.0.0"></script>
 <script src="./insurance-tab-v6-patch.js?v=6.0.0"></script>

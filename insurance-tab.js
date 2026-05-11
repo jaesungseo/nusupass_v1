@@ -389,6 +389,125 @@ const INS_DOC_GROUPS = {
   _legacy:           { icon:'📦', cls:'v6-icon-legacy',   title:'레거시 (v5.x)',         sub:'기존 케이스 호환' },
 };
 
+// ─────────────────────────────────────────────
+// v6.2: 시스템 지식 (법률·전유공용·약관) — 7~9단계 분석 시 프롬프트에 자동 주입
+// ─────────────────────────────────────────────
+const LEGAL_STATUTES_TEXT = `[민법 제750조 (불법행위의 내용)]
+고의 또는 과실로 인한 위법행위로 타인에게 손해를 가한 자는 그 손해를 배상할 책임이 있다.
+→ 누수 사고에서 점유자의 사용상 과실(수도꼭지 미잠금, 호스이탈 등) 적용 기본 조항.
+
+[민법 제758조 (공작물 등의 점유자·소유자의 책임)]
+① 공작물의 설치 또는 보존의 하자로 인하여 타인에게 손해를 가한 때에는 공작물점유자가 손해를 배상할 책임이 있다. 그러나 점유자가 손해의 방지에 필요한 주의를 해태하지 아니한 때에는 그 소유자가 손해를 배상할 책임이 있다.
+③ 전2항의 경우에 점유자 또는 소유자는 그 손해의 원인에 대한 책임있는 자에 대하여 구상권을 행사할 수 있다.
+→ 누수 사고에서 핵심 조항. 배관/방수층/보일러 등 공작물 하자 시 1차 점유자, 점유자 무과실 시 소유자.
+
+[공동주택관리법 제63조 (관리주체의 업무 등)]
+② 관리주체의 업무는 다음과 같다.
+1. 공동주택의 공용부분의 유지·보수 및 안전관리
+→ 공용부 사고 시 관리주체(관리사무소·입주자대표회의)에 책임.
+
+[집합건물의 소유 및 관리에 관한 법률 제16조 (공용부분의 관리)]
+② 공용부분의 관리에 소요되는 비용과 공용부분에서 생기는 이익은 각 공유자가 지분의 비율로 부담하거나 취득한다.
+→ 공용부 사고 시 관리주체 책임 + 비용 부담 근거.`;
+
+const EXCLUSIVE_COMMON_AREAS_TEXT = `[전유부분 정의]
+구분소유권의 목적인 건물부분. 각 세대가 단독으로 소유·배타적으로 사용하는 공간.
+- 세대 현관문 안쪽의 내부 공간
+- 세대 내부의 급수관·온수관·난방배관·보일러·분배기
+- 세대 내부의 방수층 (화장실·세탁실·베란다)
+- 세대 전용 배관 (분기점 이후)
+
+[공용부분 정의]
+전유부분 외의 건물부분, 전유부분에 속하지 아니하는 건물의 부속물.
+- 외벽·옥상·공용복도·계단·지하주차장
+- 공용배관 (수직 공용 급수관, 우수관)
+- 공용급수펌프·옥상 물탱크·소방시설
+- 둘 이상의 세대에 공급되는 배관
+
+[핵심 구분 기준]
+- 특정 세대만을 위해 존재 → 전유부분
+- 둘 이상의 세대 또는 건물 전체를 위해 존재 → 공용부분
+- 수직 공용배관에서 분기하여 세대 내부로 연결되는 분기점(분기밸브) 이후부터는 전유부분
+
+[책임 귀속]
+- 전유부 사고 → 세대 소유자·점유자 (민법 제758조)
+- 공용부 사고 → 관리주체 (민법 제758조 + 공동주택관리법 63조 + 집합건물법 16조)
+- 시공불량으로 인한 전유부 사고 → 시공업체 하자담보책임 우선`;
+
+// 약관 본문 — 약관 종류에 따라 분기 (구형/신형/일배책)
+const TERMS_CONTENT = {
+  family_daily_old: `[가족일상생활배상책임 (구형)]
+
+【보상하는 손해】
+회사는 피보험자가 이 특별약관의 보험기간 중에 아래에 열거한 사고로 타인의 신체장해 또는 재물 손해에 대한 법률상의 배상책임을 부담함으로써 입은 손해를 보상합니다.
+1. 보험증권에 기재된 주택에 주거하는 피보험자가 주택의 소유·사용·관리에 기인한 우연한 사고
+2. 피보험자의 일상생활(주택 이외 부동산의 소유·사용 및 관리 제외)에 기인하는 우연한 사고
+
+【피보험자 범위】
+1. 기명 피보험자
+2. 기명 피보험자의 배우자
+3. 생계를 같이 하고 보험증권 기재 주택의 주민등록상 동거 중인 동거 친족 (민법 제777조)
+4. 기명 피보험자 또는 배우자와 생계를 같이 하는 별거중인 미혼 자녀
+
+【보상하지 않는 손해 — 주요】
+- 고의로 생긴 손해
+- 보험증권에 기재된 주택을 제외한 부동산으로 인한 배상책임
+- 피보험자와 세대를 같이하는 친족에 대한 배상책임
+- 항공기·선박·차량·총기의 소유·사용·관리에 기인한 배상책임
+- 폭력행위에 기인하는 배상책임
+
+【핵심 한계】
+구형 약관은 "소유주택 = 거주주택" 일치를 조건으로 함.
+→ 임대인(소유했지만 비거주) 케이스는 보상 불가 (제1호 "주거하는 피보험자" 요건 불충족).
+→ 제2호 "일상생활"도 "주택 이외 부동산 제외"이므로 적용 불가.`,
+
+  family_daily_new: `[가족일상생활배상책임 (신형)]
+
+【보상하는 손해】
+회사는 피보험자가 이 특별약관의 보험기간 중에 아래에 열거한 사고로 타인의 신체장해 또는 재물 손해에 대한 법률상의 배상책임을 부담함으로써 입은 손해를 보상합니다.
+1. 피보험자가 주거하고 있는 주택과 주택의 소유자인 피보험자가 임대 등을 통해 주거를 허락한 자가 살고 있는 주택 중 보험증권에 기재된 하나의 주택의 소유·사용·관리에 기인한 우연한 사고
+2. 피보험자의 일상생활(주택 이외 부동산의 소유·사용 및 관리 제외)에 기인하는 우연한 사고
+
+【피보험자 범위】
+1. 기명 피보험자
+2. 기명 피보험자의 배우자
+3. 생계를 같이 하고 보험증권 기재 주택의 주민등록상 동거 중인 동거 친족
+4. 기명 피보험자 또는 배우자와 생계를 같이 하는 별거중인 미혼 자녀
+
+【보상하지 않는 손해 — 주요】
+- 고의로 생긴 손해
+- 보험증권에 기재된 주택을 제외한 부동산으로 인한 배상책임
+- 피보험자와 세대를 같이하는 친족에 대한 배상책임
+- 항공기·선박·차량·총기의 소유·사용·관리로 인한 배상책임
+- 폭력행위로 인한 배상책임
+
+【구형 대비 개선】
+신형은 "소유자가 임대한 주택"도 보상 대상에 포함 (2020.04.01 개정).
+→ 임대인(소유했지만 비거주) 케이스도 보상 가능 (단, 보험증권 기재 주택 1개에 한함).`,
+
+  personal_daily: `[일상생활배상책임 (일배책)]
+
+【보상하는 손해】
+회사는 피보험자 및 그와 동거하는 배우자가 이 특별약관의 보험기간 중에 아래 사고로 타인의 신체장해 또는 재물 손해에 대한 법률상의 배상책임을 부담함으로써 입은 손해를 보상합니다.
+1. 피보험자가 주거용으로 사용하는 보험증권에 기재된 주택의 소유·사용·관리에 인한 우연한 사고
+2. 피보험자의 일상생활(주택 이외 부동산의 소유·사용 및 관리 제외)에 기인하는 우연한 사고
+
+【피보험자 범위】
+보험증권에 기재된 피보험자 및 그와 동거하는 배우자만 해당.
+(가족일배책 대비 범위 좁음 — 자녀·동거친족 제외)
+
+【보상하지 않는 손해 — 주요】
+- 고의로 생긴 손해
+- 보험증권에 기재된 주택을 제외한 부동산으로 인한 배상책임
+- 피보험자와 세대를 같이하는 친족에 대한 배상책임
+- 차량·항공기·선박의 소유·사용·관리에 기인한 배상책임
+- 폭력행위에 기인하는 배상책임
+
+【핵심 한계】
+"주거용으로 사용하는" 조건 → 임대인은 보상 불가.
+피보험자 범위가 본인+동거 배우자만 → 동거 자녀 등은 별도 자녀배상책임 필요.`,
+};
+
 // 피보험자 지위 4-value (표기 통일 — 백엔드 enum과 매칭)
 const INSURED_STATUS_VALUES = [
   '소유자겸점유자',
@@ -414,6 +533,11 @@ let _insStep     = 1;
 let _insResult   = {};     // Claude 추출 + 판단 결과 (STEP 2)
 let _insDraft    = null;   // 저장된 초안
 let _insAnalyzing = false;
+
+// v6.2 STEP 2: 사실정보 후보 검토·수정
+let _extractedCandidates = {};  // { field_key: [{value, source, type}, ...] } — 추출 4-Call 결과
+let _userOverrides = {};         // { field_key: user_modified_value } — 사용자 직접 수정값
+let _analyzingStep = 0;          // 9단계 분석 진행 상태 (0~9)
 let _insVictims  = [];     // v5.4: 피해자 배열 [{id?, victim_order, victim_name, victim_address, ...}]
 let _insPartnerAccident = null;  // v5.5: 파트너 현장 파악 사고일시 {accident_datetime_at_site, accident_datetime_source, accident_datetime_note}
 
@@ -1436,42 +1560,54 @@ async function s1Save() {
     _insClaim = { ..._insClaim, report_no: data?.report_no,
       insurance_type: insType, insurance_tab_status: 'docs_pending',
       submit_date: submitDate };
-    toast('저장 완료! 서류 분석을 시작합니다.', 's');
+    toast('저장 완료! 사실정보를 추출합니다.', 's');
     _insStep = 2; insRender();
-    // 저장 직후 자동으로 Claude 분석 시작
-    setTimeout(() => s2Analyze(), 400);
+    // v6.2: STEP 2 진입 후 추출 4-Call만 실행 (분석은 사용자가 [AI 분석 실행] 클릭 시)
+    setTimeout(() => s2Extract(), 400);
   } catch(e) { toast('저장 실패: ' + e.message, 'e'); }
 }
 
 // ─────────────────────────────────────────────
-// STEP 1: 드롭존
+// STEP 1: 드롭존 (v6.2 — 통합 슬롯 다중 파일 지원)
 // ─────────────────────────────────────────────
 function insInitDropzones() { /* HTML onclick으로 처리 */ }
 
-function insTrigger(code, name) {
-  const inp = document.createElement('input');
-  inp.type = 'file'; inp.accept = '.pdf,.jpg,.jpeg,.png,.heic';
-  inp.onchange = e => { if(e.target.files[0]) insUpload(e.target.files[0], code, name); };
-  inp.click();
-}
-function insDrop(e, code, name) {
-  e.preventDefault();
-  // v6: 신/구 클래스 모두 제거
-  const dz = document.getElementById(`ins-dz-${code}`);
-  if (dz) {
-    dz.classList.remove('ins-dz-over');
-    dz.classList.remove('v6-upload-slot-over');
-  }
-  if(e.dataTransfer.files[0]) insUpload(e.dataTransfer.files[0], code, name);
+// v6.2: 통합 슬롯의 fileIdx=1이면 doc_code에 _2 suffix 부여
+function _insResolveCode(code, fileIdx) {
+  if (!fileIdx || fileIdx === 0) return code;
+  return `${code}_${fileIdx + 1}`;  // fileIdx=1 → _2
 }
 
-// v6: 업로드된 슬롯 ✕ 버튼 — Storage + DB 레코드 삭제
-async function insRemoveDoc(code) {
+function insTrigger(code, name, fileIdx) {
+  const resolvedCode = _insResolveCode(code, fileIdx);
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = '.pdf,.jpg,.jpeg,.png,.heic';
+  inp.onchange = e => { if(e.target.files[0]) insUpload(e.target.files[0], resolvedCode, name, code, fileIdx); };
+  inp.click();
+}
+function insDrop(e, code, name, fileIdx) {
+  e.preventDefault();
+  const dz = e.currentTarget;
+  if (dz) dz.classList.remove('over');
+  const resolvedCode = _insResolveCode(code, fileIdx);
+  if(e.dataTransfer.files[0]) insUpload(e.dataTransfer.files[0], resolvedCode, name, code, fileIdx);
+}
+
+// v6.2: 업로드된 슬롯 ✕ 버튼 — Storage + DB 레코드 삭제 (다중 파일 지원)
+async function insRemoveDoc(code, fileIdx) {
   if (!_insClaim?.id) return;
-  const up = _insUploaded[code];
+  const resolvedCode = _insResolveCode(code, fileIdx);
+  // _insUploaded는 resolvedCode 기준 (v6.2 통합 슬롯 시 family_doc 또는 family_doc_2)
+  // 단, 화면 렌더링은 baseCode 기준의 배열 형태로 처리하기 위해 양쪽 모두 확인
+  let up = _insUploaded[resolvedCode];
+  if (!up) {
+    // 배열 형태로 저장된 경우
+    const arr = _insUploaded[code];
+    if (Array.isArray(arr) && arr[fileIdx]) up = arr[fileIdx];
+  }
   if (!up) return;
   const docName = (INS_DOCS.find(d => d.code === code)?.name) || code;
-  if (!confirm(`${docName} 파일을 삭제할까요?\n(되돌릴 수 없습니다)`)) return;
+  if (!confirm(`${docName}${fileIdx?' (파일 '+(fileIdx+1)+')':''} 파일을 삭제할까요?\n(되돌릴 수 없습니다)`)) return;
 
   try {
     // 1. Storage 파일 삭제
@@ -1484,7 +1620,14 @@ async function insRemoveDoc(code) {
       const { error: delErr } = await sb.from('insurance_doc_uploads').delete().eq('id', up.id);
       if (delErr) throw new Error('DB 삭제 실패: ' + delErr.message);
     }
-    delete _insUploaded[code];
+    // 3. 로컬 상태 정리
+    delete _insUploaded[resolvedCode];
+    // baseCode 배열에서도 제거
+    if (Array.isArray(_insUploaded[code])) {
+      _insUploaded[code][fileIdx || 0] = null;
+      // 빈 배열이면 키 제거
+      if (_insUploaded[code].every(x => !x)) delete _insUploaded[code];
+    }
     toast(`${docName} 삭제 완료`, 's');
     insRender();
   } catch (e) {
@@ -1492,7 +1635,8 @@ async function insRemoveDoc(code) {
   }
 }
 
-async function insUpload(file, code, name) {
+async function insUpload(file, code, name, baseCode, fileIdx) {
+  // v6.2: code는 resolved (예: 'family_doc_2'), baseCode는 원본 (예: 'family_doc'), fileIdx는 0/1
   const allowed = ['application/pdf','image/jpeg','image/jpg','image/png','image/webp','image/heic'];
   if (!allowed.includes(file.type)) { toast('PDF 또는 이미지만 가능합니다.', 'e'); return; }
   if (file.size > 20*1024*1024) { toast('20MB 초과 파일입니다.', 'e'); return; }
@@ -1558,6 +1702,23 @@ async function insUpload(file, code, name) {
     if (dbErr) throw new Error('DB: '+dbErr.message);
 
     _insUploaded[code] = row;
+    // v6.2: 통합 슬롯이면 baseCode 배열에도 저장 (UI 렌더링용)
+    if (baseCode && baseCode !== code) {
+      if (!Array.isArray(_insUploaded[baseCode])) {
+        _insUploaded[baseCode] = [];
+      }
+      _insUploaded[baseCode][fileIdx || 0] = row;
+    } else if (fileIdx === 0 || fileIdx === undefined) {
+      // baseCode === code (fileIdx=0인 통합 슬롯 또는 일반 단일)
+      // 통합 슬롯이면 배열로, 단일이면 그대로
+      const docDef2 = INS_DOCS.find(d => d.code === code);
+      if (docDef2?.multipleFiles) {
+        if (!Array.isArray(_insUploaded[code])) {
+          _insUploaded[code] = [];
+        }
+        _insUploaded[code][0] = row;
+      }
+    }
     clearInterval(t);
     if (prog) { prog.style.width='100%'; setTimeout(()=>{prog.style.display='none';prog.style.width='0%';},400); }
     if (zone) zone.style.opacity='1';
@@ -1576,276 +1737,158 @@ async function insUpload(file, code, name) {
 // STEP 2: 분석·판단 (추출 결과 + 책임 판단 한 화면)
 // ─────────────────────────────────────────────
 function insStep2HTML() {
+  // v6.2 STEP 2 — 사실정보 후보 검토·수정 (외부 시스템 패턴)
+  // 외부 시스템 3.36.160.16:5026/report/review 패턴 그대로 차용
+  // 추가: 출처 표시, 다중 후보 칩, 자동 입력 모드 (단일 후보 시 자동 채움)
   const cl = _insClaim || {};
-  const fd = _insField;
-  const r  = _insResult;
-  const rc  = fd?.repair_cost || 0;
-  const ded = r.deductible || cl.deductible || 200000;
-  const pay = Math.max(0, rc - ded);
+  const fd = _insField || {};
 
-  const addrMatch = r.address_match || 'ok';
-  const addrColor = addrMatch==='ok'?'var(--green)':addrMatch==='warn'?'var(--amber)':'var(--red)';
-  const addrBg    = addrMatch==='ok'?'var(--green-soft)':addrMatch==='warn'?'var(--amber-soft)':'var(--red-soft)';
+  // 사실정보 25개 필드 정의 (보고서_항목_정의서_완성_JS.xlsx 기준)
+  // 출처 표시: extract_policy=보험증권, extract_insured=피보험자공공서류, extract_victim=피해자공공서류, judge_report=청구·소견·경위
+  const FACT_FIELDS = [
+    // 총괄표 (2)
+    { section:'총괄표', name:'대물배상 보상한도액', key:'coverage_limit',          source:'보험증권', type:'text' },
+    { section:'총괄표', name:'대물배상 자기부담금', key:'deductible',                source:'보험증권', type:'text' },
 
-  const established = r.liability_result || 'yes';      // yes | no (성립/불성립)
-  const coverage    = r.coverage_result || '부책';       // 부책 | 면책 | 판단유보
+    // 보험계약사항 (10)
+    { section:'보험계약사항', name:'보험종목',                                     key:'policy_product_name',   source:'보험증권', type:'text' },
+    { section:'보험계약사항', name:'계약자',                                       key:'contractor_name',       source:'보험증권', type:'text' },
+    { section:'보험계약사항', name:'피보험자',                                     key:'insured_name',          source:'보험증권', type:'text' },
+    { section:'보험계약사항', name:'보험기간',                                     key:'insurance_period',      source:'보험증권', type:'text' },
+    { section:'보험계약사항', name:'사고일이 보험기간 내에 속하는지 여부',         key:'insurance_period_match',source:'룰 기반 자동',  type:'text', auto:true },
+    { section:'보험계약사항', name:'보상한도액',                                   key:'coverage_limit_full',    source:'보험증권', type:'text' },
+    { section:'보험계약사항', name:'자기부담금',                                   key:'deductible_full',        source:'보험증권', type:'text' },
+    { section:'보험계약사항', name:'특약조건',                                     key:'rider_condition',        source:'보험증권', type:'text' },
+    { section:'보험계약사항', name:'소재지',                                       key:'policy_address',         source:'보험증권', type:'text' },
+    { section:'보험계약사항', name:'사고 발생지가 보험목적지와 일치하는지 여부',   key:'accident_location_match',source:'룰 기반 자동',  type:'text', auto:true },
 
-  const estStyle = established==='yes'
-    ? 'background:#dcfce7;color:#15803d;border-color:#15803d'
-    : 'background:#fee2e2;color:#dc2626;border-color:#dc2626';
-  const covStyle = coverage==='부책'
-    ? 'background:#dcfce7;color:#15803d;border-color:#15803d'
-    : coverage==='면책'
-    ? 'background:#fee2e2;color:#dc2626;border-color:#dc2626'
-    : 'background:#fef3c7;color:#b45309;border-color:#b45309';
+    // 일반사항 > 피보험자 개요 (7)
+    { section:'일반사항 > 피보험자 개요', name:'성명',               key:'insured_full_name',      source:'주민등록등본', type:'text' },
+    { section:'일반사항 > 피보험자 개요', name:'주민등록번호',       key:'insured_rrn',            source:'주민등록등본', type:'text' },
+    { section:'일반사항 > 피보험자 개요', name:'연락처',              key:'insured_phone',          source:'주민등록등본/청구서', type:'text' },
+    { section:'일반사항 > 피보험자 개요', name:'소재지',              key:'insured_registered_address', source:'주민등록등본', type:'text' },
+    { section:'일반사항 > 피보험자 개요', name:'건물소유자 여부',    key:'insured_owner_name',     source:'건축물대장/등기부', type:'text' },
+    { section:'일반사항 > 피보험자 개요', name:'동거인 여부',         key:'insured_cohabitants',    source:'주민등록등본', type:'textarea' },
+    { section:'일반사항 > 피보험자 개요', name:'피보험자 지위 판단', key:'insured_status_hint',    source:'(분석 단계에서 결정)', type:'text', auto:true, readonly:true },
 
-  const hasResult = !!(r.policy_product || r.insured_name);
+    // 사고사항 > 사고개요 (2)
+    { section:'사고사항 > 사고개요', name:'사고일자',  key:'accident_date',     source:'누수소견서/경위서', type:'text' },
+    { section:'사고사항 > 사고개요', name:'사고장소',  key:'accident_address',  source:'누수소견서/경위서', type:'text' },
+  ];
 
-  // v5.4.3 ★ 지위 판정 불일치 감지 배너
-  const mismatch = detectStatusMismatch(r);
-  const mismatchBanner = mismatch ? `
-    <div style="padding:14px;background:#fee2e2;border-left:4px solid #dc2626;border-radius:6px;margin-bottom:14px;font-size:12px;line-height:1.6">
-      ⚠️ <b>지위 판정 불일치 감지</b><br>
-      AI 서술에는 <b>"${mismatch.mentionedStatus}"</b>라고 판단했으나 필드값은 <b>"${mismatch.fieldStatus}"</b>입니다.<br>
-      수동으로 확인해 주세요.
-    </div>` : '';
-  
-  // v5.5 ★ 파트너 현장 사고일시 배너
-  const pAcc = _insPartnerAccident;
-  const partnerAccBanner = pAcc?.accident_datetime_at_site ? `
-    <div style="padding:10px 12px;background:#ecfeff;border-left:3px solid #06b6d4;border-radius:6px;margin-bottom:12px;font-size:12px;line-height:1.6">
-      🔧 <b>파트너 현장 파악 사고일시</b>: ${new Date(pAcc.accident_datetime_at_site).toLocaleString('ko-KR')}<br>
-      ${pAcc.accident_datetime_source ? `<span style="color:var(--muted)">파악방법: ${pAcc.accident_datetime_source}</span>` : ''}
-      ${pAcc.accident_datetime_note ? `<br><span style="color:var(--muted)">메모: ${pAcc.accident_datetime_note}</span>` : ''}
-    </div>` : '';
+  // 피해자 필드 정의 (피해자별 반복)
+  const VICTIM_FACT_FIELDS = [
+    { name:'성명',              key:'victim_name',            source:'주민등록등본', type:'text' },
+    { name:'주민등록번호',      key:'victim_rrn',             source:'주민등록등본', type:'text' },
+    { name:'소재지',            key:'victim_address',         source:'주민등록등본', type:'text' },
+    { name:'건물소유자 여부',  key:'victim_owner_name',      source:'건축물대장/등기부', type:'text' },
+  ];
+
+  // 후보값 가져오기 — 추출 결과에서
+  const getCandidate = (key) => {
+    // _extractedData가 있다면 그곳에서, 없으면 _insClaim에서
+    if (_extractedCandidates && _extractedCandidates[key]) {
+      return _extractedCandidates[key];  // [{value, source, type}, ...] 형태
+    }
+    if (cl[key]) return [{ value: cl[key], source: '추출됨', type: 'extracted' }];
+    return [];
+  };
+
+  // 현재 사용자가 수정한 값 가져오기
+  const getUserValue = (key) => {
+    return (_userOverrides && _userOverrides[key]) || '';
+  };
+
+  // 필드 렌더 헬퍼
+  const renderField = (field, idx) => {
+    const candidates = getCandidate(field.key);
+    const userValue = getUserValue(field.key);
+    // 단일 후보 자동 입력
+    const autoFillValue = (candidates.length === 1 && !userValue) ? candidates[0].value : userValue;
+    const isModified = userValue && candidates.length > 0 && userValue !== candidates[0]?.value;
+    const inputClass = isModified ? 'user-modified' : '';
+    const fieldId = `s2-field-${field.key}-${idx}`;
+
+    // 입력박스 (text or textarea)
+    const inputHTML = field.type === 'textarea'
+      ? `<textarea class="v62-fact-field-textarea ${inputClass}" id="${fieldId}"
+          ${field.readonly?'readonly':''}
+          oninput="s2UpdateField('${field.key}', this.value)">${escapeHtml(autoFillValue || '')}</textarea>`
+      : `<input type="text" class="v62-fact-field-input ${inputClass}" id="${fieldId}"
+          ${field.readonly?'readonly':''}
+          value="${escapeHtml(autoFillValue || '')}"
+          oninput="s2UpdateField('${field.key}', this.value)">`;
+
+    // 후보칩 영역
+    let chipsHTML = '';
+    if (candidates.length > 0) {
+      chipsHTML = candidates.map(c => `
+        <span class="v62-candidate-chip" onclick="s2ApplyCandidate('${field.key}', ${JSON.stringify(c.value).replace(/"/g, '&quot;')}, '${fieldId}')">
+          <span class="v62-candidate-chip-label">[추출]</span>
+          <span class="v62-candidate-chip-value" title="${escapeHtml(c.value)}">${escapeHtml(String(c.value).substring(0,50))}</span>
+        </span>
+      `).join('');
+      chipsHTML += `<span class="v62-candidate-source">출처: ${escapeHtml(field.source)}</span>`;
+    } else {
+      chipsHTML = `<span class="v62-candidate-empty">후보 없음</span><span class="v62-candidate-source">예상 출처: ${escapeHtml(field.source)}</span>`;
+    }
+
+    return `
+      <div class="v62-fact-field">
+        <label class="v62-fact-field-label">${escapeHtml(field.name)}${field.auto?' <span style="color:#9ca3af;font-weight:400">(자동 판정)</span>':''}</label>
+        ${inputHTML}
+        <div class="v62-candidates">${chipsHTML}</div>
+      </div>`;
+  };
+
+  // 섹션별 그룹핑
+  const sections = {};
+  for (const field of FACT_FIELDS) {
+    if (!sections[field.section]) sections[field.section] = [];
+    sections[field.section].push(field);
+  }
+
+  // 섹션 렌더링
+  const sectionsHTML = Object.entries(sections).map(([sectionName, fields]) => `
+    <div class="v62-fact-section">
+      <div class="v62-fact-section-header">${escapeHtml(sectionName)}</div>
+      ${fields.map((f, i) => renderField(f, i)).join('')}
+    </div>
+  `).join('');
+
+  // 피해자 섹션 (1명 기본)
+  const victims = (_insClaim?.victims && _insClaim.victims.length > 0) ? _insClaim.victims : [{ idx: 0 }];
+  const victimsHTML = victims.map((v, vIdx) => `
+    <div class="v62-fact-section">
+      <div class="v62-fact-victim-header">
+        <span class="v62-fact-victim-title">피해자 ${vIdx + 1}</span>
+        <span class="v62-fact-victim-badge">피해자별 정보</span>
+      </div>
+      ${VICTIM_FACT_FIELDS.map((f, i) => renderField({...f, key: `${f.key}_v${vIdx}`}, i)).join('')}
+    </div>
+  `).join('');
 
   return `
-  ${v6CaseHeaderHTML()}
-  ${v6PolicyBarHTML(true)}
-  ${mismatchBanner}
-  ${partnerAccBanner}
-  <div class="v6-collect-grid">
-    <div class="v6-collect-stack">
-  <!-- 분석 버튼 + 진행바 -->
-  <div class="card">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${hasResult?'0':'4px'}">
-      <div>
-        <div style="font-size:14px;font-weight:900">🔍 서류 분석 + 책임 판단</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:2px">
-          약관: <strong>${INS_TYPE_LABELS[cl.insurance_type]||'미선택'}</strong> 기준으로 분석합니다
-        </div>
-      </div>
-      <button class="btn ${hasResult?'btn-ghost':'btn-primary'} btn-sm" onclick="s2Analyze()" id="s2-analyze-btn">
-        ${hasResult ? '↺ 재분석' : '▶ 분석 시작'}
-      </button>
-    </div>
+  ${v6CaseHeaderHTML({ editableDate: false })}
 
-    <div id="s2-loading" style="display:none;margin-top:14px;padding:12px;background:var(--primary-soft);border-radius:8px">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-        <span class="spinner"></span>
-        <span id="s2-label" style="font-size:13px;color:var(--primary)">보험증권 분석 중…</span>
-      </div>
-      <div style="height:5px;background:var(--line);border-radius:3px;overflow:hidden">
-        <div id="s2-fill" style="height:100%;background:var(--primary);border-radius:3px;transition:width .4s;width:0%"></div>
-      </div>
-    </div>
-  </div>
+  <div class="v62-step2-container">
+    <div class="v62-step2-title">2단계: 사실정보 후보 검토·수정</div>
+    <p class="v62-step2-subtitle">
+      각 필드의 <strong>[추출] 후보 칩</strong>을 눌러 값을 채우거나 직접 수정한 뒤,<br>
+      하단의 <strong>AI 분석 실행</strong>을 누르세요.
+      <span style="display:block;margin-top:4px;color:#9ca3af">노란색 배경은 사용자가 수정한 필드입니다.</span>
+    </p>
 
-  <!-- 추출 결과 (수정 가능) -->
-  <div class="card">
-    <div style="font-size:14px;font-weight:900;margin-bottom:14px">
-      📋 추출 정보
-      <span style="font-size:11px;font-weight:400;color:var(--muted);margin-left:8px">틀린 값은 직접 수정하세요</span>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-      <div class="form-group">
-        <label class="form-label">보험종목</label>
-        <input class="form-control" id="ex-product" value="${r.policy_product||''}" placeholder="보험증권에서 추출"/>
-      </div>
-      <div class="form-group">
-        <label class="form-label">증권번호</label>
-        <input class="form-control" id="ex-no" value="${r.policy_no||cl.policy_no||''}" placeholder="보험증권에서 추출"/>
-      </div>
-      <div class="form-group">
-        <label class="form-label">보험기간</label>
-        <input class="form-control" id="ex-period"
-          value="${r.policy_start&&r.policy_end?r.policy_start+' ~ '+r.policy_end:''}" placeholder="YYYY.MM.DD ~ YYYY.MM.DD"/>
-      </div>
-      <div class="form-group">
-        <label class="form-label">피보험자</label>
-        <input class="form-control" id="ex-insured" value="${r.insured_name||cl.insured_name||''}" placeholder="성명"/>
-      </div>
-      <div class="form-group">
-        <label class="form-label">
-          피보험자 지위
-          <span style="font-size:10px;color:var(--muted);font-weight:400"> 건축물대장 기반 판단</span>
-        </label>
-        <select class="form-control" id="ex-status">
-          ${INSURED_STATUS_VALUES.map(v =>
-            `<option value="${v}" ${(r.insured_status||cl.insured_status||'임차인겸점유자')===v?'selected':''}>${v}</option>`
-          ).join('')}
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">보상한도액</label>
-        <input class="form-control" id="ex-coverage" type="number"
-          value="${r.coverage_limit||cl.coverage_limit||''}" placeholder="보험증권에서 추출"/>
-      </div>
-      <div class="form-group">
-        <label class="form-label">자기부담금</label>
-        <input class="form-control" id="ex-deductible" type="number"
-          value="${r.deductible||cl.deductible||''}" placeholder="보험증권에서 추출"/>
-      </div>
-      <div class="form-group">
-        <label class="form-label">사고일시 <span style="font-size:10px;color:var(--muted);font-weight:400">파트너 소견서/접수 정보 기반</span></label>
-        <input class="form-control" id="ex-accident-dt" type="datetime-local"
-          value="${(r.accident_datetime||cl.accident_datetime||'').slice(0,16)}"/>
-      </div>
-    </div>
+    ${sectionsHTML}
+    ${victimsHTML}
 
-    <!-- 주소 일치 판단 -->
-    <div style="margin-top:12px;padding:12px;background:${addrBg};border-radius:8px;border-left:3px solid ${addrColor}">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:${addrMatch!=='ok'?'8':'0'}px">
-        <strong style="font-size:13px;color:${addrColor}">주소 일치 (보험증권 ↔ 건축물대장)</strong>
-        <select class="form-control" id="ex-addr" style="width:auto;font-size:12px" onchange="s2AddrChange()">
-          <option value="ok"    ${addrMatch==='ok'   ?'selected':''}>✓ 일치</option>
-          <option value="warn"  ${addrMatch==='warn' ?'selected':''}>⚠ 추정 일치</option>
-          <option value="error" ${addrMatch==='error'?'selected':''}>✕ 불일치</option>
-        </select>
-      </div>
-      <div id="ex-addr-note-wrap" style="display:${addrMatch!=='ok'?'block':'none'}">
-        <input class="form-control" id="ex-addr-note" value="${r.address_match_note||''}"
-          placeholder="예: 보험증권 도로명 ↔ 건축물대장 지번 — 동일 건물 추정" style="font-size:12px;margin-top:6px"/>
-        <div style="font-size:11px;color:var(--muted);margin-top:4px">
-          ※ 보험증권 주소와 실거주지가 다른 경우(구/동 불일치) → 불일치(error) 처리
-        </div>
-      </div>
-      ${r.policy_address_raw ? `<div style="font-size:11px;color:var(--muted);margin-top:6px">보험증권 소재지: ${r.policy_address_raw}</div>` : ''}
+    <div class="v62-step2-actions">
+      <button class="v62-back-btn" onclick="s2GoBackToStep1()">← 업로드로 돌아가기</button>
+      <button class="v62-analyze-btn" onclick="s2Analyze()">AI 분석 실행</button>
     </div>
-
-    ${r.insured_status_reason ? `
-    <div style="margin-top:10px;padding:10px 12px;background:var(--primary-soft);border-radius:6px;font-size:12px;color:var(--primary)">
-      🤖 지위 판단 근거: ${r.insured_status_reason}
-    </div>` : ''}
-
-    ${r.accident_type ? `
-    <div style="margin-top:10px;padding:10px 12px;background:var(--bg);border-radius:6px;font-size:12px;border-left:3px solid var(--primary)">
-      <strong>사고 유형 분류:</strong> ${r.accident_type}
-      ${r.shared_liability ? ' <span class="badge badge-amber" style="margin-left:6px">과실 분담 가능성</span>' : ''}
-    </div>` : ''}
-  </div>
-
-  <!-- v5.4: 피해자 배열 카드 -->
-  <div class="card">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-      <div style="font-size:14px;font-weight:900">
-        👥 피해자 정보
-        <span style="font-size:11px;font-weight:400;color:var(--muted);margin-left:8px">
-          건축물대장/등기부등본으로 자동 채움, 빈칸은 수기 입력
-        </span>
-      </div>
-      <button class="btn btn-ghost btn-sm" onclick="victimAdd()">+ 피해자 추가</button>
-    </div>
-    <div id="victims-container">
-      ${renderVictimsList()}
-    </div>
-  </div>
-
-  <!-- 책임 판단 (Sabi 8·9단계) -->
-  <div class="card">
-    <div style="font-size:14px;font-weight:900;margin-bottom:14px">
-      ⚖️ 법률상 손해배상책임 판단
-      <span style="font-size:11px;font-weight:400;color:var(--muted);margin-left:8px">드롭다운으로 직접 수정 가능</span>
-    </div>
-
-    <div class="ins-judge-box">
-      <div class="ins-judge-head">
-        <div class="ins-judge-label">가. 피보험자 손해배상책임 성립 여부 <span style="font-size:10px;color:var(--muted);font-weight:400">(Sabi 8단계)</span></div>
-        <select class="ins-judge-sel" id="j-established" style="${estStyle}" onchange="s2JudgeStyle(this, 'established')">
-          <option value="yes" ${established==='yes'?'selected':''}>성립</option>
-          <option value="no"  ${established==='no' ?'selected':''}>불성립</option>
-        </select>
-      </div>
-      <div class="ins-judge-body">
-        <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">
-          📝 판단근거 <span style="font-size:10px;color:var(--muted);font-weight:400">직접 수정 가능</span>
-        </div>
-        <textarea class="form-control" id="j-liab-reason" 
-          style="font-size:12px;line-height:1.6;min-height:70px;resize:vertical;background:#fafafa"
-          placeholder="분석 후 자동으로 채워집니다. 직접 수정 가능합니다.">${r.liability_reasoning || ''}</textarea>
-        <div style="margin-top:6px">
-          <span class="badge badge-blue" style="display:inline-block">민법 제750조</span>
-          <span class="badge badge-blue">민법 제758조</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="ins-judge-box">
-      <div class="ins-judge-head">
-        <div class="ins-judge-label">나. 보험금 지급 (면·부책) <span style="font-size:10px;color:var(--muted);font-weight:400">(Sabi 9단계 · 약관별 분기)</span></div>
-        <select class="ins-judge-sel" id="j-coverage" style="${covStyle}" onchange="s2JudgeStyle(this, 'coverage')">
-          ${COVERAGE_RESULT_VALUES.map(v =>
-            `<option value="${v}" ${coverage===v?'selected':''}>${v}</option>`
-          ).join('')}
-        </select>
-      </div>
-      <div class="ins-judge-body">
-        <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">
-          📝 판단근거 <span style="font-size:10px;color:var(--muted);font-weight:400">직접 수정 가능</span>
-        </div>
-        <textarea class="form-control" id="j-cov-reason" 
-          style="font-size:12px;line-height:1.6;min-height:70px;resize:vertical;background:#fafafa"
-          placeholder="보험기간, 소재지 일치 여부, 사고 유형별 약관 조항 검토 후 자동으로 채워집니다. 직접 수정 가능합니다.">${r.coverage_reasoning || ''}</textarea>
-        <div style="margin-top:6px">
-          <span class="badge badge-blue" style="display:inline-block">${INS_TYPE_LABELS[cl.insurance_type]||'약관'}</span>
-          <span class="badge badge-blue">상법 제680조</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="ins-judge-box">
-      <div class="ins-judge-head">
-        <div class="ins-judge-label">다. 과실 비율</div>
-        <select class="ins-judge-sel" id="j-fault" style="background:#dcfce7;color:#15803d;border-color:#15803d">
-          <option ${(r.fault_ratio||'')===''||r.fault_ratio==='피보험자 100%'?'selected':''}>피보험자 100%</option>
-          <option ${r.fault_ratio==='피보험자 70% / 피해자 30%'?'selected':''}>피보험자 70% / 피해자 30%</option>
-          <option ${r.fault_ratio==='피보험자 50% / 피해자 50%'?'selected':''}>피보험자 50% / 피해자 50%</option>
-        </select>
-      </div>
-      <div class="ins-judge-body">${r.fault_reason || '분석 후 자동으로 채워집니다.'}</div>
-    </div>
-
-    <!-- 지급보험금 계산 -->
-    <div style="margin-top:12px;padding:14px;background:var(--green-soft);border-radius:8px;border-left:3px solid var(--green)">
-      <div style="display:flex;align-items:center;justify-content:space-between">
-        <strong style="font-size:13px">라. 지급보험금 산정</strong>
-        <strong style="font-size:18px;color:var(--green)">${coverage==='부책'?pay.toLocaleString()+'원':'—'}</strong>
-      </div>
-      <div style="font-size:12px;color:var(--muted);margin-top:6px">
-        수리금액 ${rc.toLocaleString()}원 − 자기부담금 <input type="number" id="j-ded" value="${ded}"
-          style="width:100px;padding:2px 6px;border:1px solid var(--line);border-radius:4px;font-size:12px"
-          onchange="s2RecalcPay()"/> 원 = <strong id="j-pay-display" style="color:var(--green)">${pay.toLocaleString()}원</strong>
-        <span class="badge badge-blue" style="margin-left:8px">상법 제680조</span>
-        ${coverage!=='부책'?'<div style="margin-top:4px;color:var(--red);font-size:11px">※ 면책·판단유보 시 지급보험금 산정 대상 아님</div>':''}
-      </div>
-    </div>
-
-    <!-- 조사자의견 -->
-    <div class="form-group" style="margin-top:14px">
-      <label class="form-label">조사자의견 (보고서 4섹션 반영)</label>
-      <textarea class="form-control" id="j-opinion" rows="3"
-        placeholder="분석 후 자동으로 채워집니다. 직접 수정 가능합니다.">${r.investigator_opinion||''}</textarea>
-    </div>
-  </div>
-
-  <div class="ins-action-bar">
-    <button class="btn btn-ghost" onclick="insGoStep(1)">← 이전</button>
-    <button class="btn btn-primary" onclick="s2Save()">저장 후 보고서 작성 →</button>
-  </div>
-    </div>
-    ${v6EngineSidebarHTML(2)}
   </div>`;
 }
+
 
 function s2AddrChange() {
   const v = document.getElementById('ex-addr')?.value;
@@ -2011,6 +2054,262 @@ function refreshVictimsContainer() {
 // (3차) 피해자 건축물대장 → 피해자 소재지
 // (4차 ★ v5 신규) Sabi 8·9단계 종합 판단 — 약관별 분기
 // ─────────────────────────────────────────────
+
+// v6.2: STEP 2 사용자 입력 추적
+function s2UpdateField(key, value) {
+  _userOverrides[key] = value;
+  // 입력박스 색상 (수정됨 표시)
+  const candidates = _extractedCandidates[key] || [];
+  const isModified = value && candidates.length > 0 && value !== candidates[0]?.value;
+  // 입력박스 클래스 갱신 — DOM 직접 조작 (re-render 없이)
+  const inputs = document.querySelectorAll(`[id^="s2-field-${key}-"]`);
+  inputs.forEach(input => {
+    if (isModified) input.classList.add('user-modified');
+    else input.classList.remove('user-modified');
+  });
+}
+window.s2UpdateField = s2UpdateField;
+
+// v6.2: 후보칩 클릭 → 입력박스에 값 적용
+function s2ApplyCandidate(key, value, fieldId) {
+  _userOverrides[key] = value;
+  const input = document.getElementById(fieldId);
+  if (input) {
+    input.value = value;
+    input.classList.remove('user-modified');
+    // 짧은 펄스 효과로 적용 시각화
+    input.style.transition = 'background 0.3s';
+    input.style.background = '#dcfce7';
+    setTimeout(() => { input.style.background = ''; }, 400);
+  }
+}
+window.s2ApplyCandidate = s2ApplyCandidate;
+
+// v6.2: STEP 1로 돌아가기
+function s2GoBackToStep1() {
+  if (!confirm('업로드 화면으로 돌아가시겠어요?\\n수정 중인 내용은 저장됩니다.')) return;
+  _insStep = 1;
+  insRender();
+}
+window.s2GoBackToStep1 = s2GoBackToStep1;
+
+// ─────────────────────────────────────────────
+// v6.2: s2Extract — 추출 4-Call만 실행, 분석은 안 함
+// (s1Save에서 호출됨. STEP 2 진입 후 후보값을 _extractedCandidates에 채움)
+// ─────────────────────────────────────────────
+async function s2Extract() {
+  if (_insAnalyzing) return;
+  _insAnalyzing = true;
+
+  const insType = _insClaim.insurance_type || 'family_daily_new';
+  const typeCtx = INS_TYPE_CONTEXT[insType] || INS_TYPE_CONTEXT['family_daily_new'];
+  const SYS = `당신은 대한민국 독립손해사정사입니다. 누수사고 보험 서류를 분석합니다.
+${typeCtx}
+순수 JSON만 반환. 마크다운 코드블록 금지.`;
+
+  // STEP 2 화면 위에 추출 진행 오버레이 표시
+  const showExtracting = (text, pct) => {
+    let overlay = document.getElementById('v62-extracting-overlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'v62-extracting-overlay';
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(255,255,255,0.95);z-index:999;display:flex;align-items:center;justify-content:center;';
+      overlay.innerHTML = `<div style="text-align:center">
+        <div class="v62-extracting-spinner" style="display:inline-block;width:40px;height:40px;border:4px solid #e5e7eb;border-top-color:#3b82f6;border-radius:50%;animation:v62-spin 0.8s linear infinite;margin-bottom:14px"></div>
+        <div id="v62-ex-text" style="font-size:14px;font-weight:600;color:#111827">${text}</div>
+        <div id="v62-ex-pct" style="font-size:12px;color:#6b7280;margin-top:6px">${pct}%</div>
+      </div>`;
+      document.body.appendChild(overlay);
+    } else {
+      const t = document.getElementById('v62-ex-text'); if (t) t.textContent = text;
+      const p = document.getElementById('v62-ex-pct'); if (p) p.textContent = pct + '%';
+    }
+  };
+  const hideExtracting = () => {
+    const overlay = document.getElementById('v62-extracting-overlay');
+    if (overlay) overlay.remove();
+  };
+
+  try {
+    _extractedCandidates = {};  // 초기화
+    const addCandidate = (key, value, source) => {
+      if (!value || value === '' || value === '정보 없음' || value === '확인불가') return;
+      if (!_extractedCandidates[key]) _extractedCandidates[key] = [];
+      _extractedCandidates[key].push({ value: String(value), source, type: 'extracted' });
+    };
+
+    // ── Call 1: 보험증권 추출 ──
+    if (_insUploaded['insurance_policy'] && _insUploaded['insurance_policy'].file_path) {
+      showExtracting('보험증권 추출 중...', 10);
+      const up = _insUploaded['insurance_policy'];
+      const b64 = await fetchBase64(up.file_path);
+      if (b64) {
+        const mt = docMediaType(up.file_path);
+        const r1 = await callClaudeDoc(b64, mt, '보험증권', SYS,
+`보험증권에서 아래 JSON을 추출하세요. 정보 없으면 빈 문자열.
+{
+  "policy_product_name": "보험종목명 (전체 명칭)",
+  "policy_no": "증권번호",
+  "contractor_name": "계약자 성명",
+  "insured_name": "피보험자 성명",
+  "policy_start": "YYYY.MM.DD",
+  "policy_end": "YYYY.MM.DD",
+  "policy_address": "피보험자 소재지 원문 그대로 (보험증권상)",
+  "coverage_limit": "보상한도액 (예: 100,000,000원)",
+  "deductible": "자기부담금 (예: 200,000원)",
+  "rider_condition": "특약조건 (예: 가족일상생활배상책임)"
+}`);
+        if (r1) {
+          addCandidate('policy_product_name', r1.policy_product_name, '보험증권');
+          addCandidate('contractor_name', r1.contractor_name, '보험증권');
+          addCandidate('insured_name', r1.insured_name, '보험증권');
+          if (r1.policy_start && r1.policy_end) {
+            addCandidate('insurance_period', `${r1.policy_start} ~ ${r1.policy_end}`, '보험증권');
+          }
+          addCandidate('policy_address', r1.policy_address, '보험증권');
+          addCandidate('coverage_limit', r1.coverage_limit, '보험증권');
+          addCandidate('coverage_limit_full', r1.coverage_limit, '보험증권');
+          addCandidate('deductible', r1.deductible, '보험증권');
+          addCandidate('deductible_full', r1.deductible, '보험증권');
+          addCandidate('rider_condition', r1.rider_condition, '보험증권');
+        }
+      }
+    }
+
+    // ── Call 2: 피보험자 공공서류 (통합 슬롯 — 등본/가족관계 + 건축물대장/등기부) ──
+    showExtracting('피보험자 공공서류 추출 중...', 35);
+    const insuredDocs = [];
+    for (const code of ['family_doc', 'family_doc_2', 'ownership_insured', 'ownership_insured_2',
+                         'resident_reg', 'family_cert', 'ownership_accident']) {
+      const up = _insUploaded[code];
+      if (up && !Array.isArray(up) && up.file_path) {
+        const b64 = await fetchBase64(up.file_path);
+        if (b64) insuredDocs.push({ b64, mt: docMediaType(up.file_path), name: up.doc_name || code });
+      }
+    }
+    if (insuredDocs.length > 0) {
+      const contentArr = insuredDocs.map(d => ({ type:'document', source:{ type:'base64', media_type:d.mt, data:d.b64 }, title:d.name }));
+      contentArr.push({ type:'text', text:
+`첨부 서류(주민등록등본·가족관계증명서·건축물대장·등기부등본)를 종합 분석하여 아래 JSON을 추출하세요.
+정보가 없거나 추출 불가능한 항목은 빈 문자열로.
+{
+  "insured_full_name": "피보험자 본인 성명 (등본 기준)",
+  "insured_rrn": "주민등록번호 (마스킹 포함)",
+  "insured_phone": "연락처 (있으면)",
+  "insured_registered_address": "피보험자 실거주지 (등본상 주소)",
+  "insured_cohabitants": "동거인 목록 (성명+관계, 쉼표 구분. 예: 김세연(배우자), 백지훈(부))",
+  "family_relation_text": "가족관계 (가족관계증명서 기준. 예: 백석균(본인) - 김세연(배우자))",
+  "insured_owner_name": "사고세대 건물 소유자 (건축물대장/등기부등본 기준. 소유권 이전일 있으면 함께)"
+}`});
+      const r2 = await callClaudeMulti(contentArr, SYS);
+      if (r2) {
+        addCandidate('insured_full_name', r2.insured_full_name, '주민등록등본');
+        addCandidate('insured_rrn', r2.insured_rrn, '주민등록등본');
+        addCandidate('insured_phone', r2.insured_phone, '주민등록등본');
+        addCandidate('insured_registered_address', r2.insured_registered_address, '주민등록등본');
+        addCandidate('insured_cohabitants', r2.insured_cohabitants, '주민등록등본');
+        addCandidate('family_relation_text', r2.family_relation_text, '가족관계증명서');
+        addCandidate('insured_owner_name', r2.insured_owner_name, '건축물대장/등기부');
+      }
+    }
+
+    // ── Call 3: 피해자 공공서류 ──
+    showExtracting('피해자 공공서류 추출 중...', 60);
+    const victimDocs = [];
+    for (const code of ['family_doc_victim', 'family_doc_victim_2', 'ownership_doc_victim', 'ownership_doc_victim_2',
+                         'ownership_victim']) {
+      const up = _insUploaded[code];
+      if (up && !Array.isArray(up) && up.file_path) {
+        const b64 = await fetchBase64(up.file_path);
+        if (b64) victimDocs.push({ b64, mt: docMediaType(up.file_path), name: up.doc_name || code });
+      }
+    }
+    if (victimDocs.length > 0) {
+      const contentArr = victimDocs.map(d => ({ type:'document', source:{ type:'base64', media_type:d.mt, data:d.b64 }, title:d.name }));
+      contentArr.push({ type:'text', text:
+`첨부 서류(피해자 주민등록등본·건축물대장·등기부등본)를 종합 분석하여 아래 JSON을 추출하세요.
+정보가 없으면 빈 문자열.
+{
+  "victim_name": "피해자 성명",
+  "victim_rrn": "주민등록번호 (마스킹 포함)",
+  "victim_address": "피해자 소재지 (등본상 주소)",
+  "victim_owner_name": "피해세대 건물 소유자 (건축물대장/등기부 기준)"
+}`});
+      const r3 = await callClaudeMulti(contentArr, SYS);
+      if (r3) {
+        addCandidate('victim_name_v0', r3.victim_name, '주민등록등본');
+        addCandidate('victim_rrn_v0', r3.victim_rrn, '주민등록등본');
+        addCandidate('victim_address_v0', r3.victim_address, '주민등록등본');
+        addCandidate('victim_owner_name_v0', r3.victim_owner_name, '건축물대장/등기부');
+      }
+    }
+
+    // ── Call 4: 누수소견서 + 청구서 + 경위서 ──
+    showExtracting('사고 자료 추출 중...', 85);
+    const incidentDocs = [];
+    for (const code of ['leak_opinion_external', 'claim_form', 'incident_statement']) {
+      const up = _insUploaded[code];
+      if (up && !Array.isArray(up) && up.file_path) {
+        const b64 = await fetchBase64(up.file_path);
+        if (b64) incidentDocs.push({ b64, mt: docMediaType(up.file_path), name: up.doc_name || code });
+      }
+    }
+    // 파트너 임포트가 있으면 그것도 활용 (텍스트로 첨부)
+    let partnerText = '';
+    if (_insImportedPartners.size > 0) {
+      const importedList = _insPartners.filter(p => _insImportedPartners.has(p.id) && p.has_report);
+      for (const p of importedList) {
+        partnerText += `\n[파트너 ${p.partner_name} 보고서]\n`;
+        if (p.accident_occurred_at) partnerText += `사고일자: ${p.accident_occurred_at}\n`;
+        if (p.leak_cause) partnerText += `사고원인: ${p.leak_cause}\n`;
+        if (p.attacker_unit) partnerText += `가해세대: ${p.attacker_unit}\n`;
+        if (p.victim_unit) partnerText += `피해세대: ${p.victim_unit}\n`;
+        if (p.repair_opinion) partnerText += `수리소견: ${p.repair_opinion}\n`;
+      }
+    }
+    if (incidentDocs.length > 0 || partnerText) {
+      const contentArr = incidentDocs.map(d => ({ type:'document', source:{ type:'base64', media_type:d.mt, data:d.b64 }, title:d.name }));
+      contentArr.push({ type:'text', text:
+`첨부 서류(누수소견서·보험청구서·경위서) ${partnerText?'+ 파트너 보고서':''}를 종합 분석하여 아래 JSON 추출.
+${partnerText ? '\n[파트너 보고서 내용]' + partnerText + '\n' : ''}
+정보가 없으면 빈 문자열.
+{
+  "accident_date": "사고일자 (예: 2025년 3월 3일 10시 00분 또는 YYYY.MM.DD)",
+  "accident_address": "사고장소 (사고 발생 주소 전체)",
+  "leak_report_text": "누수소견서 요약 (누수 위치·원인·수리소견 종합)",
+  "incident_report_text": "경위서 요약",
+  "accident_summary": "사고 경위 요약 (1~2문장)"
+}`});
+      const r4 = await callClaudeMulti(contentArr, SYS);
+      if (r4) {
+        addCandidate('accident_date', r4.accident_date, '누수소견서/경위서');
+        addCandidate('accident_address', r4.accident_address, '누수소견서/경위서');
+        // leak_report_text, incident_report_text는 분석 시 사용
+        _insClaim = { ..._insClaim,
+          leak_report_text: r4.leak_report_text,
+          incident_report_text: r4.incident_report_text,
+          accident_summary: r4.accident_summary
+        };
+      }
+    }
+
+    showExtracting('완료', 100);
+    setTimeout(() => {
+      hideExtracting();
+      _insAnalyzing = false;
+      insRender();  // STEP 2 다시 그리기 (후보칩 표시됨)
+      toast('사실정보 추출 완료. 후보값을 검토해주세요.', 's');
+    }, 400);
+
+  } catch (err) {
+    hideExtracting();
+    _insAnalyzing = false;
+    toast('추출 실패: ' + (err.message || err), 'e');
+    console.error('[v6.2 s2Extract]', err);
+  }
+}
+window.s2Extract = s2Extract;
+
 async function s2Analyze() {
   if (_insAnalyzing) return;
   _insAnalyzing = true;
@@ -3189,6 +3488,22 @@ async function callClaudeDoc(b64, mediaType, title, system, prompt) {
   const res = await resp.json();
   const raw = res.content?.[0]?.text || '{}';
   return parseClaudeJson(raw, title);
+}
+
+// v6.2: 여러 문서 + 텍스트를 한 번의 호출로 보냄 (교차 분석용)
+async function callClaudeMulti(contentArr, system) {
+  // contentArr는 이미 { type:'document'|'image'|'text', source/text, ... } 형태
+  const resp = await fetch('/api/claude', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({
+      model: INS_MODEL, max_tokens: 1500, system,
+      messages: [{ role:'user', content: contentArr }],
+    }),
+  });
+  if (!resp.ok) throw new Error(`Multi API 오류 ${resp.status}`);
+  const res = await resp.json();
+  const raw = res.content?.[0]?.text || '{}';
+  return parseClaudeJson(raw, 'multi');
 }
 
 async function s2Save() {
