@@ -3686,6 +3686,14 @@ function parseClaudeJson(rawText, label) {
 
 async function callClaudeDoc(b64, mediaType, title, system, prompt) {
   const isPdf = mediaType === 'application/pdf';
+
+  // v6.2.10: body 크기 사전 체크
+  const dataLen = (b64 || '').length;
+  const sizeMB = dataLen / 1024 / 1024;
+  if (sizeMB > 3.5) {
+    console.warn(`[${title}] base64 크기 ${sizeMB.toFixed(2)}MB — Vercel 한도(4.5MB) 근접/초과 가능`);
+  }
+
   const resp = await fetch('/api/claude', {
     method: 'POST', headers: {'Content-Type':'application/json'},
     body: JSON.stringify({
@@ -3698,7 +3706,28 @@ async function callClaudeDoc(b64, mediaType, title, system, prompt) {
       ]}],
     }),
   });
-  if (!resp.ok) throw new Error(`${title} API 오류 ${resp.status}`);
+  if (!resp.ok) {
+    // v6.2.10: 상세 에러 로깅
+    let detail = '';
+    try { detail = await resp.text(); } catch(e) {}
+    console.error(`[${title} API 오류]`, resp.status, resp.statusText, detail);
+    console.error(`[${title} 호출 정보]`, {
+      mediaType,
+      isPdf,
+      base64Length: dataLen,
+      base64SizeMB: sizeMB.toFixed(2),
+      titleLen: (title || '').length,
+      promptLen: (prompt || '').length,
+    });
+    // Anthropic의 흔한 400 사유 — 너무 크거나, 페이지수 초과, 손상된 PDF
+    if (resp.status === 400) {
+      throw new Error(`${title} API 400 — PDF 손상/페이지수 초과/형식 오류 의심 (${sizeMB.toFixed(2)}MB). 상세: ${detail.substring(0, 200)}`);
+    }
+    if (resp.status === 413) {
+      throw new Error(`${title} API 413 — PDF 크기(${sizeMB.toFixed(2)}MB)가 Vercel 한도 초과`);
+    }
+    throw new Error(`${title} API 오류 ${resp.status} — ${detail.substring(0, 200)}`);
+  }
   const res = await resp.json();
   const raw = res.content?.[0]?.text || '{}';
   return parseClaudeJson(raw, title);
