@@ -2211,7 +2211,7 @@ function _calcInsurancePeriodMatch(periodStr, accidentDateStr) {
   }
 }
 
-// 사고 발생지 부합 여부 — 주소 비교 (시·구 단위)
+// 사고 발생지 부합 여부 — 주소 비교 (시·구 단위 + fallback 키워드 매칭)
 function _calcAccidentLocationMatch(policyAddr, accidentAddr) {
   try {
     // 시·도 + 구 추출
@@ -2222,32 +2222,100 @@ function _calcAccidentLocationMatch(policyAddr, accidentAddr) {
       // 구·시·군 (강남구, 수지구, 동두천시, 양평군 등)
       // 단, 광역시·도 자체는 제외 (예: "서울특별시"는 안 됨)
       const EXCLUDE = ['서울특별시','부산광역시','대구광역시','인천광역시','광주광역시','대전광역시','울산광역시','세종특별자치시','경기도','강원도','강원특별자치도','충청북도','충청남도','전라북도','전북특별자치도','전라남도','경상북도','경상남도','제주특별자치도'];
-      let guGun = '';
-      // 전체 주소에서 "X구", "X시", "X군" 패턴 모두 찾고 EXCLUDE 아닌 첫 번째 선택
-      const matches = s.matchAll(/([가-힣]+(?:구|시|군))/g);
-      for (const m of matches) {
-        if (!EXCLUDE.includes(m[1])) { guGun = m[1]; break; }
+      // v6.2.13: "구"를 "시/군"보다 우선 (예: "경기도 용인시 수지구" → "수지구" 선택)
+      const allMatches = [];
+      for (const m of s.matchAll(/([가-힣]+(?:구|시|군))/g)) {
+        if (!EXCLUDE.includes(m[1])) allMatches.push(m[1]);
       }
+      let guGun = '';
+      // 우선순위: 구 > 군 > 시
+      const gu = allMatches.find(m => m.endsWith('구'));
+      const gun = allMatches.find(m => m.endsWith('군'));
+      const si = allMatches.find(m => m.endsWith('시'));
+      guGun = gu || gun || si || '';
       return {
         sido: sido?.[1] || '',
         guGun: guGun,
         full: s,
       };
     };
+
+    // v6.2.13: fallback 키워드 추출 (아파트명·도로명·동호수)
+    // 사고장소가 "수지삼성2차 205동 1602호"처럼 행정구역 없을 때 사용
+    // 행정구역(시/구/군/도) 자체는 제외 — 너무 광범위해서 매칭 정확도 낮음
+    const extractKeywords = (addr) => {
+      const s = String(addr).replace(/\s+/g, ' ').trim();
+      const kws = [];
+      // 1. 동·호수 (예: "205동 1602호", "101동 107호") — 가장 확실한 매칭 키
+      for (const m of s.matchAll(/(\d+동\s*\d+호)/g)) {
+        kws.push(m[1].replace(/\s+/g, ' '));
+      }
+      // 2. 아파트/단지명 (예: "수지삼성2차", "삼성래미안", "롯데캐슬", "수지2차")
+      //    "X차" 패턴: "수지2차"
+      for (const m of s.matchAll(/([가-힣]+\d+차)/g)) {
+        kws.push(m[1]);
+      }
+      //    "X아파트" 또는 알려진 단지명
+      for (const m of s.matchAll(/([가-힣]{2,}(?:아파트|래미안|푸르지오|자이|롯데캐슬|힐스테이트|이편한세상|위브|sk뷰|아이파크|센트럴|타워|빌라))/g)) {
+        kws.push(m[1]);
+      }
+      // 3. 도로명 + 번지 (예: "수풍로 38", "천호대로 89길 30")
+      for (const m of s.matchAll(/([가-힣]+(?:로|길)\s*\d+(?:번길\s*\d+)?)/g)) {
+        kws.push(m[0].trim());
+      }
+      // 4. 동 이름 (예: "풍덕천동", "장안동") — 행정동
+      for (const m of s.matchAll(/([가-힣]+동)(?:\s|,|\)|$)/g)) {
+        const w = m[1];
+        // "1동", "2동" 같은 숫자 동 제외
+        if (!w.match(/^\d/) && w.length >= 2 && !['아파트동','상가동'].includes(w)) {
+          kws.push(w);
+        }
+      }
+      // 5. v6.2.13: 일반 단어 — 위 패턴에 안 잡힌 단지명/약식명 (예: "수지삼성")
+      //    행정구역 단어(시/도/구/군/특별시/광역시 등)와 공통 조사는 제외
+      const EXCLUDE_GENERAL = new Set([
+        '서울','경기','인천','부산','대구','광주','대전','울산','세종','강원','충북','충남','전북','전남','경북','경남','제주',
+        '서울특별시','부산광역시','대구광역시','인천광역시','광주광역시','대전광역시','울산광역시','세종특별자치시',
+        '경기도','강원도','강원특별자치도','충청북도','충청남도','전라북도','전북특별자치도','전라남도','경상북도','경상남도','제주특별자치도',
+        '및','외','동호','호수','번지','지번','도로명',
+      ]);
+      // 공백/괄호/쉼표로 분리
+      const tokens = s.split(/[\s\(\),]+/).filter(Boolean);
+      for (const t of tokens) {
+        // 순수 한글 2자 이상이고 구/시/군/동/로/길로 끝나지 않는 단어
+        if (/^[가-힣]{2,}$/.test(t) && !t.match(/(구|시|군|도|동|로|길|특별자치도)$/)) {
+          if (!EXCLUDE_GENERAL.has(t)) kws.push(t);
+        }
+      }
+      return [...new Set(kws)];  // 중복 제거
+    };
+
     const r1 = extractRegion(policyAddr);
     const r2 = extractRegion(accidentAddr);
-    if (!r1.guGun || !r2.guGun) return null;
-    // 시·도 + 구·시·군 모두 같으면 일치
-    const sidoMatch = !r1.sido || !r2.sido || r1.sido === r2.sido;
-    const guGunMatch = r1.guGun === r2.guGun;
-    if (sidoMatch && guGunMatch) {
-      return `일치`;
-    } else {
-      // 어느 게 다른지 보여줌
-      const policyGu = r1.guGun;
-      const accGu = r2.guGun;
-      return `불일치 (증권 소재지: ${policyGu} / 사고장소: ${accGu})`;
+
+    // 1차: 양쪽 모두 행정구역 있을 때
+    if (r1.guGun && r2.guGun) {
+      const sidoMatch = !r1.sido || !r2.sido || r1.sido === r2.sido;
+      const guGunMatch = r1.guGun === r2.guGun;
+      if (sidoMatch && guGunMatch) return `일치`;
+      return `불일치 (증권 소재지: ${r1.guGun} / 사고장소: ${r2.guGun})`;
     }
+
+    // 2차 fallback: 키워드 매칭 (한쪽이라도 행정구역 없을 때)
+    // SMPL_02처럼 사고장소가 "수지삼성2차 205동 1602호"인 경우
+    const kw1 = extractKeywords(policyAddr);
+    const kw2 = extractKeywords(accidentAddr);
+    if (kw1.length === 0 || kw2.length === 0) {
+      // 양쪽 모두 키워드 없으면 판정 불가
+      return null;
+    }
+    // 두 키워드 집합에 공통 요소가 있으면 일치
+    const intersection = kw1.filter(k => kw2.some(k2 => k2.includes(k) || k.includes(k2)));
+    if (intersection.length > 0) {
+      return `일치 (공통 키워드: ${intersection.slice(0, 2).join(', ')})`;
+    }
+    // 공통 없으면 불일치
+    return `불일치 (증권: ${kw1.slice(0,2).join(',')} / 사고장소: ${kw2.slice(0,2).join(',')})`;
   } catch (e) {
     console.warn('[v6.2] 사고 발생지 부합 계산 실패:', e);
     return null;
@@ -2348,6 +2416,8 @@ ${typeCtx}
         if (b64) insuredPersonalDocs.push({ b64, mt: docMediaType(up.file_path), name: up.doc_name || code });
       }
     }
+    // v6.2.13: 보험증권에서 추출한 피보험자명을 컨텍스트로 전달
+    const policyInsuredName = _extractedCandidates['insured_name']?.[0]?.value || '';
     if (insuredPersonalDocs.length > 0) {
       const contentArr = insuredPersonalDocs.map(d => {
         const isPdf = d.mt === 'application/pdf';
@@ -2357,15 +2427,22 @@ ${typeCtx}
         return item;
       });
       contentArr.push({ type:'text', text:
-`첨부 서류(주민등록등본·가족관계증명서)를 종합 분석하여 아래 JSON을 추출하세요.
-정보 없으면 빈 문자열.
+`보험증권의 피보험자 본인 성명은 "${policyInsuredName}"입니다.
+
+첨부 서류(주민등록등본·가족관계증명서)에서 위 피보험자 본인 "${policyInsuredName}"의 정보를 추출하세요.
+
+【중요】 등본에서 "${policyInsuredName}"는 세대주일 수도, 세대원(배우자/자녀)일 수도 있습니다.
+세대주 이름이 다르더라도 세대원 목록에서 "${policyInsuredName}"을 찾아 그 사람의 정보를 추출하세요.
+가족관계증명서에서도 본인이 "${policyInsuredName}"이 아닐 수 있습니다. 본인 또는 배우자/가족 행에서 찾으세요.
+
+JSON 출력 (정보 없으면 빈 문자열):
 {
-  "insured_full_name": "피보험자 본인 성명 (등본 기준)",
-  "insured_rrn": "주민등록번호 (마스킹 포함)",
+  "insured_full_name": "${policyInsuredName} (등본·가족관계에 존재하면 그대로)",
+  "insured_rrn": "${policyInsuredName}의 주민등록번호 (마스킹 포함)",
   "insured_phone": "연락처 (있으면)",
-  "insured_registered_address": "피보험자 실거주지 (등본상 주소)",
-  "insured_cohabitants": "동거인 목록 (성명+관계, 쉼표 구분. 예: 김세연(배우자), 백지훈(부))",
-  "family_relation_text": "가족관계 (가족관계증명서 기준. 예: 백석균(본인) - 김세연(배우자))"
+  "insured_registered_address": "등본 상단의 '현주소' (세대 전체 거주지 — 도로명/지번주소 전체)",
+  "insured_cohabitants": "동거인 목록 — '${policyInsuredName}' 본인을 제외한 세대원 (성명+관계, 쉼표 구분. 예: 정영윤(배우자), 서은율(자녀))",
+  "family_relation_text": "가족관계증명서 기준 가족관계 (예: 서재성(본인) - 정영윤(배우자), 서은율(자녀))"
 }`});
       const r2a = await callClaudeMulti(contentArr, SYS);
       if (r2a) {
@@ -2397,10 +2474,18 @@ ${typeCtx}
         return item;
       });
       contentArr.push({ type:'text', text:
-`첨부 서류(건축물대장·등기부등본)를 분석하여 아래 JSON 추출.
-정보 없으면 빈 문자열.
+`보험증권의 피보험자 본인은 "${policyInsuredName}"입니다.
+
+첨부 서류(건축물대장·등기부등본)를 분석하여 사고세대 건물 소유자 정보를 추출하세요.
+
+【공동소유 처리】 소유자가 1명이면 그 이름을, 2명 이상 공동소유면 모든 소유자를 지분과 함께 표기.
+예시:
+  - 단독소유: "서재성 (소유권이전 2013.06.28)"
+  - 공동소유: "서재성 1/2, 정영윤 1/2 (소유권이전 2023.08.17)"
+
+JSON 출력 (정보 없으면 빈 문자열):
 {
-  "insured_owner_name": "사고세대 건물 소유자 (소유권 이전일 있으면 함께. 예: 김인수 (소유권이전 2013.06.28))"
+  "insured_owner_name": "사고세대 건물 소유자 (공동소유면 모든 소유자 지분 포함)"
 }`});
       const r2b = await callClaudeMulti(contentArr, SYS);
       if (r2b) {
