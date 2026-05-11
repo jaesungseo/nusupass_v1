@@ -1671,6 +1671,17 @@ function _insResolveCode(code, fileIdx) {
   return `${code}_${fileIdx + 1}`;  // fileIdx=1 → _2
 }
 
+// v6.2.17: doc_code에 해당하는 업로드 파일들을 일관된 배열로 반환
+// _insUploaded[code]는 단일 객체일 수도, 배열일 수도, 없을 수도 있음 (통합 슬롯 도입 후 케이스 분기)
+// 이 헬퍼는 모든 케이스를 흡수해서 [row, ...] 형태로 정규화
+function _getDocFiles(code) {
+  const up = _insUploaded[code];
+  if (!up) return [];
+  if (Array.isArray(up)) return up.filter(x => x && x.file_path);
+  if (up.file_path) return [up];
+  return [];
+}
+
 function insTrigger(code, name, fileIdx) {
   const resolvedCode = _insResolveCode(code, fileIdx);
   const inp = document.createElement('input');
@@ -2390,6 +2401,18 @@ ${typeCtx}
   try {
     _extractedCandidates = {};  // 초기화
     _userOverrides = {};         // v6.2.9: 재추출 시 사용자 수정값도 초기화
+
+    // v6.2.17: 어떤 doc_code가 어떻게 저장돼 있는지 진입 시점에 한 번에 표시 (디버깅)
+    console.group('[v6.2.17 s2Extract] _insUploaded 상태');
+    Object.keys(_insUploaded).forEach(k => {
+      const v = _insUploaded[k];
+      const summary = Array.isArray(v)
+        ? `Array(${v.length})[${v.map(x => x ? (x.doc_name || x.doc_code || 'row') : 'null').join(', ')}]`
+        : (v?.doc_name || v?.doc_code || JSON.stringify(v).slice(0, 80));
+      console.log(`  ${k}: ${summary}`);
+    });
+    console.groupEnd();
+
     const addCandidate = (key, value, source) => {
       if (!value || value === '' || value === '정보 없음' || value === '확인불가') return;
       if (!_extractedCandidates[key]) _extractedCandidates[key] = [];
@@ -2437,13 +2460,14 @@ ${typeCtx}
     // ── Call 2a: 피보험자 인적 정보 (등본 + 가족관계증명서) ──
     showExtracting('피보험자 인적 정보 추출 중...', 30);
     const insuredPersonalDocs = [];
+    // v6.2.17: 통합 슬롯이 배열로 저장되는 경우(_insUploaded[code]=[row,null] 등)도 흡수
     for (const code of ['family_doc', 'family_doc_2', 'resident_reg', 'family_cert']) {
-      const up = _insUploaded[code];
-      if (up && !Array.isArray(up) && up.file_path) {
+      for (const up of _getDocFiles(code)) {
         const b64 = await fetchBase64(up.file_path);
         if (b64) insuredPersonalDocs.push({ b64, mt: docMediaType(up.file_path), name: up.doc_name || code });
       }
     }
+    console.log('[v6.2.17 Call 2a] 피보험자 인적 문서 수집:', insuredPersonalDocs.map(d => d.name));
     // v6.2.13: 보험증권에서 추출한 피보험자명을 컨텍스트로 전달
     const policyInsuredName = _extractedCandidates['insured_name']?.[0]?.value || '';
     if (insuredPersonalDocs.length > 0) {
@@ -2498,13 +2522,14 @@ JSON 출력 (정보 없으면 빈 문자열):
     // ── Call 2b: 피보험자 소유자 정보 (건축물대장 + 등기부등본) ──
     showExtracting('피보험자 소유자 정보 추출 중...', 45);
     const insuredOwnerDocs = [];
+    // v6.2.17: 통합 슬롯이 배열로 저장되는 경우도 흡수
     for (const code of ['ownership_insured', 'ownership_insured_2', 'ownership_accident']) {
-      const up = _insUploaded[code];
-      if (up && !Array.isArray(up) && up.file_path) {
+      for (const up of _getDocFiles(code)) {
         const b64 = await fetchBase64(up.file_path);
         if (b64) insuredOwnerDocs.push({ b64, mt: docMediaType(up.file_path), name: up.doc_name || code });
       }
     }
+    console.log('[v6.2.17 Call 2b] 피보험자 소유 문서 수집:', insuredOwnerDocs.map(d => d.name));
     if (insuredOwnerDocs.length > 0) {
       const contentArr = insuredOwnerDocs.map(d => {
         const isPdf = d.mt === 'application/pdf';
@@ -2539,13 +2564,14 @@ JSON 출력 (정보 없으면 빈 문자열):
     // ── Call 3a: 피해자 건축물대장 + 등기부 (1차, 90% 케이스 — 직하층 청구권자=건물소유자) ──
     showExtracting('피해자 건축물대장·등기부 추출 중...', 60);
     const victimOwnerDocs = [];
+    // v6.2.17: 통합 슬롯이 배열로 저장되는 경우도 흡수
     for (const code of ['ownership_doc_victim', 'ownership_doc_victim_2', 'ownership_victim']) {
-      const up = _insUploaded[code];
-      if (up && !Array.isArray(up) && up.file_path) {
+      for (const up of _getDocFiles(code)) {
         const b64 = await fetchBase64(up.file_path);
         if (b64) victimOwnerDocs.push({ b64, mt: docMediaType(up.file_path), name: up.doc_name || code });
       }
     }
+    console.log('[v6.2.17 Call 3a] 피해자 소유 문서 수집:', victimOwnerDocs.map(d => d.name));
     if (victimOwnerDocs.length > 0) {
       const contentArr = victimOwnerDocs.map(d => {
         const isPdf = d.mt === 'application/pdf';
@@ -2600,13 +2626,14 @@ JSON 출력 (정보 없으면 빈 문자열):
     // ── Call 3b: 피해자 등본·가족관계 (2차 보완, 임차인 청구 케이스 — 10%) ──
     showExtracting('피해자 등본·가족관계 추출 중...', 75);
     const victimPersonalDocs = [];
+    // v6.2.17: 통합 슬롯이 배열로 저장되는 경우도 흡수
     for (const code of ['family_doc_victim', 'family_doc_victim_2']) {
-      const up = _insUploaded[code];
-      if (up && !Array.isArray(up) && up.file_path) {
+      for (const up of _getDocFiles(code)) {
         const b64 = await fetchBase64(up.file_path);
         if (b64) victimPersonalDocs.push({ b64, mt: docMediaType(up.file_path), name: up.doc_name || code });
       }
     }
+    console.log('[v6.2.17 Call 3b] 피해자 인적 문서 수집:', victimPersonalDocs.map(d => d.name));
     if (victimPersonalDocs.length > 0) {
       const contentArr = victimPersonalDocs.map(d => {
         const isPdf = d.mt === 'application/pdf';
@@ -2657,9 +2684,9 @@ JSON 출력 (정보 없으면 빈 문자열):
     // ── Call 4b: 청구서 + 경위서 + 파트너 보고서 ──
     showExtracting('청구·경위 자료 추출 중...', 90);
     const claimDocs = [];
+    // v6.2.17: 일관성을 위해 헬퍼 사용 (이 두 코드는 단일 슬롯이지만 패턴 통일)
     for (const code of ['claim_form', 'incident_statement']) {
-      const up = _insUploaded[code];
-      if (up && !Array.isArray(up) && up.file_path) {
+      for (const up of _getDocFiles(code)) {
         const b64 = await fetchBase64(up.file_path);
         if (b64) claimDocs.push({ b64, mt: docMediaType(up.file_path), name: up.doc_name || code });
       }
