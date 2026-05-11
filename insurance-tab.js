@@ -551,6 +551,10 @@ async function openInsuranceTab(caseId, caseNo) {
   _insResult = {}; _insDraft = null; _insAnalyzing = false;
   _insVictims = [];
   _insHandler = null;
+  // v6.2: STEP 2 상태도 초기화 (사건 전환 시 이전 사건의 추출 결과가 남는 버그 방지)
+  _extractedCandidates = {};
+  _userOverrides = {};
+  _analyzingStep = 0;
 
   go('insurance');
   document.getElementById('insurancePageSub').textContent = `사건 ${caseNo || caseId.slice(0,8)}`;
@@ -2218,6 +2222,7 @@ ${typeCtx}
 
   try {
     _extractedCandidates = {};  // 초기화
+    _userOverrides = {};         // v6.2.9: 재추출 시 사용자 수정값도 초기화
     const addCandidate = (key, value, source) => {
       if (!value || value === '' || value === '정보 없음' || value === '확인불가') return;
       if (!_extractedCandidates[key]) _extractedCandidates[key] = [];
