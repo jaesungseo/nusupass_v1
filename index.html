@@ -3105,7 +3105,7 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
       <button class="modal-close" onclick="closeModal('caseDetailModal')">✕</button>
     </div>
     <div id="caseDetailBody"></div>
-    <div class="modal-footer">
+    <div class="modal-footer" id="caseDetailFooter">
       <button class="btn btn-ghost" onclick="closeModal('caseDetailModal')">닫기</button>
     </div>
   </div>
@@ -3710,6 +3710,19 @@ function go(screen){
   if(screen==='settings') loadSettings();
   if(screen==='prompts') loadPrompts();
   if(screen==='insurance'){
+    // v6.2.10: 사건 화면 진입 시 옛 사건 데이터 강제 클리어 (이전 사건 데이터 섞임 방지)
+    if(typeof clearInsuranceState === 'function') clearInsuranceState();
+    // DOM도 비우기 — 사건 선택 전엔 빈 상태로
+    const body = document.getElementById('insuranceTabBody');
+    if (body) body.innerHTML = `
+      <div class="empty">
+        <div class="empty-icon">🛡️</div>
+        <div class="empty-text">위에서 사건을 선택하거나, 접수 목록에서 "보험자료" 버튼을 클릭하세요</div>
+      </div>`;
+    // 드롭다운도 초기화
+    const sel = document.getElementById('insuranceCaseSelect');
+    if (sel) sel.value = '';
+
     if(typeof loadInsuranceCaseSelector==='function'){
       loadInsuranceCaseSelector().catch(e=>{
         console.error('[insurance] loadInsuranceCaseSelector 실패:', e);
@@ -3874,7 +3887,15 @@ function renderCaseList(cases){
     document.getElementById('caseListBody').innerHTML='<tr><td colspan="9"><div class="empty"><div class="empty-icon">📋</div><div class="empty-text">접수건이 없습니다</div></div></td></tr>';
     return;
   }
-  document.getElementById('caseListBody').innerHTML = cases.map(c=>`
+  document.getElementById('caseListBody').innerHTML = cases.map(c=>{
+    // v6.2.12: 보험자료 진입 조건 (옵션 A)
+    const canEnterInsurance = c.needs_insurance === true
+      || c.insurance_status === 'active'
+      || c.detection_work_status === 'repair_done' || c.detection_work_status === 'repair_completed'
+      || c.interior_work_status === 'repair_done' || c.interior_work_status === 'repair_completed';
+    const canStartInsurance = !canEnterInsurance && c.insurance_status !== 'active';
+
+    return `
     <tr class="clickable" onclick="openCaseDetail('${c.id}')">
       <td><span style="font-family:'JetBrains Mono',monospace;font-size:12px">${c.case_no||'-'}</span></td>
       <td><strong>${c.customer_name}</strong></td>
@@ -3886,13 +3907,32 @@ function renderCaseList(cases){
       <td>${purposeStatusBadge(c.needs_interior, c.interior_status, c.interior_work_status)}
           ${c.needs_interior && c.interior_partner_name ? `<div style="font-size:10px;color:var(--muted);margin-top:2px">${c.interior_partner_name}</div>` : ''}</td>
       <td style="font-size:12px;color:var(--muted)">${fmtDate(c.created_at)}</td>
-      <td style="display:flex;gap:6px">
+      <td style="display:flex;gap:6px;flex-wrap:wrap">
         <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openCaseDetail('${c.id}')">상세</button>
-        ${(c.detection_work_status==='repair_done' || c.interior_work_status==='repair_done') ? `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openInsuranceTab('${c.id}','${c.case_no}')">보험자료</button>` : ''}
+        ${canEnterInsurance ? `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openInsuranceTab('${c.id}','${c.case_no}')">보험자료</button>` : ''}
+        ${canStartInsurance ? `<button class="btn btn-ghost btn-sm" style="border-color:var(--blue);color:var(--blue)" onclick="event.stopPropagation();startInsuranceForCase('${c.id}','${c.case_no}','${c.customer_name||''}')">보험자료 시작</button>` : ''}
       </td>
     </tr>
-  `).join('');
+  `;}).join('');
 }
+
+// v6.2.12: 외부에서 보고 받은 케이스 (카카오톡 등) — 손해사정사 수동 진입
+async function startInsuranceForCase(caseId, caseNo, customerName){
+  const msg = `「${caseNo} · ${customerName}」 사건의 보험자료 처리를 시작할까요?\n\n외부(카카오톡 등)에서 자료를 받은 경우 이 버튼으로 진입할 수 있습니다.`;
+  if (!confirm(msg)) return;
+  try {
+    const { error } = await sb.from('intake_cases')
+      .update({ insurance_status: 'active' })
+      .eq('id', caseId);
+    if (error) throw error;
+    toast('보험자료 처리가 시작됐습니다. 이동합니다.', 's');
+    // 직접 보험자료 탭으로 이동
+    await openInsuranceTab(caseId, caseNo);
+  } catch (e) {
+    toast('실패: ' + (e.message || e), 'e');
+  }
+}
+window.startInsuranceForCase = startInsuranceForCase;
 
 function filterCases(){
   const kw = document.getElementById('caseSearch').value.toLowerCase();
@@ -4002,6 +4042,21 @@ async function openCaseDetail(caseId){
 
     ${(detectionDone||interiorDone) ? renderRepairReports(detectionDone, interiorDone, repairDocs) : ''}
   `;
+
+  // v6.2.12: 푸터 동적 렌더링 — [보험자료] 버튼 (옵션 A 조건)
+  const canEnter = data.needs_insurance === true
+    || data.insurance_status === 'active'
+    || (detectionDone || interiorDone);
+  const canStart = !canEnter && data.insurance_status !== 'active';
+
+  const footerEl = document.getElementById('caseDetailFooter');
+  if (footerEl) {
+    footerEl.innerHTML = `
+      <button class="btn btn-ghost" onclick="closeModal('caseDetailModal')">닫기</button>
+      ${canEnter ? `<button class="btn btn-primary" onclick="closeModal('caseDetailModal');openInsuranceTab('${caseId}','${data.case_no}')">📋 보험자료 열기</button>` : ''}
+      ${canStart ? `<button class="btn btn-ghost" style="border-color:var(--blue);color:var(--blue)" onclick="startInsuranceForCase('${caseId}','${data.case_no}','${(data.customer_name||'').replace(/'/g,"\\'")}')">📋 보험자료 시작</button>` : ''}
+    `;
+  }
 }
 
 // purpose별 섹션 렌더링 (탐지 또는 인테리어)
@@ -5619,7 +5674,7 @@ if (typeof window.escapeHtml !== 'function') {
 }
 </script>
 
-<script src="./insurance-tab.js?v=6.2.10"></script>
+<script src="./insurance-tab.js?v=6.2.12"></script>
 <!-- v6 패치: 9케이스 검증 PASS 룰엔진 + 약관선택 모달 + 파트너 임포트 -->
 <script src="./sabi-rule-v6.js?v=6.0.0"></script>
 <script src="./insurance-tab-v6-patch.js?v=6.0.0"></script>

@@ -544,6 +544,28 @@ let _insPartnerAccident = null;  // v5.5: 파트너 현장 파악 사고일시 {
 // ─────────────────────────────────────────────
 // 진입점
 // ─────────────────────────────────────────────
+// v6.2.10: 보험자료 탭 진입/이탈 시 모든 사건 메모리 클리어 (이전 사건 데이터 섞임 방지)
+function clearInsuranceState() {
+  _insClaim = null;
+  _insCaseId = null;
+  _insField = null;
+  _insPartners = [];
+  _insImportedPartners = new Set();
+  _insCompany = null;
+  _insUploaded = {};
+  _insStep = 1;
+  _insResult = {};
+  _insDraft = null;
+  _insAnalyzing = false;
+  _insVictims = [];
+  try { _insHandler = null; } catch(e) {}  // 정의 위치 차이로 인한 안전장치
+  // v6.2 신규 상태
+  _extractedCandidates = {};
+  _userOverrides = {};
+  _analyzingStep = 0;
+}
+window.clearInsuranceState = clearInsuranceState;
+
 async function openInsuranceTab(caseId, caseNo) {
   _insClaim = null; _insCaseId = caseId; _insField = null;
   _insPartners = []; _insImportedPartners = new Set();  // v6.1: 다중 파트너 초기화
@@ -755,14 +777,63 @@ async function insConfirmImport() {
 async function loadInsuranceCaseSelector() {
   const sel = document.getElementById('insuranceCaseSelect');
   if (!sel) return;
-  const { data } = await sb.from('partner_assignments')
-    .select('case_id, intake_cases(case_no, customer_name)')
+
+  // v6.2.12: 진입 조건 (옵션 A — 가장 넓음)
+  // 1. needs_insurance = true (사고접수 시 "보험처리만" 체크)
+  // 2. insurance_status = 'active' (손해사정사 수동 활성화 — 카톡 등 외부 보고 케이스)
+  // 3. 파트너 수리완료 (work_status IN ['repair_done','repair_completed'])
+  //
+  // 한 번의 쿼리로 처리하기 위해 intake_cases 기준으로 조회하고
+  // 파트너 정보는 LEFT JOIN으로 가져옴
+
+  // (a) needs_insurance OR insurance_status='active' 케이스
+  const { data: directCases, error: e1 } = await sb.from('intake_cases')
+    .select('id, case_no, customer_name, address_region, needs_insurance, insurance_status, created_at')
+    .or('needs_insurance.eq.true,insurance_status.eq.active')
+    .order('created_at', { ascending: false });
+  if (e1) {
+    console.error('[v6.2.12] directCases 조회 실패:', e1);
+  }
+
+  // (b) 파트너 수리완료 케이스
+  const { data: partnerCases, error: e2 } = await sb.from('partner_assignments')
+    .select('case_id, intake_cases(id, case_no, customer_name, address_region, created_at)')
     .in('work_status', ['repair_done','repair_completed'])
     .eq('assignment_status', 'accepted')
     .order('created_at', { ascending: false });
+  if (e2) {
+    console.error('[v6.2.12] partnerCases 조회 실패:', e2);
+  }
+
+  // 두 결과 병합 (중복 제거)
+  const seenIds = new Set();
+  const allCases = [];
+  for (const c of (directCases || [])) {
+    if (!seenIds.has(c.id)) {
+      seenIds.add(c.id);
+      allCases.push({
+        id: c.id, case_no: c.case_no, customer_name: c.customer_name,
+        source: c.needs_insurance ? '보험처리만' : (c.insurance_status === 'active' ? '수동 진입' : ''),
+      });
+    }
+  }
+  for (const a of (partnerCases || [])) {
+    const c = a.intake_cases;
+    if (c && !seenIds.has(c.id)) {
+      seenIds.add(c.id);
+      allCases.push({
+        id: c.id, case_no: c.case_no, customer_name: c.customer_name,
+        source: '수리완료',
+      });
+    }
+  }
+
+  // case_no DESC 정렬 (최근부터)
+  allCases.sort((a, b) => (b.case_no || '').localeCompare(a.case_no || ''));
+
   sel.innerHTML = '<option value="">— 사건 선택 —</option>' +
-    (data||[]).map(a =>
-      `<option value="${a.case_id}">${a.intake_cases?.case_no||'-'} · ${a.intake_cases?.customer_name||'-'}</option>`
+    allCases.map(c =>
+      `<option value="${c.id}">${c.case_no||'-'} · ${c.customer_name||'-'} ${c.source ? '['+c.source+']' : ''}</option>`
     ).join('');
 }
 
