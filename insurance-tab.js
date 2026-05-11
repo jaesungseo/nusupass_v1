@@ -2274,7 +2274,13 @@ ${typeCtx}
       }
     }
     if (insuredDocs.length > 0) {
-      const contentArr = insuredDocs.map(d => ({ type:'document', source:{ type:'base64', media_type:d.mt, data:d.b64 }, title:d.name }));
+      const contentArr = insuredDocs.map(d => {
+        const isPdf = d.mt === 'application/pdf';
+        const item = { type: isPdf ? 'document' : 'image',
+                       source: { type:'base64', media_type:d.mt, data:d.b64 } };
+        if (isPdf) item.title = d.name;
+        return item;
+      });
       contentArr.push({ type:'text', text:
 `첨부 서류(주민등록등본·가족관계증명서·건축물대장·등기부등본)를 종합 분석하여 아래 JSON을 추출하세요.
 정보가 없거나 추출 불가능한 항목은 빈 문자열로.
@@ -2311,7 +2317,13 @@ ${typeCtx}
       }
     }
     if (victimDocs.length > 0) {
-      const contentArr = victimDocs.map(d => ({ type:'document', source:{ type:'base64', media_type:d.mt, data:d.b64 }, title:d.name }));
+      const contentArr = victimDocs.map(d => {
+        const isPdf = d.mt === 'application/pdf';
+        const item = { type: isPdf ? 'document' : 'image',
+                       source: { type:'base64', media_type:d.mt, data:d.b64 } };
+        if (isPdf) item.title = d.name;
+        return item;
+      });
       contentArr.push({ type:'text', text:
 `첨부 서류(피해자 주민등록등본·건축물대장·등기부등본)를 종합 분석하여 아래 JSON을 추출하세요.
 정보가 없으면 빈 문자열.
@@ -2354,7 +2366,13 @@ ${typeCtx}
       }
     }
     if (incidentDocs.length > 0 || partnerText) {
-      const contentArr = incidentDocs.map(d => ({ type:'document', source:{ type:'base64', media_type:d.mt, data:d.b64 }, title:d.name }));
+      const contentArr = incidentDocs.map(d => {
+        const isPdf = d.mt === 'application/pdf';
+        const item = { type: isPdf ? 'document' : 'image',
+                       source: { type:'base64', media_type:d.mt, data:d.b64 } };
+        if (isPdf) item.title = d.name;
+        return item;
+      });
       contentArr.push({ type:'text', text:
 `첨부 서류(누수소견서·보험청구서·경위서) ${partnerText?'+ 파트너 보고서':''}를 종합 분석하여 아래 JSON 추출.
 ${partnerText ? '\n[파트너 보고서 내용]' + partnerText + '\n' : ''}
@@ -3604,7 +3622,20 @@ async function callClaudeMulti(contentArr, system) {
       messages: [{ role:'user', content: contentArr }],
     }),
   });
-  if (!resp.ok) throw new Error(`Multi API 오류 ${resp.status}`);
+  if (!resp.ok) {
+    // v6.2.5: 디버깅용 — 응답 본문 읽어서 콘솔에 표시
+    let detail = '';
+    try { detail = await resp.text(); } catch(e) {}
+    console.error('[Multi API 오류]', resp.status, resp.statusText, detail);
+    console.error('[Multi API contentArr]', contentArr.map(c => ({
+      type: c.type,
+      mediaType: c.source?.media_type,
+      hasData: !!c.source?.data,
+      dataLen: c.source?.data?.length || 0,
+      textLen: c.text?.length || 0,
+    })));
+    throw new Error(`Multi API 오류 ${resp.status} — ${detail.substring(0, 200)}`);
+  }
   const res = await resp.json();
   const raw = res.content?.[0]?.text || '{}';
   return parseClaudeJson(raw, 'multi');
