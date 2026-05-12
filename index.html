@@ -3042,7 +3042,7 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
       <div class="page-header">
         <div>
           <div class="page-title">🔬 프롬프트 관리</div>
-          <div class="page-sub">보고서 생성에 사용되는 4개 프롬프트. 수정 시 다음 보고서 생성부터 즉시 반영됩니다.</div>
+          <div class="page-sub">손해사정 보고서 분석에 사용되는 9단계 프롬프트 (9단계는 약관별 3 variant). 수정 시 다음 분석부터 즉시 반영됩니다.</div>
         </div>
         <span style="font-size:11px;padding:4px 10px;background:#fef3c7;color:#92400e;border-radius:999px;font-weight:600;">superadmin only</span>
       </div>
@@ -5395,12 +5395,26 @@ function settings_onReset(){
 // v5.7.7: 프롬프트 관리 (superadmin only)
 // ══════════════════════════════════════════════════════════
 let PROMPTS_STATE = {
-  list: [],                  // 4개 프롬프트
+  list: [],                  // v6.2.18: 9단계 + variant 3 = 11개 프롬프트
   selectedKey: null,         // 현재 편집 중인 prompt_key
   original: null,            // 되돌리기용 원본 (선택된 프롬프트의 직전 저장값)
 };
 
-const PROMPT_DISPLAY_ORDER = ['extract_policy', 'extract_insured', 'extract_victim', 'judge_report'];
+const PROMPT_DISPLAY_ORDER = [
+  // v6.2.18: 4-Call(extract_*, judge_report) → 9단계 분석 + 9단계 variant 3
+  // 옛 4-Call은 DB에 보관 (is_active=false)하지만 화면에는 표시하지 않음
+  'analyze_step_1_insured_status',
+  'analyze_step_2_accident_cause',
+  'analyze_step_3_accident_description',
+  'analyze_step_4_period_match',
+  'analyze_step_5_location_match',
+  'analyze_step_6_victim_damages',
+  'analyze_step_7_investigator_opinion',
+  'analyze_step_8_liability',
+  'analyze_step_9_coverage_family_daily_new',
+  'analyze_step_9_coverage_family_daily_old',
+  'analyze_step_9_coverage_personal_daily',
+];
 
 async function loadPrompts(){
   if(!isReal){ toast('Supabase 연결이 필요합니다','e'); return; }
@@ -5415,6 +5429,7 @@ async function loadPrompts(){
   try {
     const { data, error } = await sb.from('prompt_templates')
       .select('*')
+      .eq('is_active', true)  // v6.2.18: 비활성 프롬프트(옛 4-Call) 제외
       .order('prompt_key');
     if(error) throw error;
     PROMPTS_STATE.list = data || [];
