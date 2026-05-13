@@ -2741,10 +2741,19 @@ JSON 출력 (정보 없으면 빈 문자열):
 ${partnerText ? '\n[파트너 보고서 내용]' + partnerText + '\n' : ''}
 정보 없으면 빈 문자열.
 ${!_insUploaded['leak_opinion_external'] ? '※ 누수소견서가 없으므로 accident_date/accident_address도 함께 추출하세요.\n' : ''}
+
+추출 규칙 (중요):
+1. 보험청구서 양식의 "사고경위" 칸에 적힌 텍스트는 그대로 accident_summary에 추출하세요. 누락 금지.
+   예: 청구서에 "자택 화장실 방수층 노후화로 하부층 2세대 수침"이라고 적혀있으면 그 문장을 그대로 사용.
+2. 별도의 경위서 문서가 있으면 그 내용은 incident_report_text에 요약. 청구서의 사고경위 칸과는 다른 출처임.
+3. accident_cause_text는 사고경위 또는 경위서에서 사고의 직접 원인만 짧게 추출 (예: "방수층 노후화", "세탁기 호스 이탈"). 사고 발생 위치/피해 내용은 제외.
+4. 정보가 정말 없을 때만 빈 문자열. 청구서 양식 칸이 비어있어도 자유서술란이나 메모란이 있는지 한 번 더 확인.
+
 {
   ${!_insUploaded['leak_opinion_external'] ? '"accident_date": "사고일자",\n  "accident_address": "사고장소 (주소 전체)",\n  ' : ''}
-  "incident_report_text": "경위서 요약 (1~2문장)",
-  "accident_summary": "사고 경위 요약 (1~2문장)"
+  "incident_report_text": "경위서 문서가 별도로 있을 때만 요약 (없으면 빈 문자열)",
+  "accident_summary": "보험청구서의 사고경위 칸 원문 또는 경위서 요약",
+  "accident_cause_text": "사고의 직접 원인만 짧게 (위치·피해 제외)"
 }`});
       const r4b = await callClaudeMulti(contentArr, SYS);
       if (r4b) {
@@ -2755,8 +2764,13 @@ ${!_insUploaded['leak_opinion_external'] ? '※ 누수소견서가 없으므로 
         }
         _insClaim = { ..._insClaim,
           incident_report_text: r4b.incident_report_text,
-          accident_summary: r4b.accident_summary,
+          accident_summary_text: r4b.accident_summary,  // v6.2.28: _text suffix로 키 통일
+          accident_cause_text: r4b.accident_cause_text,  // v6.2.28: 사고의 직접 원인만 별도 추출
         };
+        // v6.2.28: addCandidate로도 노출하여 _extractedCandidates에서도 접근 가능
+        addCandidate('accident_summary', r4b.accident_summary, '청구서/경위서');
+        addCandidate('incident_report', r4b.incident_report_text, '청구서/경위서');
+        addCandidate('accident_cause_detail', r4b.accident_cause_text, '청구서/경위서');
       }
     }
 
@@ -3267,6 +3281,15 @@ async function s2Analyze() {
     analysisId = anaRow.id;
     console.log('[v6.2.25 Analyze] analysis_id:', analysisId);
 
+    // v6.2.29: insurance_claims에 분석 시작 표시
+    if (_insClaim.id) {
+      await sb.from('insurance_claims').update({
+        analysis_status: 'running',
+        analysis_started_at: new Date().toISOString(),
+        analysis_error: null,
+      }).eq('id', _insClaim.id);
+    }
+
     // ── 9개 프롬프트 DB 로드 ──
     progress(5, '프롬프트 로드 중…');
     const stepKeys = [
@@ -3349,6 +3372,80 @@ async function s2Analyze() {
       duration_ms: duration,
     }).eq('id', analysisId);
 
+    // ── v6.2.29: insurance_claims에도 평탄화하여 동기화 (보고서·목록 조회용) ──
+    // claim_analyses는 raw 보관, insurance_claims는 화면 렌더링·통계용
+    try {
+      const r1 = stepResults[1] || {};
+      const r2 = stepResults[2] || {};
+      const r3 = stepResults[3] || {};
+      const r4 = stepResults[4] || {};
+      const r5 = stepResults[5] || {};
+      const r6 = stepResults[6] || {};
+      const r7 = stepResults[7] || {};
+      const r8 = stepResults[8] || {};
+      const r9 = stepResults[9] || {};
+
+      // accident_type 매핑: '주택관리'/'일상생활'/'확인불가' 그대로 사용
+      // ⓓ 공용부, ⓒ 시공불량 케이스는 8단계에서 accident_category='주택관리'로 오지만
+      // 의미상 '공용부'/'시공불량'으로 세분화 가능 — accident_cause_category로 구분
+      let accidentTypeVal = r8.accident_category || null;
+      if (r8.accident_cause_category === 'ⓓ') accidentTypeVal = '공용부';
+      else if (r8.accident_cause_category === 'ⓒ') accidentTypeVal = '시공불량';
+
+      const claimUpdates = {
+        // 1단계
+        insured_status: r1.insured_status || null,
+        // 2단계
+        accident_cause_detail: r2.accident_cause || null,
+        // 3단계
+        accident_description: r3.accident_description || null,
+        // 4단계 → 별도 컬럼 없음 (보험기간 매칭은 RPC validate_accident_in_policy_period로 별도 확인)
+        // 5단계
+        address_match: r5.accident_location_match || null,
+        // 6단계: victim_damages 배열을 jsonb로 저장
+        victim_damages: r6.victim_damages || null,
+        // 8단계
+        liability_result: r8.liability_result || null,
+        accident_type: accidentTypeVal,
+        shared_liability: !!r8.shared_liability,
+        liability_reasoning: r8.liability_reasoning || null,
+        // 9단계
+        coverage_result: r9.coverage_result || null,
+        coverage_reasoning: r9.coverage_reasoning || null,
+        insurance_clause: r9.policy_clause_applied || null,
+        // 메타: 분석 상태
+        analysis_status: 'done',
+        analysis_done_at: new Date().toISOString(),
+        analysis_error: null,
+        analysis_progress: {
+          step_1: { status: 'done', at: new Date().toISOString() },
+          step_2: { status: 'done' },
+          step_3: { status: 'done' },
+          step_4: { status: 'done' },
+          step_5: { status: 'done' },
+          step_6: { status: 'done' },
+          step_7: { status: 'done' },
+          step_8: { status: 'done' },
+          step_9: { status: 'done' },
+        },
+        updated_at: new Date().toISOString(),
+      };
+      const { error: syncErr } = await sb.from('insurance_claims')
+        .update(claimUpdates)
+        .eq('id', _insClaim.id);
+      if (syncErr) {
+        console.error('[v6.2.29 insurance_claims sync 실패]', syncErr);
+        // 동기화 실패해도 분석 결과는 claim_analyses에 있으므로 toast로만 알림
+        toast('분석은 완료됐으나 보고서 데이터 저장에 일부 실패: ' + syncErr.message, 'w');
+      } else {
+        console.log('[v6.2.29] insurance_claims 동기화 완료');
+        // 로컬 _insClaim도 최신값 반영
+        _insClaim = { ..._insClaim, ...claimUpdates };
+      }
+    } catch (syncE) {
+      console.error('[v6.2.29 insurance_claims sync 예외]', syncE);
+    }
+
     // v6.2.26: 9개 칩 모두 done으로 마무리
     for (let s = 1; s <= 9; s++) {
       const pill = document.querySelector(`.s2-step-pill[data-step="${s}"]`);
@@ -3390,6 +3487,15 @@ async function s2Analyze() {
         error_message: e.message,
       }).eq('id', analysisId);
     }
+    // v6.2.29: insurance_claims에도 실패 기록
+    if (_insClaim && _insClaim.id) {
+      try {
+        await sb.from('insurance_claims').update({
+          analysis_status: 'failed',
+          analysis_error: e.message,
+        }).eq('id', _insClaim.id);
+      } catch (_) {}
+    }
     if (load) load.style.display = 'none';
     toast('분석 실패: ' + e.message, 'e');
   } finally {
@@ -3404,6 +3510,7 @@ async function s2Analyze() {
 function buildAnalysisInputs() {
   const inputs = {};
   // _userOverrides가 있으면 우선, 없으면 _extractedCandidates[0].value
+  // v6.2.29: 우선순위 — _userOverrides > _extractedCandidates[0] > _insClaim > '정보 없음'
   const allKeys = new Set([
     ...Object.keys(_extractedCandidates || {}),
     ...Object.keys(_userOverrides || {}),
@@ -3422,6 +3529,11 @@ function buildAnalysisInputs() {
   inputs.terms_content = inputs.terms_content || (typeof INS_TERMS_TEXT === 'string' ? INS_TERMS_TEXT : '정보 없음');
   inputs.legal_statutes = inputs.legal_statutes || (typeof INS_LEGAL === 'string' ? INS_LEGAL : '정보 없음');
   inputs.exclusive_common_areas = inputs.exclusive_common_areas || (typeof INS_AREAS_GUIDE === 'string' ? INS_AREAS_GUIDE : '정보 없음');
+
+  // v6.2.29: 6단계 보조 자료 — 현재 추출 단계에 들어가지 않으므로 명시적 빈 값으로 안전 처리
+  // (TODO v6.3: 문답서·민원일지 추출 추가 시 _extractedCandidates에서 가져오도록 변경)
+  inputs.interview_record = inputs.interview_record || '정보 없음';
+  inputs.complaint_log = inputs.complaint_log || '정보 없음';
 
   // 변수 alias — 프롬프트가 받기로 한 이름들이 추출 키와 다를 수 있어 매핑
   // 예: 추출은 insured_owner_name, 프롬프트는 building_owner
