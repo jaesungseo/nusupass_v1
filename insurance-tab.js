@@ -4714,6 +4714,7 @@ async function s2Save() {
 // 보고서용 부가 상태
 let _insPartnerReport = null;   // 파트너 수리완료 보고 (assignment 레코드 일부)
 let _insRepairPhotos  = { before: [], during: [], after: [] };  // signed URLs
+let _insLatestAnalysis = null;  // v6.2.30: 가장 최근 완료된 claim_analyses row
 let _insHandler       = null;   // v6.1.4: 본인(담당자) 정보 — admin_users row
 
 // v6.1.4: 보고서 양식(report-template-v2.html iframe)에 주입할 데이터
@@ -4811,6 +4812,84 @@ async function s3LoadReportData() {
     console.log(`[s3] 사진 signed URL 결과: 성공 ${signedSuccess} / 실패 ${signedFail}`);
     console.log(`[s3] 사진 분류: before=${_insRepairPhotos.before.length} / during=${_insRepairPhotos.during.length} / after=${_insRepairPhotos.after.length}`);
   } catch (e) { console.warn('[s3] case_documents 로드 실패:', e); }
+
+  // v6.2.30: 가장 최근 분석 결과(claim_analyses)를 로드하여 _insClaim에 머지
+  // - extracted_inputs: 추출 단계의 모든 입력값 (policy_no, insured_name, insured_address 등)
+  // - step_N_result: 9-Call 결과 (insurance_claims에도 동기화되지만 raw도 머지해서 안전망)
+  try {
+    if (_insCaseId) {
+      const { data: ana, error: anaErr } = await sb.from('claim_analyses')
+        .select('id, extracted_inputs, step_1_result, step_2_result, step_3_result, step_4_result, step_5_result, step_6_result, step_7_result, step_8_result, step_9_result, policy_type, status, duration_ms, created_at')
+        .eq('case_id', _insCaseId)
+        .eq('status', 'completed')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!anaErr && ana) {
+        console.log('[s3] 최신 분석 로드:', ana.id, '| policy_type=', ana.policy_type);
+        _insLatestAnalysis = ana;
+
+        // extracted_inputs를 _insClaim에 머지 — 보고서가 r.policy_no, r.policy_address 등을 읽을 수 있게
+        // 우선순위: _insClaim 기존 값 > extracted_inputs (DB 컬럼에 직접 저장된 값이 더 신뢰도 높음)
+        const ei = ana.extracted_inputs || {};
+        const reportFields = [
+          // 보험증권 출처
+          'policy_no', 'policy_product', 'policy_product_name', 'policy_period',
+          'policy_start', 'policy_end', 'policy_address', 'coverage_limit', 'deductible',
+          'rider_condition', 'contractor_name',
+          // 피보험자 (등본 출처)
+          'insured_name', 'insured_full_name', 'insured_rrn', 'insured_phone',
+          'insured_registered_address', 'insured_cohabitants', 'insured_owner_name',
+          'family_relation_text',
+          // 사고 (누수소견서/경위서/청구서 출처)
+          'accident_date', 'accident_address', 'accident_summary', 'accident_cause_detail',
+          'incident_report', 'leak_report',
+          // 피해자
+          'victim_name_v0', 'victim_address_v0', 'victim_owner_name_v0', 'victim_rrn_v0',
+        ];
+        for (const f of reportFields) {
+          if (ei[f] != null && ei[f] !== '' && ei[f] !== '정보 없음') {
+            // _insClaim에 해당 키가 없거나 비어있으면 ei 값 사용
+            if (_insClaim[f] == null || _insClaim[f] === '' || _insClaim[f] === '-') {
+              _insClaim[f] = ei[f];
+            }
+          }
+        }
+
+        // 보고서 호환 alias 추가 — buildReportData가 읽는 키들
+        _insClaim.policy_no = _insClaim.policy_no || ei.policy_no || '';
+        _insClaim.policy_product = _insClaim.policy_product || ei.policy_product_name || ei.policy_product || '';
+        _insClaim.policy_address = _insClaim.policy_address || ei.policy_address || '';
+        _insClaim.policy_address_raw = _insClaim.policy_address_raw || ei.policy_address || '';
+        _insClaim.policy_period = _insClaim.policy_period || ei.insurance_period || (ei.policy_start && ei.policy_end ? `${ei.policy_start} ~ ${ei.policy_end}` : '');
+        _insClaim.accident_address = _insClaim.accident_address || ei.accident_address || ei.accident_location || '';
+        _insClaim.insured_address = _insClaim.insured_address || ei.insured_registered_address || '';
+        _insClaim.insured_residence = _insClaim.insured_residence || ei.insured_registered_address || '';
+        _insClaim.insured_jumin = _insClaim.insured_jumin || ei.insured_rrn || '';
+        _insClaim.insured_phone = _insClaim.insured_phone || ei.insured_phone || '';
+        _insClaim.building_owner = _insClaim.building_owner || ei.insured_owner_name || '';
+        _insClaim.cohabitants = _insClaim.cohabitants || ei.insured_cohabitants || '';
+        _insClaim.leak_cause = _insClaim.leak_cause || ei.leak_report || ei.accident_summary || '';
+
+        // 9-Call 단계 결과도 alias로 (insurance_claims에 저장 안 된 필드 대비)
+        const r7 = ana.step_7_result || {};
+        _insClaim.investigator_opinion = _insClaim.investigator_opinion || r7.investigator_opinion || '';
+
+        console.log('[v6.2.30] _insClaim 분석 결과 머지 완료. 보고서에 사용될 핵심 필드:',
+          'policy_no=', _insClaim.policy_no?.slice(0, 20),
+          '| insured_name=', _insClaim.insured_name,
+          '| accident_address=', _insClaim.accident_address?.slice(0, 30),
+          '| coverage_result=', _insClaim.coverage_result);
+      } else if (anaErr) {
+        console.warn('[s3] claim_analyses 로드 실패:', anaErr.message);
+      } else {
+        console.log('[s3] 완료된 분석 없음 — 추출 결과만으로 보고서 표시');
+      }
+    }
+  } catch (e) {
+    console.warn('[s3] 분석 결과 머지 실패:', e);
+  }
 }
 
 // STEP 3 진입 시 자동 데이터 로드
