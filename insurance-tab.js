@@ -3412,7 +3412,18 @@ async function s2Analyze() {
         // 9단계
         coverage_result: r9.coverage_result || null,
         coverage_reasoning: r9.coverage_reasoning || null,
-        insurance_clause: r9.policy_clause_applied || null,
+        // v6.2.32: LLM이 "제1조 제1호 본문 (일상생활배상)" 처럼 살을 붙여 출력할 수 있어
+        // CHECK 제약(제1조 제1호|제1조 제2호|해당없음)에 맞게 정규화
+        insurance_clause: (() => {
+          const raw = (r9.policy_clause_applied || '').trim();
+          if (!raw) return null;
+          if (raw.includes('제1조 제1호') || raw.includes('제1조제1호')) return '제1조 제1호';
+          if (raw.includes('제1조 제2호') || raw.includes('제1조제2호')) return '제1조 제2호';
+          if (raw.includes('해당없음') || raw.includes('해당 없음') || raw === '없음') return '해당없음';
+          // 알 수 없는 값은 null로 (CHECK 위반 회피)
+          console.warn('[v6.2.32] insurance_clause 정규화 불가:', raw);
+          return null;
+        })(),
         // 메타: 분석 상태
         analysis_status: 'done',
         analysis_done_at: new Date().toISOString(),
@@ -3455,17 +3466,13 @@ async function s2Analyze() {
       }
     }
     progress(100, `✓ 분석 완료! (${(duration/1000).toFixed(1)}초)`);
-    console.log(`[v6.2.26 Analyze] 완료 — ${(duration/1000).toFixed(1)}초 / analysis_id: ${analysisId}`);
+    console.log(`[v6.2.31 Analyze] 완료 — ${(duration/1000).toFixed(1)}초 / analysis_id: ${analysisId}`);
 
     // 결과를 화면에 표시 (기존 보고서 탭으로 이동)
     _insResult = aggregateResults(stepResults, inputs);
-    if (typeof renderInsuranceReport === 'function') {
-      renderInsuranceReport(_insResult);
-    }
-    toast('분석 완료 — 보고서 확인하세요', 's');
 
     // 결과 미리보기 — 콘솔에 정리해서 출력 (검증 편의)
-    console.group('[v6.2.25 분석 결과 요약]');
+    console.group('[v6.2.31 분석 결과 요약]');
     console.log('1. 피보험자 지위:', stepResults[1]?.insured_status, '(', stepResults[1]?.ownership_type, '/', stepResults[1]?.residence_match, ')');
     console.log('2. 사고원인:', stepResults[2]?.accident_cause);
     console.log('3. 사고경위:', stepResults[3]?.accident_description);
@@ -3478,6 +3485,19 @@ async function s2Analyze() {
     console.log('9. 보험금 지급:', stepResults[9]?.coverage_result, '[', stepResults[9]?.policy_clause_applied, ']');
     console.log('   →', stepResults[9]?.coverage_reasoning);
     console.groupEnd();
+
+    // v6.2.31: STEP 3 보고서 화면으로 자동 이동
+    // 1.5초 정도 완료 화면 보여주고 → 토스트 → STEP 3 이동
+    toast('분석 완료! 보고서로 이동합니다.', 's');
+    setTimeout(() => {
+      _insClaim = { ..._insClaim, insurance_tab_status: 'ready_for_draft' };
+      _insStep = 3;
+      insRender();
+      // s3LoadReportData는 insGoto 패턴(_insStep=3 후 자동 호출)에 없으므로 명시적으로 호출
+      if (typeof s3LoadReportData === 'function') {
+        s3LoadReportData().then(() => insRender()).catch(e => console.warn('[s3] 로드 실패:', e));
+      }
+    }, 1500);
 
   } catch (e) {
     console.error('[v6.2.25 Analyze] 실패:', e);
