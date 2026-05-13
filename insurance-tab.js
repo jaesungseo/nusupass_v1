@@ -1987,7 +1987,58 @@ function insStep2HTML() {
 
     <div class="v62-step2-actions">
       <button class="v62-back-btn" onclick="s2GoBackToStep1()">← 업로드로 돌아가기</button>
-      <button class="v62-analyze-btn" onclick="s2Analyze()">AI 분석 실행</button>
+      <button class="v62-analyze-btn" id="s2-analyze-btn" onclick="s2Analyze()">AI 분석 실행</button>
+    </div>
+
+    <!-- v6.2.26: 9단계 분석 진행률 UI -->
+    <style>
+      @keyframes v62-spin { to { transform: rotate(360deg); } }
+      .s2-step-pill {
+        padding: 6px 8px;
+        text-align: center;
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        color: #94a3b8;
+        font-weight: 500;
+        transition: all 0.2s;
+      }
+      .s2-step-pill.active {
+        background: #dbeafe;
+        border-color: #3b82f6;
+        color: #1e40af;
+        font-weight: 700;
+        box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+      }
+      .s2-step-pill.done {
+        background: #dcfce7;
+        border-color: #22c55e;
+        color: #15803d;
+      }
+      .s2-step-pill.done::before {
+        content: "✓ ";
+      }
+    </style>
+    <div id="s2-loading" style="display:none; margin-top:16px; padding:20px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px;">
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
+        <div class="v62-spinner" style="width:18px; height:18px; border:3px solid #e2e8f0; border-top-color:#3b82f6; border-radius:50%; animation:v62-spin 0.8s linear infinite;"></div>
+        <div id="s2-label" style="font-size:14px; font-weight:600; color:#1e293b;">분석 준비 중...</div>
+        <div id="s2-pct" style="margin-left:auto; font-size:13px; font-weight:600; color:#3b82f6;">0%</div>
+      </div>
+      <div style="height:10px; background:#e2e8f0; border-radius:6px; overflow:hidden;">
+        <div id="s2-fill" style="height:100%; width:0%; background:linear-gradient(90deg, #3b82f6, #2563eb); transition:width 0.4s ease;"></div>
+      </div>
+      <div id="s2-step-list" style="margin-top:14px; display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; font-size:11px;">
+        <div data-step="1" class="s2-step-pill">1. 지위 판단</div>
+        <div data-step="2" class="s2-step-pill">2. 사고원인</div>
+        <div data-step="3" class="s2-step-pill">3. 사고경위</div>
+        <div data-step="4" class="s2-step-pill">4. 보험기간</div>
+        <div data-step="5" class="s2-step-pill">5. 사고장소</div>
+        <div data-step="6" class="s2-step-pill">6. 피해사항</div>
+        <div data-step="7" class="s2-step-pill">7. 조사의견</div>
+        <div data-step="8" class="s2-step-pill">8. 손배책임</div>
+        <div data-step="9" class="s2-step-pill">9. 보험금</div>
+      </div>
     </div>
   </div>`;
 }
@@ -3151,15 +3202,31 @@ async function s2Analyze() {
 
   const fill  = document.getElementById('s2-fill');
   const label = document.getElementById('s2-label');
+  const pctEl = document.getElementById('s2-pct');
   const load  = document.getElementById('s2-loading');
   const btn   = document.getElementById('s2-analyze-btn');
   if (load) load.style.display = 'block';
-  if (btn)  btn.disabled = true;
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳ 분석 진행 중...';
+  }
 
-  const progress = (pct, msg) => {
+  // v6.2.26: 진행률 + 현재 단계 칩 업데이트
+  const progress = (pct, msg, currentStep) => {
     if (fill)  fill.style.width  = pct + '%';
     if (label) label.textContent = msg;
-    console.log(`[v6.2.25 Analyze] ${pct}% — ${msg}`);
+    if (pctEl) pctEl.textContent = pct + '%';
+    if (typeof currentStep === 'number') {
+      // step pill 상태 업데이트
+      for (let s = 1; s <= 9; s++) {
+        const pill = document.querySelector(`.s2-step-pill[data-step="${s}"]`);
+        if (!pill) continue;
+        pill.classList.remove('active', 'done');
+        if (s < currentStep) pill.classList.add('done');
+        else if (s === currentStep) pill.classList.add('active');
+      }
+    }
+    console.log(`[v6.2.26 Analyze] ${pct}% — ${msg}`);
   };
 
   const startTime = Date.now();
@@ -3242,7 +3309,7 @@ async function s2Analyze() {
 
     for (let step = 1; step <= 9; step++) {
       const prog = stepProgressMap[step];
-      progress(prog.pct, prog.msg);
+      progress(prog.pct, prog.msg, step);
 
       const promptKey = stepKeys[step - 1];
       const tpl = promptMap[promptKey];
@@ -3282,8 +3349,16 @@ async function s2Analyze() {
       duration_ms: duration,
     }).eq('id', analysisId);
 
-    progress(100, '✓ 분석 완료!');
-    console.log(`[v6.2.25 Analyze] 완료 — ${(duration/1000).toFixed(1)}초 / analysis_id: ${analysisId}`);
+    // v6.2.26: 9개 칩 모두 done으로 마무리
+    for (let s = 1; s <= 9; s++) {
+      const pill = document.querySelector(`.s2-step-pill[data-step="${s}"]`);
+      if (pill) {
+        pill.classList.remove('active');
+        pill.classList.add('done');
+      }
+    }
+    progress(100, `✓ 분석 완료! (${(duration/1000).toFixed(1)}초)`);
+    console.log(`[v6.2.26 Analyze] 완료 — ${(duration/1000).toFixed(1)}초 / analysis_id: ${analysisId}`);
 
     // 결과를 화면에 표시 (기존 보고서 탭으로 이동)
     _insResult = aggregateResults(stepResults, inputs);
@@ -3391,6 +3466,27 @@ function buildAnalysisInputs() {
   if (!inputs.leak_report && inputs.leak_cause) {
     inputs.leak_report = inputs.leak_cause;
   }
+  // v6.2.26: Call 4a/4b가 _insClaim에 저장하는 leak_report_text/incident_report_text도 흡수
+  // (_extractedCandidates에는 안 들어가므로 _insClaim에서 직접 가져옴)
+  if (!inputs.leak_report && typeof _insClaim === 'object' && _insClaim) {
+    if (_insClaim.leak_report_text) inputs.leak_report = _insClaim.leak_report_text;
+    else if (_insClaim.leak_cause) inputs.leak_report = _insClaim.leak_cause;
+  }
+  if (!inputs.incident_report && typeof _insClaim === 'object' && _insClaim) {
+    if (_insClaim.incident_report_text) inputs.incident_report = _insClaim.incident_report_text;
+  }
+  if (!inputs.accident_summary && typeof _insClaim === 'object' && _insClaim) {
+    if (_insClaim.accident_summary_text) inputs.accident_summary = _insClaim.accident_summary_text;
+  }
+  // 사고일자도 _insClaim에서 fallback
+  if (!inputs.accident_date && typeof _insClaim === 'object' && _insClaim) {
+    if (_insClaim.accident_occurred_at) inputs.accident_date = _insClaim.accident_occurred_at;
+  }
+  console.log('[v6.2.26 buildAnalysisInputs] 핵심 입력값:',
+    'leak_report=', (inputs.leak_report || '').slice(0, 60),
+    '| incident_report=', (inputs.incident_report || '').slice(0, 60),
+    '| accident_date=', inputs.accident_date,
+    '| insured_status_inputs=', !!inputs.insured_name);
 
   return inputs;
 }
