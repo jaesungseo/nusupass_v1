@@ -1671,17 +1671,6 @@ function _insResolveCode(code, fileIdx) {
   return `${code}_${fileIdx + 1}`;  // fileIdx=1 → _2
 }
 
-// v6.2.17: doc_code에 해당하는 업로드 파일들을 일관된 배열로 반환
-// _insUploaded[code]는 단일 객체일 수도, 배열일 수도, 없을 수도 있음 (통합 슬롯 도입 후 케이스 분기)
-// 이 헬퍼는 모든 케이스를 흡수해서 [row, ...] 형태로 정규화
-function _getDocFiles(code) {
-  const up = _insUploaded[code];
-  if (!up) return [];
-  if (Array.isArray(up)) return up.filter(x => x && x.file_path);
-  if (up.file_path) return [up];
-  return [];
-}
-
 function insTrigger(code, name, fileIdx) {
   const resolvedCode = _insResolveCode(code, fileIdx);
   const inp = document.createElement('input');
@@ -2401,18 +2390,6 @@ ${typeCtx}
   try {
     _extractedCandidates = {};  // 초기화
     _userOverrides = {};         // v6.2.9: 재추출 시 사용자 수정값도 초기화
-
-    // v6.2.17: 어떤 doc_code가 어떻게 저장돼 있는지 진입 시점에 한 번에 표시 (디버깅)
-    console.group('[v6.2.17 s2Extract] _insUploaded 상태');
-    Object.keys(_insUploaded).forEach(k => {
-      const v = _insUploaded[k];
-      const summary = Array.isArray(v)
-        ? `Array(${v.length})[${v.map(x => x ? (x.doc_name || x.doc_code || 'row') : 'null').join(', ')}]`
-        : (v?.doc_name || v?.doc_code || JSON.stringify(v).slice(0, 80));
-      console.log(`  ${k}: ${summary}`);
-    });
-    console.groupEnd();
-
     const addCandidate = (key, value, source) => {
       if (!value || value === '' || value === '정보 없음' || value === '확인불가') return;
       if (!_extractedCandidates[key]) _extractedCandidates[key] = [];
@@ -2460,14 +2437,13 @@ ${typeCtx}
     // ── Call 2a: 피보험자 인적 정보 (등본 + 가족관계증명서) ──
     showExtracting('피보험자 인적 정보 추출 중...', 30);
     const insuredPersonalDocs = [];
-    // v6.2.17: 통합 슬롯이 배열로 저장되는 경우(_insUploaded[code]=[row,null] 등)도 흡수
     for (const code of ['family_doc', 'family_doc_2', 'resident_reg', 'family_cert']) {
-      for (const up of _getDocFiles(code)) {
+      const up = _insUploaded[code];
+      if (up && !Array.isArray(up) && up.file_path) {
         const b64 = await fetchBase64(up.file_path);
         if (b64) insuredPersonalDocs.push({ b64, mt: docMediaType(up.file_path), name: up.doc_name || code });
       }
     }
-    console.log('[v6.2.17 Call 2a] 피보험자 인적 문서 수집:', insuredPersonalDocs.map(d => d.name));
     // v6.2.13: 보험증권에서 추출한 피보험자명을 컨텍스트로 전달
     const policyInsuredName = _extractedCandidates['insured_name']?.[0]?.value || '';
     if (insuredPersonalDocs.length > 0) {
@@ -2522,14 +2498,13 @@ JSON 출력 (정보 없으면 빈 문자열):
     // ── Call 2b: 피보험자 소유자 정보 (건축물대장 + 등기부등본) ──
     showExtracting('피보험자 소유자 정보 추출 중...', 45);
     const insuredOwnerDocs = [];
-    // v6.2.17: 통합 슬롯이 배열로 저장되는 경우도 흡수
     for (const code of ['ownership_insured', 'ownership_insured_2', 'ownership_accident']) {
-      for (const up of _getDocFiles(code)) {
+      const up = _insUploaded[code];
+      if (up && !Array.isArray(up) && up.file_path) {
         const b64 = await fetchBase64(up.file_path);
         if (b64) insuredOwnerDocs.push({ b64, mt: docMediaType(up.file_path), name: up.doc_name || code });
       }
     }
-    console.log('[v6.2.17 Call 2b] 피보험자 소유 문서 수집:', insuredOwnerDocs.map(d => d.name));
     if (insuredOwnerDocs.length > 0) {
       const contentArr = insuredOwnerDocs.map(d => {
         const isPdf = d.mt === 'application/pdf';
@@ -2564,14 +2539,13 @@ JSON 출력 (정보 없으면 빈 문자열):
     // ── Call 3a: 피해자 건축물대장 + 등기부 (1차, 90% 케이스 — 직하층 청구권자=건물소유자) ──
     showExtracting('피해자 건축물대장·등기부 추출 중...', 60);
     const victimOwnerDocs = [];
-    // v6.2.17: 통합 슬롯이 배열로 저장되는 경우도 흡수
     for (const code of ['ownership_doc_victim', 'ownership_doc_victim_2', 'ownership_victim']) {
-      for (const up of _getDocFiles(code)) {
+      const up = _insUploaded[code];
+      if (up && !Array.isArray(up) && up.file_path) {
         const b64 = await fetchBase64(up.file_path);
         if (b64) victimOwnerDocs.push({ b64, mt: docMediaType(up.file_path), name: up.doc_name || code });
       }
     }
-    console.log('[v6.2.17 Call 3a] 피해자 소유 문서 수집:', victimOwnerDocs.map(d => d.name));
     if (victimOwnerDocs.length > 0) {
       const contentArr = victimOwnerDocs.map(d => {
         const isPdf = d.mt === 'application/pdf';
@@ -2626,14 +2600,13 @@ JSON 출력 (정보 없으면 빈 문자열):
     // ── Call 3b: 피해자 등본·가족관계 (2차 보완, 임차인 청구 케이스 — 10%) ──
     showExtracting('피해자 등본·가족관계 추출 중...', 75);
     const victimPersonalDocs = [];
-    // v6.2.17: 통합 슬롯이 배열로 저장되는 경우도 흡수
     for (const code of ['family_doc_victim', 'family_doc_victim_2']) {
-      for (const up of _getDocFiles(code)) {
+      const up = _insUploaded[code];
+      if (up && !Array.isArray(up) && up.file_path) {
         const b64 = await fetchBase64(up.file_path);
         if (b64) victimPersonalDocs.push({ b64, mt: docMediaType(up.file_path), name: up.doc_name || code });
       }
     }
-    console.log('[v6.2.17 Call 3b] 피해자 인적 문서 수집:', victimPersonalDocs.map(d => d.name));
     if (victimPersonalDocs.length > 0) {
       const contentArr = victimPersonalDocs.map(d => {
         const isPdf = d.mt === 'application/pdf';
@@ -2684,9 +2657,9 @@ JSON 출력 (정보 없으면 빈 문자열):
     // ── Call 4b: 청구서 + 경위서 + 파트너 보고서 ──
     showExtracting('청구·경위 자료 추출 중...', 90);
     const claimDocs = [];
-    // v6.2.17: 일관성을 위해 헬퍼 사용 (이 두 코드는 단일 슬롯이지만 패턴 통일)
     for (const code of ['claim_form', 'incident_statement']) {
-      for (const up of _getDocFiles(code)) {
+      const up = _insUploaded[code];
+      if (up && !Array.isArray(up) && up.file_path) {
         const b64 = await fetchBase64(up.file_path);
         if (b64) claimDocs.push({ b64, mt: docMediaType(up.file_path), name: up.doc_name || code });
       }
@@ -2771,7 +2744,9 @@ ${!_insUploaded['leak_opinion_external'] ? '※ 누수소견서가 없으므로 
 }
 window.s2Extract = s2Extract;
 
-async function s2Analyze() {
+// v6.2.25: 옛 4-Call 통합 분석 함수 — 9-Call로 대체됨. 롤백용으로 보존만 함.
+// 호출되는 곳 없음. 추후 검증 끝나면 안전하게 제거 가능.
+async function s2AnalyzeLegacy() {
   if (_insAnalyzing) return;
   _insAnalyzing = true;
 
@@ -3161,6 +3136,361 @@ STEP 3: 동거인 요약 (주민등록등본에서)
     if (btn) { btn.disabled=false; btn.textContent='↺ 재분석'; }
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// v6.2.25: Phase F — 9-Call 순차 분석 함수 (신규)
+// ═══════════════════════════════════════════════════════════════════════════
+// 추출(s2Extract) 결과인 _extractedCandidates + _userOverrides를 입력으로 받아
+// DB의 prompt_templates(analyze_step_1..9 + variant 3)을 순차 호출.
+// 결과는 claim_analyses 테이블에 단계별로 저장.
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function s2Analyze() {
+  if (_insAnalyzing) return;
+  _insAnalyzing = true;
+
+  const fill  = document.getElementById('s2-fill');
+  const label = document.getElementById('s2-label');
+  const load  = document.getElementById('s2-loading');
+  const btn   = document.getElementById('s2-analyze-btn');
+  if (load) load.style.display = 'block';
+  if (btn)  btn.disabled = true;
+
+  const progress = (pct, msg) => {
+    if (fill)  fill.style.width  = pct + '%';
+    if (label) label.textContent = msg;
+    console.log(`[v6.2.25 Analyze] ${pct}% — ${msg}`);
+  };
+
+  const startTime = Date.now();
+  let analysisId = null;
+
+  try {
+    // ── 사전 검증 ──
+    if (!_insClaim || !_insClaim.case_id) {
+      throw new Error('사건 정보가 없습니다. STEP 1부터 다시 진행해주세요.');
+    }
+    if (!_extractedCandidates || Object.keys(_extractedCandidates).length === 0) {
+      throw new Error('추출 결과가 없습니다. 먼저 STEP 1 추출을 실행해주세요.');
+    }
+
+    // policy_type 결정 — STEP 1에서 사용자가 선택한 약관
+    const policyMap = {
+      'family_daily_old':  'family_daily_old',
+      'family_daily_new':  'family_daily_new',
+      'personal_daily':    'personal_daily',
+    };
+    const policyType = policyMap[_insClaim.insurance_type] || 'family_daily_new';
+    console.log('[v6.2.25 Analyze] policy_type:', policyType, '/ case_id:', _insClaim.case_id);
+
+    // ── 입력값 머지: _userOverrides 우선, 없으면 _extractedCandidates[0] ──
+    const inputs = buildAnalysisInputs();
+    console.log('[v6.2.25 Analyze] 입력값 머지 완료:', Object.keys(inputs).length, '개');
+
+    // ── claim_analyses row 생성 ──
+    progress(2, '분석 세션 생성 중…');
+    const { data: anaRow, error: anaErr } = await sb.from('claim_analyses').insert({
+      case_id: _insClaim.case_id,
+      extracted_inputs: inputs,
+      policy_type: policyType,
+      status: 'running',
+      current_step: 0,
+    }).select().single();
+    if (anaErr) throw new Error('분석 row 생성 실패: ' + anaErr.message);
+    analysisId = anaRow.id;
+    console.log('[v6.2.25 Analyze] analysis_id:', analysisId);
+
+    // ── 9개 프롬프트 DB 로드 ──
+    progress(5, '프롬프트 로드 중…');
+    const stepKeys = [
+      'analyze_step_1_insured_status',
+      'analyze_step_2_accident_cause',
+      'analyze_step_3_accident_description',
+      'analyze_step_4_period_match',
+      'analyze_step_5_location_match',
+      'analyze_step_6_victim_damages',
+      'analyze_step_7_investigator_opinion',
+      'analyze_step_8_liability',
+      `analyze_step_9_coverage_${policyType}`,
+    ];
+    const { data: prompts, error: pErr } = await sb.from('prompt_templates')
+      .select('prompt_key, system_prompt, user_prompt_template, output_format, ai_model, max_tokens, temperature')
+      .in('prompt_key', stepKeys);
+    if (pErr) throw new Error('프롬프트 로드 실패: ' + pErr.message);
+
+    const promptMap = {};
+    prompts.forEach(p => { promptMap[p.prompt_key] = p; });
+    for (const k of stepKeys) {
+      if (!promptMap[k]) throw new Error(`프롬프트 누락: ${k}`);
+    }
+
+    // ── 9단계 순차 호출 ──
+    const stepResults = {};       // 각 단계 결과를 다음 단계 입력으로 전달
+    let totalTokensIn = 0, totalTokensOut = 0;
+
+    const stepProgressMap = {
+      1: { pct: 12, msg: '1단계 — 피보험자 지위 판단 중…' },
+      2: { pct: 22, msg: '2단계 — 사고원인 추출 중…' },
+      3: { pct: 32, msg: '3단계 — 사고경위 작성 중…' },
+      4: { pct: 42, msg: '4단계 — 보험기간 부합 검토 중…' },
+      5: { pct: 52, msg: '5단계 — 사고장소 부합 검토 중…' },
+      6: { pct: 62, msg: '6단계 — 피해사항 정리 중…' },
+      7: { pct: 72, msg: '7단계 — 조사자의견 작성 중…' },
+      8: { pct: 82, msg: '8단계 — 손해배상책임 검토 중…' },
+      9: { pct: 92, msg: '9단계 — 보험금 지급책임 판단 중…' },
+    };
+
+    for (let step = 1; step <= 9; step++) {
+      const prog = stepProgressMap[step];
+      progress(prog.pct, prog.msg);
+
+      const promptKey = stepKeys[step - 1];
+      const tpl = promptMap[promptKey];
+
+      // 이전 단계 결과를 inputs에 합쳐서 변수 치환에 활용
+      const stepInputs = { ...inputs, ...flattenPrevSteps(stepResults) };
+
+      // user_prompt 치환
+      const userPrompt = renderTemplate(tpl.user_prompt_template, stepInputs);
+
+      // claim_analyses.current_step 업데이트
+      await sb.from('claim_analyses').update({ current_step: step }).eq('id', analysisId);
+
+      // Claude 호출 (텍스트 전용 — _callMultiRaw 재사용)
+      const t0 = Date.now();
+      const contentArr = [{ type: 'text', text: userPrompt }];
+      let stepJson;
+      try {
+        stepJson = await _callAnalyzeStep(contentArr, tpl.system_prompt, tpl.max_tokens || 1500);
+      } catch (callErr) {
+        throw new Error(`${step}단계 호출 실패: ${callErr.message}`);
+      }
+      const dt = Date.now() - t0;
+      console.log(`[v6.2.25 Step ${step}] (${dt}ms)`, stepJson);
+
+      // 결과 저장
+      stepResults[step] = stepJson;
+      const colName = `step_${step}_result`;
+      await sb.from('claim_analyses').update({ [colName]: stepJson }).eq('id', analysisId);
+    }
+
+    // ── 완료 처리 ──
+    const duration = Date.now() - startTime;
+    await sb.from('claim_analyses').update({
+      status: 'completed',
+      current_step: 9,
+      duration_ms: duration,
+    }).eq('id', analysisId);
+
+    progress(100, '✓ 분석 완료!');
+    console.log(`[v6.2.25 Analyze] 완료 — ${(duration/1000).toFixed(1)}초 / analysis_id: ${analysisId}`);
+
+    // 결과를 화면에 표시 (기존 보고서 탭으로 이동)
+    _insResult = aggregateResults(stepResults, inputs);
+    if (typeof renderInsuranceReport === 'function') {
+      renderInsuranceReport(_insResult);
+    }
+    toast('분석 완료 — 보고서 확인하세요', 's');
+
+    // 결과 미리보기 — 콘솔에 정리해서 출력 (검증 편의)
+    console.group('[v6.2.25 분석 결과 요약]');
+    console.log('1. 피보험자 지위:', stepResults[1]?.insured_status, '(', stepResults[1]?.ownership_type, '/', stepResults[1]?.residence_match, ')');
+    console.log('2. 사고원인:', stepResults[2]?.accident_cause);
+    console.log('3. 사고경위:', stepResults[3]?.accident_description);
+    console.log('4. 보험기간 부합:', stepResults[4]?.insurance_period_match);
+    console.log('5. 사고장소 부합:', stepResults[5]?.accident_location_match);
+    console.log('6. 피해사항:', stepResults[6]?.victim_damages);
+    console.log('7. 조사자의견:', stepResults[7]?.investigator_opinion, '[분기:', stepResults[7]?.branch_selected, ']');
+    console.log('8. 손해배상책임:', stepResults[8]?.liability_result, '/', stepResults[8]?.accident_category, '/', stepResults[8]?.accident_cause_category);
+    console.log('   →', stepResults[8]?.liability_reasoning);
+    console.log('9. 보험금 지급:', stepResults[9]?.coverage_result, '[', stepResults[9]?.policy_clause_applied, ']');
+    console.log('   →', stepResults[9]?.coverage_reasoning);
+    console.groupEnd();
+
+  } catch (e) {
+    console.error('[v6.2.25 Analyze] 실패:', e);
+    if (analysisId) {
+      await sb.from('claim_analyses').update({
+        status: 'failed',
+        error_message: e.message,
+      }).eq('id', analysisId);
+    }
+    if (load) load.style.display = 'none';
+    toast('분석 실패: ' + e.message, 'e');
+  } finally {
+    _insAnalyzing = false;
+    if (btn) { btn.disabled = false; btn.textContent = '↺ 재분석'; }
+  }
+}
+
+// ─── 보조 헬퍼들 ────────────────────────────────────────────────────────────
+
+// 추출 결과(_extractedCandidates + _userOverrides)를 분석 입력값 단일 객체로 머지
+function buildAnalysisInputs() {
+  const inputs = {};
+  // _userOverrides가 있으면 우선, 없으면 _extractedCandidates[0].value
+  const allKeys = new Set([
+    ...Object.keys(_extractedCandidates || {}),
+    ...Object.keys(_userOverrides || {}),
+  ]);
+  for (const k of allKeys) {
+    if (_userOverrides && _userOverrides[k] != null && _userOverrides[k] !== '') {
+      inputs[k] = _userOverrides[k];
+    } else if (_extractedCandidates[k] && _extractedCandidates[k][0]) {
+      inputs[k] = _extractedCandidates[k][0].value;
+    } else {
+      inputs[k] = '정보 없음';
+    }
+  }
+
+  // 추가 컨텍스트 자료 — 약관 본문, 법률 조문, 전유·공용 구분 기준은 코드에 상수로 두고 주입
+  inputs.terms_content = inputs.terms_content || (typeof INS_TERMS_TEXT === 'string' ? INS_TERMS_TEXT : '정보 없음');
+  inputs.legal_statutes = inputs.legal_statutes || (typeof INS_LEGAL === 'string' ? INS_LEGAL : '정보 없음');
+  inputs.exclusive_common_areas = inputs.exclusive_common_areas || (typeof INS_AREAS_GUIDE === 'string' ? INS_AREAS_GUIDE : '정보 없음');
+
+  // 변수 alias — 프롬프트가 받기로 한 이름들이 추출 키와 다를 수 있어 매핑
+  // 예: 추출은 insured_owner_name, 프롬프트는 building_owner
+  if (!inputs.building_owner && inputs.insured_owner_name) {
+    inputs.building_owner = inputs.insured_owner_name;
+  }
+  if (!inputs.cohabitants && inputs.insured_cohabitants) {
+    inputs.cohabitants = inputs.insured_cohabitants;
+  }
+  if (!inputs.family_relation && inputs.insured_family_relations) {
+    inputs.family_relation = inputs.insured_family_relations;
+  } else if (!inputs.family_relation && inputs.family_relation_text) {
+    inputs.family_relation = inputs.family_relation_text;
+  }
+  if (!inputs.family_relation_text && inputs.family_relation) {
+    inputs.family_relation_text = inputs.family_relation;
+  }
+  if (!inputs.accident_location && inputs.accident_address) {
+    inputs.accident_location = inputs.accident_address;
+  }
+  if (!inputs.accident_address && inputs.accident_location) {
+    inputs.accident_address = inputs.accident_location;
+  }
+  if (!inputs.insurance_location && inputs.policy_address) {
+    inputs.insurance_location = inputs.policy_address;
+  }
+  if (!inputs.insurance_period && (inputs.policy_period_start || inputs.policy_period_end)) {
+    inputs.insurance_period = `${inputs.policy_period_start || ''} ~ ${inputs.policy_period_end || ''}`;
+  }
+  if (!inputs.victims_info && inputs.victim_address) {
+    inputs.victims_info = inputs.victim_address;
+  }
+  // v6.2.25: 피해자 키는 추출 시 _v0 suffix가 붙음 (다중 피해자 인덱스). 우선 첫 번째만 묶어 victims_info에 넣음.
+  if (!inputs.victims_info) {
+    const v0Name = inputs.victim_name_v0 || '';
+    const v0Addr = inputs.victim_address_v0 || '';
+    const v0Owner = inputs.victim_owner_name_v0 || '';
+    if (v0Name || v0Addr) {
+      inputs.victims_info = `성명: ${v0Name || '정보 없음'} / 소재지: ${v0Addr || '정보 없음'}${v0Owner ? ' / 소유자: ' + v0Owner : ''}`;
+    }
+  }
+  if (!inputs.leak_report && inputs.leak_cause) {
+    inputs.leak_report = inputs.leak_cause;
+  }
+
+  return inputs;
+}
+
+// 이전 단계 결과를 다음 단계 입력으로 평탄화 — 예: step 1의 insured_status 값을 inputs.insured_status로
+function flattenPrevSteps(stepResults) {
+  const out = {};
+  for (const step of Object.keys(stepResults)) {
+    const r = stepResults[step] || {};
+    Object.assign(out, r);
+  }
+  // victim_damage_text — 6단계 결과를 7단계가 텍스트로 받을 수 있도록
+  if (stepResults[6]?.victim_damages) {
+    out.victim_damage_text = stepResults[6].victim_damages
+      .map(v => `${v.victim_name}: ${v.damage_text}`)
+      .join(' / ');
+  }
+  return out;
+}
+
+// 템플릿 변수 치환: {var_name} → inputs[var_name]
+function renderTemplate(tpl, inputs) {
+  if (!tpl) return '';
+  return tpl.replace(/\{([a-z_][a-z0-9_]*)\}/gi, (_, key) => {
+    const v = inputs[key];
+    if (v == null || v === '') return '정보 없음';
+    if (typeof v === 'object') return JSON.stringify(v);
+    return String(v);
+  });
+}
+
+// 단계 호출 — 텍스트 전용. _callMultiRaw 재사용해서 body 한도 자동 처리.
+async function _callAnalyzeStep(contentArr, systemPrompt, maxTokens) {
+  const resp = await fetch('/api/claude', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: INS_MODEL,
+      max_tokens: maxTokens || 1500,
+      system: systemPrompt || '',
+      messages: [{ role: 'user', content: contentArr }],
+    }),
+  });
+  if (!resp.ok) {
+    const detail = await resp.text().catch(() => '');
+    throw new Error(`HTTP ${resp.status} ${resp.statusText}: ${detail.slice(0, 200)}`);
+  }
+  const data = await resp.json();
+  const text = (data.content || []).map(c => c.text || '').join('');
+  // JSON 파싱 — 마크다운 펜스가 섞여 있어도 추출
+  const cleaned = text.replace(/```json\s*|\s*```/g, '').trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch (e) {
+    // JSON 파싱 실패 시 텍스트 그대로 반환 (디버깅용)
+    console.error('[v6.2.25 JSON 파싱 실패]', text);
+    throw new Error(`JSON 파싱 실패: ${e.message} / raw: ${text.slice(0, 200)}`);
+  }
+}
+
+// 9단계 결과를 _insResult 호환 객체로 집계 — 기존 보고서 렌더링과 연결
+function aggregateResults(stepResults, inputs) {
+  const r1 = stepResults[1] || {};
+  const r2 = stepResults[2] || {};
+  const r3 = stepResults[3] || {};
+  const r4 = stepResults[4] || {};
+  const r5 = stepResults[5] || {};
+  const r6 = stepResults[6] || {};
+  const r7 = stepResults[7] || {};
+  const r8 = stepResults[8] || {};
+  const r9 = stepResults[9] || {};
+
+  return {
+    // 입력 스냅샷
+    ...inputs,
+    // 단계별 핵심 결과
+    insured_status: r1.insured_status,
+    ownership_type: r1.ownership_type,
+    residence_match: r1.residence_match,
+    accident_cause: r2.accident_cause,
+    accident_description: r3.accident_description,
+    insurance_period_match: r4.insurance_period_match,
+    accident_location_match: r5.accident_location_match,
+    victim_damages: r6.victim_damages,
+    investigator_opinion: r7.investigator_opinion,
+    branch_selected: r7.branch_selected,
+    liability_result: r8.liability_result,
+    accident_category: r8.accident_category,
+    accident_cause_category: r8.accident_cause_category,
+    shared_liability: r8.shared_liability,
+    applicable_law: r8.applicable_law,
+    liability_reasoning: r8.liability_reasoning,
+    coverage_result: r9.coverage_result,
+    coverage_reasoning: r9.coverage_reasoning,
+    policy_clause_applied: r9.policy_clause_applied,
+    // 원본 단계별 결과 (보고서 디버깅용)
+    _stepResults: stepResults,
+  };
+}
+
+window.s2Analyze = s2Analyze;
 
 // ─────────────────────────────────────────────
 // v5 ★ Sabi 8·9단계 판단 프롬프트 빌더 (약관별 분기)
