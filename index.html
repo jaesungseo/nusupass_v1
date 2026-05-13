@@ -5706,9 +5706,12 @@ if (typeof window.escapeHtml !== 'function') {
 }
 </script>
 
-<script src="./insurance-tab.js?v=6.2.16"></script>
-<!-- v6 패치: 9케이스 검증 PASS 룰엔진 + 약관선택 모달 + 파트너 임포트 -->
+<script src="./insurance-tab.js?v=6.2.25"></script>
+<!-- v6 룰엔진은 유지 (분석에 사용되지 않으면 무해, 추출 단계 가드용일 가능성) -->
 <script src="./sabi-rule-v6.js?v=6.0.0"></script>
+<!-- v6.2.25: insurance-tab-v6-patch.js 일시 비활성화 — 옛 4-Call 분석 monkey-patch 가능성 차단.
+     검증 후 영구 제거하거나 9-Call 호환 패치로 재작성 결정 예정.
 <script src="./insurance-tab-v6-patch.js?v=6.0.0"></script>
+-->
 </body>
 </html>
