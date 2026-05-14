@@ -2803,10 +2803,11 @@ ${!_insUploaded['leak_opinion_external'] ? '※ 누수소견서가 없으므로 
         // 보험증권
         policy_no: v('policy_no'),
         policy_product: v('policy_product') || v('policy_product_name'),
+        policy_address: v('policy_address'),  // v6.2.34: 신규 컬럼
         // policy_start/end: 'YYYY.MM.DD ~ YYYY.MM.DD' 형식이라 split 필요
         // 일단 원본 텍스트는 insurance_period 별도 필드 없으므로 _insClaim 메모리에만 보관
-        coverage_limit: v('coverage_limit') ? parseInt(String(v('coverage_limit')).replace(/[^0-9]/g, '')) || null : null,
-        deductible: v('deductible') ? parseInt(String(v('deductible')).replace(/[^0-9]/g, '')) || null : null,
+        coverage_limit: v('coverage_limit') ? (parseInt(String(v('coverage_limit')).replace(/[,원\s]/g, '').replace(/[^0-9]/g, '')) || null) : null,
+        deductible: v('deductible') ? (parseInt(String(v('deductible')).replace(/[,원\s]/g, '').replace(/[^0-9]/g, '')) || null) : null,
         // 사고
         accident_date: v('accident_date'),
         accident_address: v('accident_address') || v('accident_location'),
@@ -2814,6 +2815,7 @@ ${!_insUploaded['leak_opinion_external'] ? '※ 누수소견서가 없으므로 
         insured_name: v('insured_name') || v('insured_full_name'),
         insured_owner_name: v('insured_owner_name') || v('building_owner'),
         insured_cohabitants: v('cohabitants') || v('insured_cohabitants'),
+        insured_registered_address: v('insured_registered_address'),  // v6.2.34: 신규 컬럼
         // 피해자 (단일 — 다중 피해자는 별도 트랙)
         victim_name: v('victim_name') || v('victim_name_v0'),
         victim_address: v('victim_address') || v('victim_address_v0'),
@@ -2845,6 +2847,54 @@ ${!_insUploaded['leak_opinion_external'] ? '※ 누수소견서가 없으므로 
           // 메모리도 업데이트
           _insClaim = { ..._insClaim, ...extractUpdates };
           console.log('[v6.2.33-C] insurance_claims 평탄화 저장 완료 —', Object.keys(extractUpdates).filter(k => k !== 'updated_at').length, '필드');
+        }
+      }
+
+      // ─────────────────────────────────────────
+      // v6.2.34: insurance_victims에도 동기화
+      // renderReportSection3_General이 victims 배열로 피해자를 그리는데,
+      // _insClaim.victim_*만 있고 insurance_victims 행이 없으면 보고서에 "정보 없음" 표시됨.
+      // 추출 단계에서 단일 피해자 정보가 잡혔으면 insurance_victims에 자동 insert.
+      // 이미 있으면 update.
+      // ─────────────────────────────────────────
+      const victimName = v('victim_name') || v('victim_name_v0');
+      const victimAddr = v('victim_address') || v('victim_address_v0');
+      const victimOwner = v('victim_owner_name') || v('victim_owner_name_v0');
+      if (victimName || victimAddr) {
+        try {
+          // 기존 victim_order=1이 있는지 확인
+          const { data: existingVictim } = await sb.from('insurance_victims')
+            .select('id')
+            .eq('claim_id', _insClaim.id)
+            .eq('victim_order', 1)
+            .maybeSingle();
+          
+          const victimData = {
+            claim_id: _insClaim.id,
+            victim_order: 1,
+            victim_name: victimName,
+            victim_address: victimAddr,
+            victim_owner_name: victimOwner,
+          };
+          
+          if (existingVictim) {
+            // update
+            const { error: vupErr } = await sb.from('insurance_victims')
+              .update(victimData)
+              .eq('id', existingVictim.id);
+            if (vupErr) console.error('[v6.2.34 victim update 실패]', vupErr);
+            else console.log('[v6.2.34] insurance_victims 업데이트 완료 (id:', existingVictim.id, ')');
+          } else {
+            // insert
+            const { data: newV, error: vinErr } = await sb.from('insurance_victims')
+              .insert(victimData)
+              .select('id')
+              .maybeSingle();
+            if (vinErr) console.error('[v6.2.34 victim insert 실패]', vinErr);
+            else console.log('[v6.2.34] insurance_victims 신규 추가 완료 (id:', newV?.id, ')');
+          }
+        } catch (ve) {
+          console.error('[v6.2.34 insurance_victims 예외]', ve);
         }
       }
     } catch (e) {
@@ -4959,6 +5009,7 @@ async function s3LoadReportData() {
         // 9-Call 단계 결과도 alias로 (insurance_claims에 저장 안 된 필드 대비)
         const r1 = ana.step_1_result || {};
         const r2 = ana.step_2_result || {};
+        const r3 = ana.step_3_result || {};
         const r6 = ana.step_6_result || {};
         const r7 = ana.step_7_result || {};
         const r8 = ana.step_8_result || {};
@@ -4968,6 +5019,7 @@ async function s3LoadReportData() {
         // s3SaveReport가 빈 값 덮어쓰지 못하게 가드(B)와 함께 작동
         if (r1.insured_status) _insClaim.insured_status = _insClaim.insured_status || r1.insured_status;
         if (r2.accident_cause) _insClaim.accident_cause_detail = _insClaim.accident_cause_detail || r2.accident_cause;
+        if (r3.accident_description) _insClaim.accident_description = _insClaim.accident_description || r3.accident_description;
         if (r8.liability_result) _insClaim.liability_result = _insClaim.liability_result || r8.liability_result;
         if (r8.liability_reasoning) _insClaim.liability_reasoning = _insClaim.liability_reasoning || r8.liability_reasoning;
         if (r9.coverage_result) _insClaim.coverage_result = _insClaim.coverage_result || r9.coverage_result;
@@ -4979,6 +5031,83 @@ async function s3LoadReportData() {
 
         _insClaim.investigator_opinion = _insClaim.investigator_opinion || r7.investigator_opinion || '';
 
+        // ─────────────────────────────────────────────
+        // v6.2.33-A2 (CRITICAL): _insResult에도 평탄화하여 채움
+        // buildReportData가 `r = _insResult`를 우선으로 읽기 때문에 _insResult가 비어있으면
+        // 보고서 화면이 통째로 '-' 로 표시됨. 사건 재진입/페이지 새로고침 시 _insResult가
+        // 메모리에서 사라지므로 매번 여기서 복원해야 함.
+        // ─────────────────────────────────────────────
+        _insResult = _insResult || {};
+        const ei2 = ana.extracted_inputs || {};
+        // 보험증권
+        _insResult.policy_no              = _insClaim.policy_no || ei2.policy_no || '';
+        _insResult.policy_product         = _insClaim.policy_product || ei2.policy_product_name || ei2.policy_product || '';
+        _insResult.policy_period          = ei2.insurance_period || (_insClaim.policy_start && _insClaim.policy_end ? `${_insClaim.policy_start} ~ ${_insClaim.policy_end}` : '');
+        _insResult.policy_address         = _insClaim.policy_address || ei2.policy_address || ei2.insurance_location || '';
+        _insResult.policy_type            = _insClaim.insurance_type || ana.policy_type || '';
+        _insResult.coverage_limit         = _insClaim.coverage_limit || (ei2.coverage_limit ? parseInt(String(ei2.coverage_limit).replace(/[^0-9]/g, '')) : null);
+        _insResult.deductible             = _insClaim.deductible || (ei2.deductible ? parseInt(String(ei2.deductible).replace(/[^0-9]/g, '')) : null);
+        // 사고
+        _insResult.accident_date          = _insClaim.accident_date || ei2.accident_date || '';
+        _insResult.accident_address       = _insClaim.accident_address || ei2.accident_address || ei2.accident_location || '';
+        _insResult.accident_summary       = ei2.accident_summary || _insClaim.accident_description || '';
+        _insResult.accident_datetime      = _insClaim.accident_datetime || '';
+        _insResult.leak_cause             = _insClaim.accident_cause_detail || ei2.accident_cause_detail || ei2.leak_report || '';
+        _insResult.accident_cause_detail  = _insClaim.accident_cause_detail || ei2.accident_cause_detail || '';
+        // 피보험자
+        _insResult.insured_name           = _insClaim.insured_name || ei2.insured_full_name || ei2.insured_name || '';
+        _insResult.insured_jumin          = _insClaim.insured_jumin || ei2.insured_rrn || '';
+        _insResult.insured_phone          = _insClaim.insured_phone || ei2.insured_phone || '';
+        _insResult.insured_address        = _insClaim.insured_registered_address || ei2.insured_registered_address || '';
+        _insResult.cohabitants            = _insClaim.insured_cohabitants || ei2.insured_cohabitants || '';
+        _insResult.insured_cohabitants    = _insResult.cohabitants;
+        _insResult.building_owner         = _insClaim.insured_owner_name || ei2.insured_owner_name || ei2.building_owner || '';
+        _insResult.insured_status         = _insClaim.insured_status || r1.insured_status || '';
+        // 9-Call 판단 결과 (보고서 5번 섹션)
+        _insResult.liability_result       = _insClaim.liability_result || r8.liability_result || '';
+        _insResult.liability_decision     = (_insClaim.liability_result === '성립') ? '성립' : (_insClaim.liability_result === '불성립' ? '불성립' : (r8.liability_result || ''));
+        _insResult.liability_reasoning    = _insClaim.liability_reasoning || r8.liability_reasoning || '';
+        _insResult.liability_reason       = _insResult.liability_reasoning;  // legacy alias
+        _insResult.coverage_result        = _insClaim.coverage_result || r9.coverage_result || '';
+        _insResult.coverage_reasoning     = _insClaim.coverage_reasoning || r9.coverage_reasoning || '';
+        // legacy alias (buildReportData에서 사용)
+        _insResult.cover_decision         = _insResult.coverage_result;
+        _insResult.cover_reason           = _insResult.coverage_reasoning;
+        _insResult.insurance_clause       = _insClaim.insurance_clause || r9.policy_clause_applied || '';
+        _insResult.investigator_opinion   = _insClaim.investigator_opinion || r7.investigator_opinion || '';
+        _insResult.law_cite               = '민법 제750조 (일반 불법행위 책임) 및 제758조 (공작물 책임)';
+        _insResult.fault_ratio            = _insClaim.fault_ratio || '';
+        _insResult.fault_review           = _insClaim.fault_ratio_note || '-';
+        _insResult.mitigation_decision    = _insClaim.damage_prevention_cost > 0 ? '담보' : '미담보';
+        _insResult.mitigation_review      = _insClaim.prevention_cost_memo || '-';
+        _insResult.report_no              = _insClaim.report_no || '';
+
+        // ─────────────────────────────────────────────
+        // v6.2.33-A3 (CRITICAL BUGFIX): 보고서 렌더 함수가 실제로 읽는 키 이름에 맞춰 보강
+        // 진단 — 04:37 PDF 출력에서 보험계약사항/일반사항 통째로 비어있던 원인 추적 결과:
+        //   - renderReportSection2_Contract는 r.policy_start, r.policy_end (split된 날짜) 읽음
+        //   - renderReportSection2_Contract는 r.policy_address_raw 읽음
+        //   - renderReportSection4_Accident는 r.accident_description 읽음
+        //   - 그런데 A2는 policy_period(문자열), policy_address(raw 아님), accident_summary만 채웠음
+        //   → 보고서가 빈 채로 렌더됨. DB에는 다 있는데 화면 매핑만 깨진 케이스.
+        // ─────────────────────────────────────────────
+        // 보험계약사항이 읽는 정확한 키
+        _insResult.policy_start           = _insClaim.policy_start || ei2.policy_start || null;
+        _insResult.policy_end             = _insClaim.policy_end || ei2.policy_end || null;
+        _insResult.policy_address_raw     = _insClaim.policy_address || ei2.policy_address || ei2.insurance_location || '';
+        _insResult.insurance_type         = _insClaim.insurance_type || '';
+        _insResult.address_match          = _insClaim.address_match || ei2.accident_location_match || 'ok';
+        // 사고개요가 읽는 정확한 키
+        _insResult.accident_description   = _insClaim.accident_description || r3.accident_description || '';
+        _insResult.accident_location_from_doc = ei2.accident_address || ei2.accident_location || '';
+        // 일반사항이 읽는 정확한 키 (피보험자)
+        _insResult.insured_residence      = _insClaim.insured_registered_address || ei2.insured_registered_address || '';
+        _insResult.insured_owner_name     = _insClaim.insured_owner_name || ei2.insured_owner_name || '';
+        // 피해자 단일 (renderReportSection3_General가 victims 배열로도 받지만 alias도 채움)
+        _insResult.victim_name            = _insClaim.victim_name || ei2.victim_name_v0 || '';
+        _insResult.victim_address         = _insClaim.victim_address || ei2.victim_address_v0 || '';
+        _insResult.victim_owner_name      = _insClaim.victim_owner_name || ei2.victim_owner_name_v0 || '';
+
         console.log('[v6.2.33-A] _insClaim 분석 결과 머지 완료. 핵심 필드:',
           '\n  policy_no=', _insClaim.policy_no?.slice(0, 20),
           '\n  insured_name=', _insClaim.insured_name,
@@ -4988,6 +5117,13 @@ async function s3LoadReportData() {
           '\n  liability_reasoning=', _insClaim.liability_reasoning?.slice(0, 40) + '...',
           '\n  coverage_result=', _insClaim.coverage_result,
           '\n  coverage_reasoning=', _insClaim.coverage_reasoning?.slice(0, 40) + '...');
+        console.log('[v6.2.33-A3] _insResult 매핑 갭 보강 →',
+          '\n  policy_start/end:', _insResult.policy_start, '~', _insResult.policy_end,
+          '\n  policy_address_raw:', _insResult.policy_address_raw?.slice(0, 30),
+          '\n  accident_description:', _insResult.accident_description?.slice(0, 40),
+          '\n  insured_residence:', _insResult.insured_residence?.slice(0, 30),
+          '\n  insured_owner_name:', _insResult.insured_owner_name?.slice(0, 30),
+          '\n  victim_name:', _insResult.victim_name);
       } else if (anaErr) {
         console.warn('[s3] claim_analyses 로드 실패:', anaErr.message);
       } else {
@@ -5483,14 +5619,21 @@ function renderReportSection1_Summary(cl, r, fd, pa, rc, ded, pay, prevCost) {
 
 // ─── 2. 보험계약사항 ────────────────────────────────────────
 function renderReportSection2_Contract(cl, r) {
+  // v6.2.34: cl(_insClaim, DB 직접) 우선. r(_insResult, 메모리)는 fallback.
+  // 진짜 single source of truth는 insurance_claims 본 row.
   const typeLabel = INS_TYPE_LABELS[cl.insurance_type] || '배상책임보험';
-  const period = (r.policy_start && r.policy_end) ? `${fmtDate(r.policy_start)} ~ ${fmtDate(r.policy_end)}` : '';
+  const start = cl.policy_start || r.policy_start;
+  const end = cl.policy_end || r.policy_end;
+  const period = (start && end) ? `${fmtDate(start)} ~ ${fmtDate(end)}` : '';
   const accDt = cl.accident_datetime ? fmtDateTime(cl.accident_datetime) : (cl.accident_date ? fmtDate(cl.accident_date) : '');
-  const insuredName = r.insured_name || cl.insured_name || '';
-  const policyNo = r.policy_no || cl.policy_no || '';
-  const policyAddr = r.policy_address_raw || '';
+  const insuredName = cl.insured_name || r.insured_name || '';
+  const policyNo = cl.policy_no || r.policy_no || '';
+  // v6.2.34: policy_address 컬럼 신설로 cl.policy_address 우선
+  const policyAddr = cl.policy_address || r.policy_address_raw || '';
   const am = cl.address_match || r.address_match || 'ok';
   const amNote = am === 'ok' ? '일치' : (am === 'warn' ? '확인 필요' : '불일치');
+  const coverageLimit = cl.coverage_limit || r.coverage_limit;
+  const ded = cl.deductible || r.deductible;
 
   return `
   <div class="report-section page-break-after">
@@ -5502,8 +5645,8 @@ function renderReportSection2_Contract(cl, r) {
       <tr><td class="lbl">피보험자</td><td>${escapeHtml(insuredName)}</td><td></td></tr>
       <tr><td class="lbl">보험기간</td><td>${period}</td><td>${accDt && period ? '일치' : '확인'}</td></tr>
       <tr><td class="lbl">소재지</td><td>${escapeHtml(policyAddr)}</td><td>${amNote}</td></tr>
-      <tr><td class="lbl">보상한도</td><td>${r.coverage_limit ? Number(r.coverage_limit).toLocaleString()+'원' : '-'}</td><td></td></tr>
-      <tr><td class="lbl">자기부담금</td><td>${money(r.deductible || cl.deductible || 200000)}</td><td></td></tr>
+      <tr><td class="lbl">보상한도</td><td>${coverageLimit ? Number(coverageLimit).toLocaleString()+'원' : '-'}</td><td></td></tr>
+      <tr><td class="lbl">자기부담금</td><td>${money(ded || 200000)}</td><td></td></tr>
       <tr><td class="lbl">특약조건</td><td>${typeLabel}</td><td></td></tr>
       <tr><td class="lbl">사고일자</td><td>${accDt}</td><td></td></tr>
       <tr><td class="lbl">기타사항</td><td></td><td></td></tr>
@@ -5514,12 +5657,25 @@ function renderReportSection2_Contract(cl, r) {
 
 // ─── 3. 일반사항 (가. 피보험자 개요 / 나. 피해자 개요) ──────
 function renderReportSection3_General(r, cl, victims) {
-  const insuredName = r.insured_name || cl.insured_name || '';
-  const insuredResidence = r.insured_residence || r.policy_address_raw || '';
-  const insuredOwner = r.insured_owner_name || '';
-  const insuredCohab = r.insured_cohabitants || '';
+  // v6.2.34: cl 우선. 새 컬럼 insured_registered_address 사용.
+  const insuredName = cl.insured_name || r.insured_name || '';
+  const insuredResidence = cl.insured_registered_address || r.insured_residence || cl.policy_address || r.policy_address_raw || '';
+  const insuredOwner = cl.insured_owner_name || r.insured_owner_name || '';
+  const insuredCohab = cl.insured_cohabitants || r.insured_cohabitants || '';
+  const insuredStatus = cl.insured_status || r.insured_status || '';
 
-  const victimBlocks = (victims || []).map((v, idx) => `
+  // victims 배열이 비어있으면 cl.victim_*에서 fallback 단일 피해자 생성 (v6.2.34)
+  let effectiveVictims = victims || [];
+  if (effectiveVictims.length === 0 && (cl.victim_name || cl.victim_address)) {
+    effectiveVictims = [{
+      victim_name: cl.victim_name,
+      victim_address: cl.victim_address,
+      victim_owner_name: cl.victim_owner_name,
+      victim_note: '',
+    }];
+  }
+
+  const victimBlocks = effectiveVictims.map((v, idx) => `
     <div class="report-subsection">
       <div class="report-subsection-title">나-${idx+1}. 피해자 개요 (피해자 ${idx+1})</div>
       <table class="report-kv-table">
@@ -5547,9 +5703,9 @@ function renderReportSection3_General(r, cl, victims) {
       <table class="report-kv-table">
         <tr><td class="lbl">성명</td><td>${escapeHtml(insuredName)}</td></tr>
         <tr><td class="lbl">소재지</td><td>${escapeHtml(insuredResidence)}</td></tr>
-        <tr><td class="lbl">건물소유자</td><td>${escapeHtml(insuredOwner)}</td></tr>
         <tr><td class="lbl">동거인</td><td>${escapeHtml(insuredCohab)}</td></tr>
-        <tr><td class="lbl">기타사항</td><td></td></tr>
+        <tr><td class="lbl">건물소유자</td><td>${escapeHtml(insuredOwner)}</td></tr>
+        <tr><td class="lbl">피보험자지위</td><td>${escapeHtml(insuredStatus)}</td></tr>
       </table>
     </div>
 
@@ -5559,10 +5715,11 @@ function renderReportSection3_General(r, cl, victims) {
 
 // ─── 4. 사고사항 (+ 현장 사진 3단계) ────────────────────────
 function renderReportSection4_Accident(cl, r, pa, photos) {
+  // v6.2.34: cl 우선. accident_address가 새 컬럼이라 단일 소스로 보장됨.
   const accDt = cl.accident_datetime ? fmtDateTime(cl.accident_datetime) : (cl.accident_date ? fmtDate(cl.accident_date) : '');
-  const accLoc = r.accident_location_from_doc || pa.attacker_unit || cl.victim_address || '';
-  const accCause = pa.leak_cause || cl.accident_cause_type || r.accident_cause_detail || '';
-  const accDesc = r.accident_description || '';
+  const accLoc = cl.accident_address || r.accident_location_from_doc || pa.attacker_unit || cl.victim_address || '';
+  const accCause = cl.accident_cause_detail || pa.leak_cause || cl.accident_cause_type || r.accident_cause_detail || '';
+  const accDesc = cl.accident_description || r.accident_description || '';
   const leakArea = pa.leak_area_type ? `(${pa.leak_area_type})` : '';
   
   const partnerSummary = [];
@@ -5610,12 +5767,18 @@ function renderReportSection4_Accident(cl, r, pa, photos) {
 
 // ─── 5. 법률상 손해배상책임 검토 ────────────────────────────
 function renderReportSection5_Liability(cl, r) {
-  const est = r.liability_result || cl.liability_result || '';
-  const estLabel = est === 'yes' ? '성립' : (est === 'no' ? '불성립' : '—');
-  const cov = r.coverage_result || cl.coverage_result || '';
-  const faultRatio = r.fault_ratio || cl.fault_ratio || '피보험자 100%';
-  const liabReason = r.liability_reasoning || cl.liability_reasoning || '';
-  const covReason  = r.coverage_reasoning  || cl.coverage_reasoning  || '';
+  // v6.2.34: cl 우선 + 9-Call의 '성립'/'불성립' 정확히 처리 (이전 4-Call의 'yes'/'no'도 호환)
+  const est = cl.liability_result || r.liability_result || '';
+  const estLabel = 
+    (est === 'yes' || est === '성립') ? '성립' :
+    (est === 'no'  || est === '불성립') ? '불성립' :
+    (est === '확인불가' || est === '판단유보') ? '판단유보' :
+    '—';
+  const cov = cl.coverage_result || r.coverage_result || '';
+  const covLabel = cov || '—';
+  const faultRatio = cl.fault_ratio || r.fault_ratio || '피보험자 100%';
+  const liabReason = cl.liability_reasoning || r.liability_reasoning || '';
+  const covReason  = cl.coverage_reasoning  || r.coverage_reasoning  || '';
   const applicableLaw = 
     liabReason.includes('758조') ? '민법 제758조' :
     liabReason.includes('750조') ? '민법 제750조' :
@@ -5642,7 +5805,7 @@ function renderReportSection5_Liability(cl, r) {
     <div class="report-subsection">
       <div class="report-subsection-title">나. 피보험자의 보험금 지급 책임 여부 검토</div>
       <table class="report-kv-table">
-        <tr><td class="lbl">면/부책</td><td><b>${cov || '—'}</b></td></tr>
+        <tr><td class="lbl">면/부책</td><td><b>${covLabel}</b></td></tr>
         <tr><td class="lbl">판단근거</td>
           <td><textarea class="report-editable report-editable-multi" id="rep-cov-reason" rows="4"
             placeholder="면·부책 판단근거">${escapeHtml(covReason)}</textarea></td>
