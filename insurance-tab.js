@@ -5275,7 +5275,7 @@ function insStep3HTML() {
           <div>보고서 번호 · ${escapeHtml(reportNo)}</div>
           <div>약관 · ${escapeHtml(insTypeLabel)}</div>
           <div>판단 결과 · ${covVal || '미산출'}</div>
-          <div>버전 · v6.2.35</div>
+          <div>버전 · v6.2.36</div>
         </div>
       </div>
     </div>
@@ -6038,9 +6038,16 @@ function buildReportData(cl, r, co, partners, victims, photos, handler) {
     : (cohabsRaw || '-');
 
   // 사고장소·소재지 일치 비고
+  // v6.2.36: 단순 문자열 포함 비교는 부정확 (예: "수지삼성2차 205동 1602호" vs "168-19 경기도 용인시 수지구 수풍로 38 205동 1602호..." → 같은 곳인데 불일치 판정)
+  // 9-Call step 5가 의미 단위로 판단한 결과(cl.address_match)를 신뢰
   const policyAddrFull = cl.policy_address || r.policy_address || r.policy_address_raw || '';
   const accidentAddr = cl.accident_address || r.accident_address || '';
-  const addrMismatch = policyAddrFull && accidentAddr && !policyAddrFull.includes(accidentAddr.slice(0, 10)) && !accidentAddr.includes(policyAddrFull.slice(0, 10));
+  const addrMatchResult = cl.address_match || r.address_match || '';  // '일치' | '불일치' | '확인불가' | 'ok'
+  const addrMatchNote = (addrMatchResult === '일치' || addrMatchResult === 'ok') ? '일치' 
+                      : (addrMatchResult === '불일치') ? '사고장소와 불일치'
+                      : (addrMatchResult === '확인불가') ? '확인 필요'
+                      : (policyAddrFull && accidentAddr ? '확인 필요' : '');
+  const addrMismatch = addrMatchResult === '불일치';
 
   // 자기부담금 표시값 (대물사고시 기본 200,000)
   const ded = cl.deductible || r.deductible || 200000;
@@ -6148,8 +6155,8 @@ function buildReportData(cl, r, co, partners, victims, photos, handler) {
       { label: '증권번호',   value: policyNoMasked || policyNoRaw || '-', note: '' },
       { label: '피보험자',   value: insuredName, note: '' },
       { label: '보험기간',   value: policyPeriodText, note: accDate && policyPeriodText !== '-' ? '일치' : '확인필요' },
-      { label: '소재지',     value: policyAddrFull || '-', note: addrMismatch ? '사고장소와 불일치' : '' },
-      { label: '사고장소',   value: accidentAddr || '-', note: addrMismatch ? '증권주소지와 불일치' : '' },
+      { label: '소재지',     value: policyAddrFull || '-', note: addrMismatch ? '사고장소와 불일치' : (addrMatchResult === '일치' || addrMatchResult === 'ok' ? '일치' : '') },
+      { label: '사고장소',   value: accidentAddr || '-', note: addrMismatch ? '증권주소지와 불일치' : (addrMatchResult === '일치' || addrMatchResult === 'ok' ? '일치' : '') },
       { label: '보상한도',   value: coverageLimit ? `₩${Number(coverageLimit).toLocaleString()}` : '-', note: '' },
       { label: '자기부담금', value: ded ? `₩${Number(ded).toLocaleString()}` : '-', note: '대물사고시' },
       { label: '특약조건',   value: policyTypeLabel, note: '' },
@@ -6194,8 +6201,11 @@ function buildReportData(cl, r, co, partners, victims, photos, handler) {
       coverReason: covReason,
       faultRatio: cl.fault_ratio || r.fault_ratio || '0%',
       faultReview: cl.fault_ratio_note || r.fault_review || '-',
-      mitigation: (prevCost > 0) ? '담보' : '미담보',
-      mitigationReview: cl.prevention_cost_memo || r.mitigation_review || '-'
+      // v6.2.36: 손해방지비용 담보 여부
+      // 일상생활배상책임 약관: "손해의 방지 또는 경감을 위하여 지출한 필요 또는 유익하였던 비용"은 표준 담보 항목.
+      // 따라서 부책 사고는 기본 '담보'. 사용자가 별도로 미담보로 표시하려면 cl.prevention_cost_memo에 명시.
+      mitigation: (covResult === '면책') ? '미담보' : '담보',
+      mitigationReview: cl.prevention_cost_memo || r.mitigation_review || '상법 제680조 제1항에 따라 규정한 손해방지비용 및 대법원 판례 및 금융분쟁조정위원회 의견에 의거 손해확대 또는 방지를 위해 필요 또는 유익한 비용에 해당하는 누수탐지 및 손해방지를 위해 노력한 공사 비용을 지급처리하는 것이 타당할 것으로 판단됨.'
     },
     attachments: r.attachments && r.attachments.length ? r.attachments : defaultAttachments
   };
