@@ -2792,6 +2792,65 @@ ${!_insUploaded['leak_opinion_external'] ? '※ 누수소견서가 없으므로 
       if (locMatch) addCandidate('accident_location_match', locMatch, '룰 기반 자동');
     }
 
+    // ─────────────────────────────────────────
+    // v6.2.33-C: 추출값을 insurance_claims에 영구 저장
+    // _extractedCandidates의 첫번째 후보값을 정식 컬럼명으로 평탄화하여 저장
+    // → 분석 안 돌려도 보고서 채워짐, 사건 재진입 시 데이터 보존
+    // ─────────────────────────────────────────
+    try {
+      const v = (key) => _extractedCandidates[key]?.[0]?.value || null;
+      const extractUpdates = {
+        // 보험증권
+        policy_no: v('policy_no'),
+        policy_product: v('policy_product') || v('policy_product_name'),
+        // policy_start/end: 'YYYY.MM.DD ~ YYYY.MM.DD' 형식이라 split 필요
+        // 일단 원본 텍스트는 insurance_period 별도 필드 없으므로 _insClaim 메모리에만 보관
+        coverage_limit: v('coverage_limit') ? parseInt(String(v('coverage_limit')).replace(/[^0-9]/g, '')) || null : null,
+        deductible: v('deductible') ? parseInt(String(v('deductible')).replace(/[^0-9]/g, '')) || null : null,
+        // 사고
+        accident_date: v('accident_date'),
+        accident_address: v('accident_address') || v('accident_location'),
+        // 피보험자
+        insured_name: v('insured_name') || v('insured_full_name'),
+        insured_owner_name: v('insured_owner_name') || v('building_owner'),
+        insured_cohabitants: v('cohabitants') || v('insured_cohabitants'),
+        // 피해자 (단일 — 다중 피해자는 별도 트랙)
+        victim_name: v('victim_name') || v('victim_name_v0'),
+        victim_address: v('victim_address') || v('victim_address_v0'),
+        victim_owner_name: v('victim_owner_name') || v('victim_owner_name_v0'),
+        updated_at: new Date().toISOString(),
+      };
+      // policy_start/end 파싱: "2015.04.03 ~ 2090.04.03" → 두 ISO 날짜
+      const periodRaw = v('insurance_period');
+      if (periodRaw) {
+        const m = String(periodRaw).match(/(\d{4})[.-](\d{2})[.-](\d{2})\s*[~\-]\s*(\d{4})[.-](\d{2})[.-](\d{2})/);
+        if (m) {
+          extractUpdates.policy_start = `${m[1]}-${m[2]}-${m[3]}`;
+          extractUpdates.policy_end   = `${m[4]}-${m[5]}-${m[6]}`;
+        }
+      }
+      // 빈 값(null) 제거 — undefined 컬럼 덮어쓰기 방지
+      Object.keys(extractUpdates).forEach(k => {
+        if (extractUpdates[k] === null || extractUpdates[k] === undefined) {
+          delete extractUpdates[k];
+        }
+      });
+      if (Object.keys(extractUpdates).length > 1) {  // updated_at 외에 1개 이상 있을 때만
+        const { error: extErr } = await sb.from('insurance_claims')
+          .update(extractUpdates)
+          .eq('id', _insClaim.id);
+        if (extErr) {
+          console.error('[v6.2.33-C 추출값 insurance_claims 저장 실패]', extErr);
+        } else {
+          // 메모리도 업데이트
+          _insClaim = { ..._insClaim, ...extractUpdates };
+          console.log('[v6.2.33-C] insurance_claims 평탄화 저장 완료 —', Object.keys(extractUpdates).filter(k => k !== 'updated_at').length, '필드');
+        }
+      }
+    } catch (e) {
+      console.error('[v6.2.33-C 추출값 저장 예외]', e);
+    }
+
     showExtracting('완료', 100);
     setTimeout(() => {
       hideExtracting();
@@ -3428,6 +3487,10 @@ async function s2Analyze() {
         analysis_status: 'done',
         analysis_done_at: new Date().toISOString(),
         analysis_error: null,
+        // v6.2.33-D: 분석 완료 시점에 insurance_tab_status도 DB에 저장
+        // 진입 로직(line 619-623)에 따라 'draft_generated' → STEP 3로 자동 진입
+        // 이전엔 _insClaim JS 변수만 ready_for_draft로 바꾸고 DB는 docs_pending 그대로였음 (Critical 버그)
+        insurance_tab_status: 'draft_generated',
         analysis_progress: {
           step_1: { status: 'done', at: new Date().toISOString() },
           step_2: { status: 'done' },
@@ -3487,10 +3550,11 @@ async function s2Analyze() {
     console.groupEnd();
 
     // v6.2.31: STEP 3 보고서 화면으로 자동 이동
+    // v6.2.33-D: DB도 draft_generated로 동기화됨 (위 claimUpdates) → 재진입 시 STEP 3 자동
     // 1.5초 정도 완료 화면 보여주고 → 토스트 → STEP 3 이동
     toast('분석 완료! 보고서로 이동합니다.', 's');
     setTimeout(() => {
-      _insClaim = { ..._insClaim, insurance_tab_status: 'ready_for_draft' };
+      _insClaim = { ..._insClaim, insurance_tab_status: 'draft_generated' };
       _insStep = 3;
       insRender();
       // s3LoadReportData는 insGoto 패턴(_insStep=3 후 자동 호출)에 없으므로 명시적으로 호출
@@ -4893,14 +4957,37 @@ async function s3LoadReportData() {
         _insClaim.leak_cause = _insClaim.leak_cause || ei.leak_report || ei.accident_summary || '';
 
         // 9-Call 단계 결과도 alias로 (insurance_claims에 저장 안 된 필드 대비)
+        const r1 = ana.step_1_result || {};
+        const r2 = ana.step_2_result || {};
+        const r6 = ana.step_6_result || {};
         const r7 = ana.step_7_result || {};
+        const r8 = ana.step_8_result || {};
+        const r9 = ana.step_9_result || {};
+
+        // v6.2.33-A: 9-Call 결과를 _insClaim에 강제 머지 (insurance_claims에 NULL이어도 복원)
+        // s3SaveReport가 빈 값 덮어쓰지 못하게 가드(B)와 함께 작동
+        if (r1.insured_status) _insClaim.insured_status = _insClaim.insured_status || r1.insured_status;
+        if (r2.accident_cause) _insClaim.accident_cause_detail = _insClaim.accident_cause_detail || r2.accident_cause;
+        if (r8.liability_result) _insClaim.liability_result = _insClaim.liability_result || r8.liability_result;
+        if (r8.liability_reasoning) _insClaim.liability_reasoning = _insClaim.liability_reasoning || r8.liability_reasoning;
+        if (r9.coverage_result) _insClaim.coverage_result = _insClaim.coverage_result || r9.coverage_result;
+        if (r9.coverage_reasoning) _insClaim.coverage_reasoning = _insClaim.coverage_reasoning || r9.coverage_reasoning;
+        if (r9.policy_clause_applied) _insClaim.insurance_clause = _insClaim.insurance_clause || r9.policy_clause_applied;
+        if (r6.victim_damages && Array.isArray(r6.victim_damages)) {
+          _insClaim.victim_damages = _insClaim.victim_damages || r6.victim_damages;
+        }
+
         _insClaim.investigator_opinion = _insClaim.investigator_opinion || r7.investigator_opinion || '';
 
-        console.log('[v6.2.30] _insClaim 분석 결과 머지 완료. 보고서에 사용될 핵심 필드:',
-          'policy_no=', _insClaim.policy_no?.slice(0, 20),
-          '| insured_name=', _insClaim.insured_name,
-          '| accident_address=', _insClaim.accident_address?.slice(0, 30),
-          '| coverage_result=', _insClaim.coverage_result);
+        console.log('[v6.2.33-A] _insClaim 분석 결과 머지 완료. 핵심 필드:',
+          '\n  policy_no=', _insClaim.policy_no?.slice(0, 20),
+          '\n  insured_name=', _insClaim.insured_name,
+          '\n  insured_status=', _insClaim.insured_status,
+          '\n  accident_address=', _insClaim.accident_address?.slice(0, 30),
+          '\n  liability_result=', _insClaim.liability_result,
+          '\n  liability_reasoning=', _insClaim.liability_reasoning?.slice(0, 40) + '...',
+          '\n  coverage_result=', _insClaim.coverage_result,
+          '\n  coverage_reasoning=', _insClaim.coverage_reasoning?.slice(0, 40) + '...');
       } else if (anaErr) {
         console.warn('[s3] claim_analyses 로드 실패:', anaErr.message);
       } else {
@@ -5857,6 +5944,14 @@ function escapeHtml(s) {
 // ─── 편집 저장 ─────────────────────────────────────────────
 async function s3SaveReport() {
   const g = (id) => document.getElementById(id)?.value?.trim() || null;
+  // v6.2.33-B: 빈 input은 기존 DB 값 유지 (NULL 덮어쓰기 방지)
+  // 사용자가 보고서를 보고 [💾 임시저장] 눌렀을 때 textarea가 안 채워져 있으면
+  // 9-Call이 채웠던 reasoning이 NULL로 사라지는 사고 방지
+  const gKeep = (id, dbKey) => {
+    const v = document.getElementById(id)?.value?.trim();
+    if (v) return v;
+    return _insClaim[dbKey] || null;  // 빈 값이면 기존 값 유지
+  };
   try {
     // report_no 없으면 채번
     let reportNo = _insClaim.report_no;
@@ -5875,28 +5970,33 @@ async function s3SaveReport() {
       // v6.1.1: 보험사명/담당자 입력은 출력 헤더의 rep-recipient/rep-cc로 통합됨 — DB 컬럼은 호환 유지
       insurer_name:         g('rep-recipient') || _insClaim.insurer_name,    // 호환: 보험사명 = 수신자
       insurer_contact:      g('rep-cc')        || _insClaim.insurer_contact, // 호환: 담당자 = 참조
-      report_recipient:     g('rep-recipient'),
-      report_cc:            g('rep-cc'),       // v6.1.1
-      report_title:         g('rep-title'),    // v6.1.1
-      accident_cause_type:  g('rep-cause'),  // v6: 사고원인은 보고서 본문 select에서 입력
+      report_recipient:     gKeep('rep-recipient', 'report_recipient'),
+      report_cc:            gKeep('rep-cc', 'report_cc'),       // v6.1.1
+      report_title:         gKeep('rep-title', 'report_title'),    // v6.1.1
+      accident_cause_type:  gKeep('rep-cause', 'accident_cause_type'),  // v6: 사고원인은 보고서 본문 select에서 입력
       report_no:            reportNo,
       submit_date:          new Date().toISOString().split('T')[0],
-      liability_reasoning:  g('rep-liab-reason'),
-      coverage_reasoning:   g('rep-cov-reason'),
-      fault_ratio:          g('rep-fault'),
-      fault_ratio_note:     g('rep-fault-note'),
-      prevention_cost_memo: g('rep-prev-memo'),
-      damage_prevention_cost: repPrevCost,
-      damage_amount:        repDamageAmt,
+      // v6.2.33-B: reasoning은 절대 빈 값으로 덮어쓰지 않음 (9-Call 결과 보호)
+      liability_reasoning:  gKeep('rep-liab-reason', 'liability_reasoning'),
+      coverage_reasoning:   gKeep('rep-cov-reason', 'coverage_reasoning'),
+      fault_ratio:          gKeep('rep-fault', 'fault_ratio'),
+      fault_ratio_note:     gKeep('rep-fault-note', 'fault_ratio_note'),
+      prevention_cost_memo: gKeep('rep-prev-memo', 'prevention_cost_memo'),
+      damage_prevention_cost: repPrevCost !== null ? repPrevCost : _insClaim.damage_prevention_cost,
+      damage_amount:        repDamageAmt !== null ? repDamageAmt : _insClaim.damage_amount,
+      // v6.2.33-D: 보고서 저장 시 STEP 3 진입 상태로 마킹 → 재진입 시 STEP 3로 바로 감
+      insurance_tab_status: 'draft_generated',
       updated_at:           new Date().toISOString(),
     };
     const { error } = await sb.from('insurance_claims').update(updates).eq('id', _insClaim.id);
     if (error) throw error;
     
     _insClaim = { ..._insClaim, ...updates };
-    _insResult.liability_reasoning = updates.liability_reasoning;
-    _insResult.coverage_reasoning  = updates.coverage_reasoning;
-    _insResult.fault_ratio         = updates.fault_ratio;
+    if (_insResult) {
+      _insResult.liability_reasoning = updates.liability_reasoning;
+      _insResult.coverage_reasoning  = updates.coverage_reasoning;
+      _insResult.fault_ratio         = updates.fault_ratio;
+    }
     
     toast('보고서가 저장되었습니다.' + (reportNo ? ` (No: ${reportNo})` : ''), 's');
     insRender();
