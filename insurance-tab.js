@@ -5275,7 +5275,7 @@ function insStep3HTML() {
           <div>보고서 번호 · ${escapeHtml(reportNo)}</div>
           <div>약관 · ${escapeHtml(insTypeLabel)}</div>
           <div>판단 결과 · ${covVal || '미산출'}</div>
-          <div>버전 · v6.1.1</div>
+          <div>버전 · v6.2.35</div>
         </div>
       </div>
     </div>
@@ -5974,6 +5974,10 @@ function renderReportFooter(co) {
 // (cl=claim, r=result, co=company, partners, victims, photos)
 // ════════════════════════════════════════════════════════════════
 function buildReportData(cl, r, co, partners, victims, photos, handler) {
+  // v6.2.35: cl(_insClaim, DB) 우선 + 모든 키를 정확히 매핑.
+  // 이 객체가 iframe(report-template-v2.html)으로 postMessage되어 PDF에 들어감.
+  // 이전 버그: 거의 모든 값을 r(_insResult, 메모리)만 봤음. _insResult가 비어있거나 키가 안 맞으면
+  // PDF가 통째로 '-'로 출력됨. DB는 다 채워져 있어도 화면이 안 보임. v6.2.35에서 cl 우선으로 통일.
   cl = cl || {};
   r = r || {};
   co = co || {};
@@ -5982,40 +5986,142 @@ function buildReportData(cl, r, co, partners, victims, photos, handler) {
   photos = photos || { before: [], during: [], after: [] };
   handler = handler || {};
 
-  // 마무리 시점 데이터
+  // 헬퍼: cl 우선, r fallback (이게 정공법)
+  const pick = (...keys) => {
+    for (const key of keys) {
+      // cl.X || r.X 우선순위
+      if (cl[key] != null && cl[key] !== '' && cl[key] !== '-') return cl[key];
+      if (r[key]  != null && r[key]  !== '' && r[key]  !== '-') return r[key];
+    }
+    return null;
+  };
+
+  // 날짜 정규화
   const todayStr = new Date().toISOString().slice(0,10).replace(/-/g,'.');
-  const accDate = (r.accident_datetime || cl.accident_at || '').slice(0,10).replace(/-/g,'.');
+  const accDateRaw = cl.accident_datetime || cl.accident_date || r.accident_datetime || r.accident_date || '';
+  const accDate = String(accDateRaw).slice(0,10).replace(/-/g,'.');
   const accDateLong = accDate ? accDate.replace(/(\d{4})\.(\d{2})\.(\d{2})/, '$1년 $2월 $3일') : '';
 
-  // 증권번호 마스킹 (앞 5자리 + **** + 뒤 3자리)
+  // 증권번호 마스킹
+  const policyNoRaw = cl.policy_no || r.policy_no || '';
   const policyNoMasked = (() => {
-    const p = r.policy_no || '';
+    const p = policyNoRaw;
     if (!p) return '';
     if (p.length < 8) return p;
     return p.slice(0,5) + '****' + p.slice(-3);
   })();
 
-  // 동거인 (배열 → 표시 문자열)
-  const cohabsRaw = r.cohabitants || r.insured_cohabitants || [];
+  // 보험기간 텍스트
+  const policyPeriodText = (() => {
+    const s = cl.policy_start || r.policy_start;
+    const e = cl.policy_end || r.policy_end;
+    if (s && e) {
+      const fmt = (d) => String(d).slice(0,10).replace(/-/g,'.');
+      return `${fmt(s)} ~ ${fmt(e)}`;
+    }
+    return r.policy_period || '-';
+  })();
+
+  // 보험종류 라벨
+  const policyTypeLabel = (() => {
+    const t = cl.insurance_type || r.insurance_type || r.policy_type;
+    if (t === 'family_daily_old' || t === 'GUHYUNG') return '가족일상생활배상책임(구형)';
+    if (t === 'family_daily_new' || t === 'SHINHYUNG') return '가족일상생활배상책임(신형)';
+    if (t === 'personal_daily' || t === 'ILBAECHEK') return '일상생활배상책임';
+    return '-';
+  })();
+
+  // 동거인
+  const cohabsRaw = cl.insured_cohabitants || r.cohabitants || r.insured_cohabitants || '';
   const cohabsStr = Array.isArray(cohabsRaw)
     ? cohabsRaw.map(c => typeof c === 'string' ? c : (c.name + (c.relation ? `(${c.relation})` : ''))).join(', ')
     : (cohabsRaw || '-');
 
-  // 첨부자료 기본값
+  // 사고장소·소재지 일치 비고
+  const policyAddrFull = cl.policy_address || r.policy_address || r.policy_address_raw || '';
+  const accidentAddr = cl.accident_address || r.accident_address || '';
+  const addrMismatch = policyAddrFull && accidentAddr && !policyAddrFull.includes(accidentAddr.slice(0, 10)) && !accidentAddr.includes(policyAddrFull.slice(0, 10));
+
+  // 자기부담금 표시값 (대물사고시 기본 200,000)
+  const ded = cl.deductible || r.deductible || 200000;
+
+  // 9-Call의 '성립'/'불성립' → 보고서 라벨로
+  const liabResult = cl.liability_result || r.liability_result || '';
+  const liabLabel =
+    (liabResult === '성립' || liabResult === 'yes') ? '성립' :
+    (liabResult === '불성립' || liabResult === 'no') ? '불성립' :
+    (liabResult === '판단유보' || liabResult === '확인불가') ? '판단유보' : '-';
+  const covResult = cl.coverage_result || r.coverage_result || '-';
+
+  // 9-Call reasoning
+  const liabReason = cl.liability_reasoning || r.liability_reasoning || r.liability_reason || '-';
+  const covReason  = cl.coverage_reasoning  || r.coverage_reasoning  || r.cover_reason  || '-';
+
+  // 관련법규 — reasoning 문장에서 자동 추출
+  const applicableLaw =
+    liabReason.includes('758조') ? '민법 제758조 (공작물 책임)' :
+    liabReason.includes('750조') ? '민법 제750조 (일반 불법행위 책임)' :
+    liabReason.includes('공동주택관리법') ? '공동주택관리법 제63조' :
+    '민법 제750조 (일반 불법행위 책임) 및 제758조 (공작물 책임)';
+
+  // 사고경위
+  const accDesc = cl.accident_description || r.accident_description || r.accident_summary || '-';
+  const accCause = cl.accident_cause_detail || r.accident_cause_detail || r.leak_cause || '-';
+
+  // 피보험자 정보
+  const insuredName = cl.insured_name || r.insured_name || '-';
+  const insuredResidence = cl.insured_registered_address || r.insured_address || r.insured_residence || policyAddrFull || '-';
+  const buildingOwner = cl.insured_owner_name || r.building_owner || r.insured_owner_name || '-';
+  const insuredStatus = cl.insured_status || r.insured_status || '-';
+
+  // 피해자 — victims 배열 우선, 비어있으면 cl.victim_*에서 단일 fallback
+  let effectiveVictims = (victims && victims.length) ? victims : [];
+  if (effectiveVictims.length === 0 && (cl.victim_name || cl.victim_address)) {
+    effectiveVictims = [{
+      victim_name: cl.victim_name,
+      victim_address: cl.victim_address,
+      victim_owner: cl.victim_owner_name,
+      victim_owner_name: cl.victim_owner_name,
+    }];
+  }
+  if (effectiveVictims.length === 0) {
+    effectiveVictims = [{ victim_name:'', victim_address:'', victim_owner:'', victim_note:'' }];
+  }
+
+  // 첨부자료
   const defaultAttachments = ['보험증권', '보험청구서', '누수소견서', '가/피해자 자료 일체', '위임장', '선임권동의서', '..'];
 
+  // 손해액
+  const damageAmt = cl.damage_amount || r.damage_amount || 0;
+  const prevCost = cl.damage_prevention_cost || r.damage_prevention_cost || 0;
+  const payoutAmt = cl.payout_amount || r.payout_amount || 0;
+  const coverageLimit = cl.coverage_limit || r.coverage_limit || 0;
+
+  console.log('[v6.2.35 buildReportData] 빌드 결과 핵심 필드:',
+    '\n  보고서 번호:', cl.report_no || r.report_no,
+    '\n  피보험자:', insuredName,
+    '\n  증권번호:', policyNoRaw || '(비어있음 — 추출 누락)',
+    '\n  보험종목:', policyTypeLabel,
+    '\n  보험기간:', policyPeriodText,
+    '\n  소재지:', policyAddrFull?.slice(0, 30),
+    '\n  사고장소:', accidentAddr,
+    '\n  사고일자:', accDate,
+    '\n  사고경위:', accDesc?.slice(0, 50),
+    '\n  피보험자지위:', insuredStatus,
+    '\n  성립/불성립:', liabLabel,
+    '\n  면/부책:', covResult,
+    '\n  피해자 수:', effectiveVictims.length);
+
   return {
-    coverNo: r.report_no || `NP-${(cl.case_no || '0000000').replace(/[^0-9]/g,'').slice(-7) || '0000000'}`,
+    coverNo: cl.report_no || r.report_no || `NP-${(cl.case_no || '0000000').replace(/[^0-9]/g,'').slice(-7) || '0000000'}`,
     coverDate: todayStr.replace(/(\d{4})\.(\d{2})\.(\d{2})/, '$1년 $2월 $3일'),
-    insuredName: r.insured_name || cl.insured_name || '-',
+    insuredName: insuredName,
     accDate: accDateLong || '-',
-    accAddr: r.accident_address || cl.accident_address || '-',
-    policyNoMasked: policyNoMasked,
-    // v6.1.4: 손해사정사 (회사 정보 — companies.chief_officer_*) — 모든 보고서 고정
+    accAddr: accidentAddr || '-',
+    policyNoMasked: policyNoMasked || '-',
     chiefOfficer: co.chief_officer_name || co.adjuster_name || 'OOO',
     chiefOfficerCert: co.chief_officer_license_no || co.adjuster_license_no || '000000000',
     chiefOfficerStampPath: co.chief_officer_stamp_path || '',
-    // v6.1.4: 담당자 (본인 정보 — admin_users 현재 로그인) — 보고서마다 다름
     handlerName: handler.name || co.investigator_name || '서재성',
     handlerHp: handler.phone || co.phone || '010-0000-0000',
     handlerEmail: handler.personal_email || handler.email || co.company_email || co.email || 'nusupass.cs@gmail.com',
@@ -6023,54 +6129,57 @@ function buildReportData(cl, r, co, partners, victims, photos, handler) {
     company: co.company_name_ko || co.company_name || '누수패스손해사정㈜',
     ceo: co.ceo_name || co.representative || 'OOO',
     summary: {
-      limitProperty: (r.coverage_limit || r.limit_property || 0).toLocaleString(),
-      damage: '-', liable: '-', deduct: '-', payout: '-'
+      limitProperty: coverageLimit ? Number(coverageLimit).toLocaleString() : '-',
+      damage: damageAmt ? Number(damageAmt).toLocaleString() : '-',
+      liable: '-',
+      deduct: ded ? Number(ded).toLocaleString() : '-',
+      payout: payoutAmt ? Number(payoutAmt).toLocaleString() : '-'
     },
     payment: {
-      lossAmt: '0,000,000',
-      agreeAmt: '0,000,000',
-      deductAmt: '0,000,000',
-      finalAmt: '0,000,000',
+      lossAmt: damageAmt ? Number(damageAmt).toLocaleString() : '0,000,000',
+      agreeAmt: damageAmt ? Number(damageAmt).toLocaleString() : '0,000,000',
+      deductAmt: ded ? Number(ded).toLocaleString() : '0,000,000',
+      finalAmt: payoutAmt ? Number(payoutAmt).toLocaleString() : '0,000,000',
       bank: '00', acct: '', holder: 'OOO',
       jumin: '000000-0******', deductFee: '₩', relation: '피해자'
     },
     contract: [
-      { label: '보험종목',   value: r.policy_product || '-', note: '' },
-      { label: '증권번호',   value: policyNoMasked || (r.policy_no || '-'), note: '' },
-      { label: '피보험자',   value: r.insured_name || '-', note: '' },
-      { label: '보험기간',   value: r.policy_period || '-', note: '' },
-      { label: '소재지',     value: r.policy_address || '-', note: r.policy_address && r.accident_address && r.policy_address !== r.accident_address ? '사고장소와 불일치' : '' },
-      { label: '사고장소',   value: r.accident_address || '-', note: r.policy_address && r.accident_address && r.policy_address !== r.accident_address ? '증권주소지와 불일치' : '' },
-      { label: '보상한도',   value: r.coverage_limit ? `₩${Number(r.coverage_limit).toLocaleString()}` : '-', note: '' },
-      { label: '자기부담금', value: r.deductible ? `₩${Number(r.deductible).toLocaleString()}` : '-', note: '대물사고시' },
-      { label: '특약조건',   value: r.policy_type === 'GUHYUNG' ? '가족일상생활배상책임(구형)' : r.policy_type === 'SHINHYUNG' ? '가족일상생활배상책임(신형)' : r.policy_type === 'ILBAECHEK' ? '일상생활배상책임' : '-', note: '' },
+      { label: '보험종목',   value: policyTypeLabel, note: '' },
+      { label: '증권번호',   value: policyNoMasked || policyNoRaw || '-', note: '' },
+      { label: '피보험자',   value: insuredName, note: '' },
+      { label: '보험기간',   value: policyPeriodText, note: accDate && policyPeriodText !== '-' ? '일치' : '확인필요' },
+      { label: '소재지',     value: policyAddrFull || '-', note: addrMismatch ? '사고장소와 불일치' : '' },
+      { label: '사고장소',   value: accidentAddr || '-', note: addrMismatch ? '증권주소지와 불일치' : '' },
+      { label: '보상한도',   value: coverageLimit ? `₩${Number(coverageLimit).toLocaleString()}` : '-', note: '' },
+      { label: '자기부담금', value: ded ? `₩${Number(ded).toLocaleString()}` : '-', note: '대물사고시' },
+      { label: '특약조건',   value: policyTypeLabel, note: '' },
       { label: '사고일자',   value: accDate || '-', note: '' },
-      { label: '중복보험',   value: r.duplicate_check || '확인필요', note: '' },
+      { label: '중복보험',   value: cl.duplicate_check || r.duplicate_check || '확인필요', note: '' },
     ],
     insuredInfo: [
-      { label: '성명',             value: r.insured_name || '-' },
-      { label: '주민번호',         value: r.insured_jumin || '-' },
-      { label: '연락처',           value: r.insured_phone || '-' },
-      { label: '주민등록등본\n소재지', value: r.insured_address || '-' },
-      { label: '동거인',           value: cohabsStr || '-' },
-      { label: '건물소유자',       value: r.building_owner || '-' },
-      { label: '피보험자지위',     value: r.insured_status || '-' },
+      { label: '성명',                  value: insuredName },
+      { label: '주민번호',              value: cl.insured_jumin || r.insured_jumin || '-' },
+      { label: '연락처',                value: cl.insured_phone || r.insured_phone || '-' },
+      { label: '주민등록등본\n소재지',  value: insuredResidence },
+      { label: '동거인',                value: cohabsStr },
+      { label: '건물소유자',            value: buildingOwner },
+      { label: '피보험자지위',          value: insuredStatus },
     ],
-    victims: (victims.length ? victims : [{ victim_name:'', victim_jumin:'', victim_phone:'', victim_address:'', victim_owner:'', victim_note:'' }]).map(v => ({
+    victims: effectiveVictims.map(v => ({
       info: [
         { label: '성명',       value: v.victim_name || '-' },
         { label: '주민번호',   value: v.victim_jumin || '-' },
         { label: '연락처',     value: v.victim_phone || '-' },
         { label: '소재지',     value: v.victim_address || '-' },
-        { label: '건물소유자', value: v.victim_owner || '-' },
+        { label: '건물소유자', value: v.victim_owner || v.victim_owner_name || '-' },
         { label: '기타사항',   value: v.victim_note || v.damage_status || '-' },
       ]
     })),
     accident: {
       date: accDate || '-',
-      addr: r.accident_address || cl.accident_address || '-',
-      cause: r.leak_cause || '-',
-      desc: r.accident_summary || r.investigator_opinion || '-',
+      addr: accidentAddr || '-',
+      cause: accCause,
+      desc: accDesc,
       photos: {
         before: (photos.before || []).slice(0, 2).map(p => ({ url: p.url || '' })),
         during: (photos.during || []).slice(0, 2).map(p => ({ url: p.url || '' })),
@@ -6078,15 +6187,15 @@ function buildReportData(cl, r, co, partners, victims, photos, handler) {
       }
     },
     liability: {
-      establish: r.liability_decision || '-',
-      lawCite: r.law_cite || '민법 제750조 (일반 불법행위 책임) 및 제758조 (공작물 책임)',
-      lawReason: r.liability_reason || '-',
-      coverDecision: r.cover_decision || '-',
-      coverReason: r.cover_reason || '-',
-      faultRatio: r.fault_ratio || '0%',
-      faultReview: r.fault_review || '-',
-      mitigation: r.mitigation_decision || '-',
-      mitigationReview: r.mitigation_review || '-'
+      establish: liabLabel,
+      lawCite: applicableLaw,
+      lawReason: liabReason,
+      coverDecision: covResult,
+      coverReason: covReason,
+      faultRatio: cl.fault_ratio || r.fault_ratio || '0%',
+      faultReview: cl.fault_ratio_note || r.fault_review || '-',
+      mitigation: (prevCost > 0) ? '담보' : '미담보',
+      mitigationReview: cl.prevention_cost_memo || r.mitigation_review || '-'
     },
     attachments: r.attachments && r.attachments.length ? r.attachments : defaultAttachments
   };
