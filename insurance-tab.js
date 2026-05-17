@@ -1499,23 +1499,35 @@ function s1ChangePolicyType(val) {
 window.s1ChangePolicyType = s1ChangePolicyType;
 
 // v6.2: 누수소견서 옵션 모달 (파트너 임포트 OR 외부업체 PDF)
+// v6.2.8: detection·restore 파트너 모두 노출 (이전엔 detection만)
 function insOpenLeakModal() {
-  // 사용 가능한 파트너 목록 (보고서 제출됨 + 누수탐지 목적)
-  const detectionPartners = (_insPartners || []).filter(p => p.has_report && p.assignment_purpose === 'detection');
-  const partnerOptionsHTML = detectionPartners.length > 0
-    ? detectionPartners.map(p => `
+  // 사용 가능한 파트너 목록 (보고서 제출됨) — detection·restore 모두 포함
+  const eligiblePartners = (_insPartners || []).filter(p => p.has_report && (p.assignment_purpose === 'detection' || p.assignment_purpose === 'restore'));
+  // detection을 위에, restore를 아래에 정렬 (실무 흐름 — 누수탐지가 먼저)
+  eligiblePartners.sort((a, b) => {
+    if (a.assignment_purpose === b.assignment_purpose) return 0;
+    return a.assignment_purpose === 'detection' ? -1 : 1;
+  });
+
+  const purposeLabelOf = (purpose) =>
+    purpose === 'detection' ? '🔍 누수탐지' :
+    purpose === 'restore'   ? '🏠 인테리어 복구' :
+    '파트너 작업';
+
+  const partnerOptionsHTML = eligiblePartners.length > 0
+    ? eligiblePartners.map(p => `
         <label class="v62-modal-option">
           <input type="radio" name="leak-source" value="partner-${p.id}" ${_insImportedPartners.has(p.id)?'checked':''}>
           <div class="v62-modal-option-body">
-            <div class="v62-modal-option-title">파트너 임포트 — ${escapeHtml(p.partner_name)}</div>
+            <div class="v62-modal-option-title">파트너 임포트 — ${escapeHtml(p.partner_name)} <span style="font-size:11px;color:#6b7280;font-weight:500">· ${purposeLabelOf(p.assignment_purpose)}</span></div>
             <div class="v62-modal-option-meta">
-              ${p.leak_cause ? `사고원인: ${escapeHtml(p.leak_cause)}` : '누수탐지 보고서 제출됨'}
+              ${p.leak_cause ? `사고원인: ${escapeHtml(p.leak_cause)}` : (p.assignment_purpose === 'detection' ? '누수탐지 보고서 제출됨' : '복구 보고서 제출됨')}
               ${p.work_done_at ? ` · ${fmtDate(p.work_done_at)}` : ''}
             </div>
           </div>
         </label>
       `).join('')
-    : `<div class="v62-modal-empty">⚠ 이 케이스에 누수탐지 파트너가 배정되어 있지 않습니다 — 외부업체 PDF를 업로드해주세요</div>`;
+    : `<div class="v62-modal-empty">⚠ 이 케이스에 임포트 가능한 파트너가 없습니다 — 외부업체 PDF를 업로드해주세요</div>`;
 
   const modalHTML = `
     <div class="v62-modal-backdrop" onclick="insCloseLeakModal()"></div>
@@ -4974,7 +4986,7 @@ async function s3LoadReportData() {
   } catch (e) { console.warn('[s3] partner_assignments 로드 실패:', e); _insPartnerReport = null; }
 
   // 2) case_documents 사진 3단계별 signed URL
-  //    v6.1.1: 임포트된 assignment_id 모두에서 사진 가져오기 (한라+두리 둘 다 임포트한 경우)
+  //    v6.2.8: 사진에 파트너 정보 부착 (출처 라벨 + 섹션 분리 렌더링 위한 메타)
   _insRepairPhotos = { before: [], during: [], after: [] };
   try {
     const importedIds = Array.from(_insImportedPartners || []);
@@ -4994,6 +5006,18 @@ async function s3LoadReportData() {
     console.log('[s3] case_documents 로드:', docs?.length || 0, '건 (필터:',
       importedIds.length > 0 ? `assignment_id IN (${importedIds.length}건)` : 'case_id 전체', ')');
 
+    // v6.2.8: assignment_id → 파트너 정보 매핑 테이블 구축
+    const partnerMap = {};
+    (_insPartners || []).forEach(p => {
+      partnerMap[p.id] = {
+        name: p.partner_name || '파트너',
+        purpose: p.assignment_purpose, // 'detection' or 'restore'
+        purposeLabel: p.assignment_purpose === 'detection' ? '누수탐지'
+                    : p.assignment_purpose === 'restore'   ? '인테리어 복구'
+                    : '파트너 작업',
+      };
+    });
+
     let signedSuccess = 0, signedFail = 0;
     for (const d of (docs || [])) {
       const stage = d.document_type.replace('repair_photo_', '');  // before/during/after
@@ -5001,7 +5025,15 @@ async function s3LoadReportData() {
         const { data: s, error: signErr } = await sb.storage.from('partner-work').createSignedUrl(d.file_url, 3600);
         if (signErr) { console.warn(`[s3] signed URL 에러 (${d.file_url}):`, signErr); signedFail++; continue; }
         if (s?.signedUrl) {
-          _insRepairPhotos[stage].push({ url: s.signedUrl, name: d.file_name || stage });
+          const partnerInfo = partnerMap[d.assignment_id] || { name: '파트너', purpose: 'unknown', purposeLabel: '파트너 작업' };
+          _insRepairPhotos[stage].push({
+            url: s.signedUrl,
+            name: d.file_name || stage,
+            assignment_id: d.assignment_id,
+            partner_name: partnerInfo.name,
+            partner_purpose: partnerInfo.purpose,
+            partner_purpose_label: partnerInfo.purposeLabel,
+          });
           signedSuccess++;
         } else {
           signedFail++;
@@ -5797,6 +5829,8 @@ function renderReportSection3_General(r, cl, victims) {
 }
 
 // ─── 4. 사고사항 (+ 현장 사진 3단계) ────────────────────────
+// v6.2.8: 두 파트너 모두 임포트된 경우 사진 섹션 분리 (누수탐지·인테리어 복구)
+//         파트너 입력 데이터 충돌(가해세대·피해세대) 시 ⚠️ 알림
 function renderReportSection4_Accident(cl, r, pa, photos) {
   // v6.2.34: cl 우선. accident_address가 새 컬럼이라 단일 소스로 보장됨.
   const accDt = cl.accident_datetime ? fmtDateTime(cl.accident_datetime) : (cl.accident_date ? fmtDate(cl.accident_date) : '');
@@ -5804,15 +5838,34 @@ function renderReportSection4_Accident(cl, r, pa, photos) {
   const accCause = cl.accident_cause_detail || pa.leak_cause || cl.accident_cause_type || r.accident_cause_detail || '';
   const accDesc = cl.accident_description || r.accident_description || '';
   const leakArea = pa.leak_area_type ? `(${pa.leak_area_type})` : '';
-  
+
   const partnerSummary = [];
   if (pa.attacker_unit)   partnerSummary.push(`가해세대: ${pa.attacker_unit}`);
   if (pa.victim_unit)     partnerSummary.push(`피해세대: ${pa.victim_unit}`);
   if (pa.leak_area_type)  partnerSummary.push(`누수부위: ${pa.leak_area_type}`);
-  
+
   const investigatorOpinion = r.investigator_opinion || cl.liability_memo || '';
 
-  const renderPhotoGroup = (label, arr) => {
+  // v6.2.8: 파트너 입력 데이터 충돌 감지
+  // _insPartners에 임포트된 파트너가 2개 이상이고, attacker_unit·victim_unit이 다르면 알림
+  let conflictAlert = '';
+  const importedPartners = (_insPartners || []).filter(p => _insImportedPartners?.has(p.id));
+  if (importedPartners.length >= 2) {
+    const attackerVals = [...new Set(importedPartners.map(p => p.attacker_unit).filter(Boolean))];
+    const victimVals   = [...new Set(importedPartners.map(p => p.victim_unit).filter(Boolean))];
+    const conflicts = [];
+    if (attackerVals.length > 1) conflicts.push(`가해세대 (${attackerVals.join(' vs ')})`);
+    if (victimVals.length > 1)   conflicts.push(`피해세대 (${victimVals.join(' vs ')})`);
+    if (conflicts.length > 0) {
+      conflictAlert = `
+        <div class="no-print" style="margin:8px 0 12px;padding:10px 14px;background:#fff7ed;border:1px solid #fdba74;border-radius:6px;font-size:12px;color:#9a3412;">
+          ⚠️ 파트너 입력 충돌 — ${conflicts.join(', ')}. 운영자 확인 후 정정 필요.
+        </div>`;
+    }
+  }
+
+  // 단일 사진 그룹 렌더 (한 파트너 또는 두 파트너 합쳐서 표시할 때)
+  const renderPhotoGroup = (label, arr, showSource = false) => {
     if (!arr || arr.length === 0) {
       return `<div class="report-photo-group">
         <div class="report-photo-label">${label}</div>
@@ -5822,14 +5875,65 @@ function renderReportSection4_Accident(cl, r, pa, photos) {
     return `<div class="report-photo-group">
       <div class="report-photo-label">${label} (${arr.length}장)</div>
       <div class="report-photo-grid">
-        ${arr.map(p => `<img src="${p.url}" alt="${escapeHtml(p.name)}" class="report-photo">`).join('')}
+        ${arr.map(p => `
+          <div class="report-photo-wrap" style="position:relative;display:inline-block;">
+            <img src="${p.url}" alt="${escapeHtml(p.name)}" class="report-photo">
+            ${showSource && p.partner_name ? `<div class="report-photo-source" style="position:absolute;left:4px;bottom:4px;background:rgba(0,0,0,0.65);color:#fff;font-size:10px;padding:2px 6px;border-radius:3px;font-weight:500">📸 ${escapeHtml(p.partner_name)}</div>` : ''}
+          </div>
+        `).join('')}
       </div>
     </div>`;
   };
 
+  // v6.2.8: 사진 섹션 분리 판정
+  //   - 두 파트너(detection·restore) 모두 사진을 보냈는지 확인
+  //   - 둘 다 있으면: 파트너별 섹션 분리 (누수탐지·인테리어 복구)
+  //   - 한쪽만 있으면: 종래 양식 (단일 수리 전·중·후)
+  const allPhotos = [...(photos.before||[]), ...(photos.during||[]), ...(photos.after||[])];
+  const detectionPhotoCount = allPhotos.filter(p => p.partner_purpose === 'detection').length;
+  const restorePhotoCount   = allPhotos.filter(p => p.partner_purpose === 'restore').length;
+  const isSplit = detectionPhotoCount > 0 && restorePhotoCount > 0;
+
+  let photoSectionHTML = '';
+  if (isSplit) {
+    // 두 파트너 모두 사진 있음 — 섹션 분리
+    const detectionPartnerName = importedPartners.find(p => p.assignment_purpose === 'detection')?.partner_name || '누수탐지업체';
+    const restorePartnerName   = importedPartners.find(p => p.assignment_purpose === 'restore')?.partner_name   || '인테리어업체';
+    const filterByPurpose = (arr, purpose) => (arr || []).filter(p => p.partner_purpose === purpose);
+
+    photoSectionHTML = `
+      <div class="report-subsection" style="margin-top:16px">
+        <div class="report-subsection-title">현장 사진 (단계별·파트너별)</div>
+
+        <div style="margin-bottom:12px;padding:8px 12px;background:#f0f9ff;border-left:3px solid #3b82f6;border-radius:0 4px 4px 0;font-size:12px;color:#0c4a6e;font-weight:500">
+          🔍 누수탐지 — ${escapeHtml(detectionPartnerName)}
+        </div>
+        ${renderPhotoGroup('① 수리 전', filterByPurpose(photos.before, 'detection'), true)}
+        ${renderPhotoGroup('② 수리 중', filterByPurpose(photos.during, 'detection'), true)}
+        ${renderPhotoGroup('③ 수리 후', filterByPurpose(photos.after,  'detection'), true)}
+
+        <div style="margin:18px 0 12px;padding:8px 12px;background:#f0fdf4;border-left:3px solid #16a34a;border-radius:0 4px 4px 0;font-size:12px;color:#14532d;font-weight:500">
+          🏠 인테리어 복구 — ${escapeHtml(restorePartnerName)}
+        </div>
+        ${renderPhotoGroup('① 수리 전', filterByPurpose(photos.before, 'restore'), true)}
+        ${renderPhotoGroup('② 수리 중', filterByPurpose(photos.during, 'restore'), true)}
+        ${renderPhotoGroup('③ 수리 후', filterByPurpose(photos.after,  'restore'), true)}
+      </div>`;
+  } else {
+    // 한쪽만 (또는 둘 다 없음) — 종래 양식 그대로 (출처 라벨은 표시)
+    photoSectionHTML = `
+      <div class="report-subsection" style="margin-top:16px">
+        <div class="report-subsection-title">현장 사진 (수리 단계별)</div>
+        ${renderPhotoGroup('① 수리 전', photos.before, true)}
+        ${renderPhotoGroup('② 수리 중', photos.during, true)}
+        ${renderPhotoGroup('③ 수리 후', photos.after,  true)}
+      </div>`;
+  }
+
   return `
   <div class="report-section page-break-after">
     <div class="report-section-title">4. 사고사항</div>
+    ${conflictAlert}
     <table class="report-kv-table">
       <tr><td class="lbl">사고일시</td><td>${accDt}</td></tr>
       <tr><td class="lbl">사고장소</td><td>${escapeHtml(accLoc)}</td></tr>
@@ -5839,12 +5943,7 @@ function renderReportSection4_Accident(cl, r, pa, photos) {
       <tr><td class="lbl">조사자의견</td><td>${escapeHtml(investigatorOpinion)}</td></tr>
     </table>
 
-    <div class="report-subsection" style="margin-top:16px">
-      <div class="report-subsection-title">현장 사진 (수리 단계별)</div>
-      ${renderPhotoGroup('① 수리 전', photos.before)}
-      ${renderPhotoGroup('② 수리 중', photos.during)}
-      ${renderPhotoGroup('③ 수리 후', photos.after)}
-    </div>
+    ${photoSectionHTML}
   </div>`;
 }
 
@@ -5943,13 +6042,34 @@ function renderReportSection5_Liability(cl, r) {
 // ─── 6. 손해액평가 (v6.0.2: 양식 표준 6컬럼 표) ─────────────
 //   컬럼: 구분 | 보상한도액 | 손해액 | 법률상 배상책임액 | 자기부담금 | 지급보험금
 //   행: 손해방지비용 / 대물배상 / 합계
+// v6.2.8: 두 파트너 임포트 시 자동 분배
+//   - 손해방지비용 = detection 파트너 repair_cost (한라누수 등 누수탐지업체)
+//   - 대물배상     = restore   파트너 repair_cost (두리인테리어 등 인테리어업체)
 function renderReportSection6_Damage(rc, ded, pay) {
   const cl = _insClaim || {};
   const r  = _insResult || {};
-  const prevCost = cl.damage_prevention_cost || 0;
-  const damageAmt = cl.damage_amount || rc;
   // v6.2.6: cl 우선 + r fallback — 정공법 통일
   const limit = cl.coverage_limit || r.coverage_limit || 0;
+
+  // v6.2.8: 파트너별 repair_cost 자동 분배
+  const importedPartners = (_insPartners || []).filter(p => _insImportedPartners?.has(p.id));
+  const detectionPartner = importedPartners.find(p => p.assignment_purpose === 'detection');
+  const restorePartner   = importedPartners.find(p => p.assignment_purpose === 'restore');
+
+  // 손해방지비용: detection 파트너의 repair_cost 우선, 없으면 cl.damage_prevention_cost (수기 입력)
+  const prevCost = (detectionPartner?.repair_cost)
+                || cl.damage_prevention_cost
+                || 0;
+
+  // 대물배상(손해액): restore 파트너 repair_cost 우선, 없으면 cl.damage_amount, 없으면 rc(_insField.repair_cost — 단일 파트너 시 fallback)
+  const damageAmt = (restorePartner?.repair_cost)
+                 || cl.damage_amount
+                 || rc
+                 || 0;
+
+  // 파트너 분배 출처 라벨 (운영자가 어디서 왔는지 알 수 있도록)
+  const prevCostSource = detectionPartner ? `${detectionPartner.partner_name} (누수탐지)` : '';
+  const damageAmtSource = restorePartner ? `${restorePartner.partner_name} (인테리어 복구)` : '';
 
   // 부책 시 법률상 배상책임액 = 손해액, 면책 시 0
   const covYes = (cl.coverage_result || r.coverage_result) === '부책';
@@ -5979,7 +6099,10 @@ function renderReportSection6_Damage(rc, ded, pay) {
       </thead>
       <tbody>
         <tr>
-          <td class="lbl">손해방지비용</td>
+          <td class="lbl">
+            손해방지비용
+            ${prevCostSource ? `<div style="font-size:10px;color:#6b7280;font-weight:400;margin-top:2px">${escapeHtml(prevCostSource)}</div>` : ''}
+          </td>
           <td>${cell(limit)}</td>
           <td><input class="report-editable-input" id="rep-prev-cost" value="${prevCost || ''}" placeholder="-" style="text-align:right"></td>
           <td>${cell(prevCost)}</td>
@@ -5987,7 +6110,10 @@ function renderReportSection6_Damage(rc, ded, pay) {
           <td>${cell(prevCost)}</td>
         </tr>
         <tr>
-          <td class="lbl">대물배상</td>
+          <td class="lbl">
+            대물배상
+            ${damageAmtSource ? `<div style="font-size:10px;color:#6b7280;font-weight:400;margin-top:2px">${escapeHtml(damageAmtSource)}</div>` : ''}
+          </td>
           <td>${cell(limit)}</td>
           <td><input class="report-editable-input" id="rep-damage-amt" value="${damageAmt || ''}" placeholder="-" style="text-align:right"></td>
           <td>${cell(liabAmt)}</td>
