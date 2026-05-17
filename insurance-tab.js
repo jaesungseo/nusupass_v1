@@ -5252,7 +5252,7 @@ function insStep3HTML() {
       <span>수신</span>
       <input type="text" id="rep-recipient" 
         value="${escapeHtml(cl.report_recipient || cl.insurer_name || '')}" 
-        placeholder="예: DB손해보험"
+        placeholder="예: OO화재 (보험증권에서 자동 채움)"
         oninput="s3UpdateReportField('recipient', this.value)">
     </label>
     <label>
@@ -6445,18 +6445,32 @@ function s3UpdateReportField(field, value) {
   if (!iframe) return;
   if (field === 'recipient') _reportRecipient = value || '';
   if (field === 'dept') _reportDept = value || '';
-  // v6.2.6: 증권번호도 메모리·DB·iframe 모두 갱신
-  if (field === 'policyNo') {
-    if (_insClaim) _insClaim.policy_no = value || null;
-    // _insResult도 동기화 (다른 렌더링에서 r.policy_no 읽음)
-    if (_insResult) _insResult.policy_no = value || null;
-    // DB에 silent persist (async, await 안 함 — 입력 흐름 막지 않도록)
-    if (_insClaim?.id && typeof sb !== 'undefined') {
+
+  // v6.2.7: 모든 헤더 필드를 DB에 silent persist — 새로고침 후에도 유지
+  // (v6.2.6엔 policyNo만 저장, recipient/dept/title은 메모리만 → 새로고침 시 사라지는 문제)
+  if (_insClaim?.id && typeof sb !== 'undefined') {
+    let dbUpdate = null;
+    if (field === 'recipient') {
+      _insClaim.report_recipient = value || null;
+      dbUpdate = { report_recipient: value || null };
+    } else if (field === 'dept') {
+      _insClaim.report_cc = value || null;
+      dbUpdate = { report_cc: value || null };
+    } else if (field === 'title') {
+      _insClaim.report_title = value || null;
+      dbUpdate = { report_title: value || null };
+    } else if (field === 'policyNo') {
+      _insClaim.policy_no = value || null;
+      if (_insResult) _insResult.policy_no = value || null;
+      dbUpdate = { policy_no: value || null };
+    }
+    if (dbUpdate) {
+      dbUpdate.updated_at = new Date().toISOString();
       sb.from('insurance_claims')
-        .update({ policy_no: value || null, updated_at: new Date().toISOString() })
+        .update(dbUpdate)
         .eq('id', _insClaim.id)
         .then(({ error }) => {
-          if (error) console.warn('[v6.2.6 policy_no 저장 실패]', error);
+          if (error) console.warn(`[v6.2.7 ${field} 저장 실패]`, error);
         });
     }
   }
