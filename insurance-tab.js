@@ -6436,13 +6436,39 @@ function buildReportData(cl, r, co, partners, victims, photos, handler) {
       lawReason: liabReason,
       coverDecision: covResult,
       coverReason: covReason,
-      faultRatio: cl.fault_ratio || r.fault_ratio || '0%',
-      faultReview: cl.fault_ratio_note || r.fault_review || '-',
-      // v6.2.36: 손해방지비용 담보 여부
-      // 일상생활배상책임 약관: "손해의 방지 또는 경감을 위하여 지출한 필요 또는 유익하였던 비용"은 표준 담보 항목.
-      // 따라서 부책 사고는 기본 '담보'. 사용자가 별도로 미담보로 표시하려면 cl.prevention_cost_memo에 명시.
-      mitigation: (covResult === '면책') ? '미담보' : '담보',
-      mitigationReview: cl.prevention_cost_memo || r.mitigation_review || '상법 제680조 제1항에 따라 규정한 손해방지비용 및 대법원 판례 및 금융분쟁조정위원회 의견에 의거 손해확대 또는 방지를 위해 필요 또는 유익한 비용에 해당하는 누수탐지 및 손해방지를 위해 노력한 공사 비용을 지급처리하는 것이 타당할 것으로 판단됨.'
+      // v6.2.12: 다·라 분기 — buildReportData가 iframe(report-template-v2.html)로 보내는 실제 데이터.
+      //          v6.2.11에서 renderReportSection5_Liability만 고쳤는데 그건 안 쓰임. 이게 진짜 경로.
+      faultRatio: (() => {
+        const est = cl.liability_result || r.liability_result;
+        const cov = covResult;
+        // 불성립/면책/판단유보: 책임 자체가 없거나 보류 → '-'
+        if (est === '불성립' || est === 'no' || cov === '면책' || cov === '판단유보') return '-';
+        // 부책만 DB값 우선
+        return cl.fault_ratio || r.fault_ratio || '피보험자 100%';
+      })(),
+      faultReview: (() => {
+        const est = cl.liability_result || r.liability_result;
+        const cov = covResult;
+        if (cov === '판단유보') return '면·부책 판단 보류로 추후 재검토 예정';
+        if (est === '불성립' || est === 'no' || cov === '면책') return '면책 사유에 해당되어 검토하지 않음';
+        if (cov === '부책') return cl.fault_ratio_note || r.fault_review || '금번 사고의 제반정황, 당사 현장조사 등을 종합적으로 검토한 바, 피보험자 세대에서 발생한 누수사고에 대하여 피해세대의 과실을 인정할만한 사유가 없으며, 사전에 예측하고 대비하기는 어려웠을 것으로 여겨지므로 피해자 측의 과실을 묻기는 어려울 것으로 사료됨.';
+        return cl.fault_ratio_note || r.fault_review || '-';
+      })(),
+      // v6.2.12: 담보여부 — 부책일 때만 '담보', 판단유보는 '판단 보류', 그 외 '미담보'
+      mitigation: (() => {
+        const cov = covResult;
+        if (cov === '부책') return '담보';
+        if (cov === '판단유보') return '판단 보류';
+        return '미담보';
+      })(),
+      mitigationReview: (() => {
+        const est = cl.liability_result || r.liability_result;
+        const cov = covResult;
+        if (cov === '판단유보') return '면·부책 판단 보류로 추후 재검토 예정';
+        if (est === '불성립' || est === 'no' || cov === '면책') return '면책 사유에 해당되어 검토하지 않음';
+        if (cov === '부책') return cl.prevention_cost_memo || r.mitigation_review || '상법 제680조 제1항에 따라 규정한 손해방지비용 및 대법원 판례 및 금융분쟁조정위원회 의견에 의거 손해확대 또는 방지를 위해 필요 또는 유익한 비용에 해당하는 누수탐지 및 손해방지를 위해 노력한 공사 비용을 지급처리하는 것이 타당할 것으로 판단됨.';
+        return cl.prevention_cost_memo || r.mitigation_review || '';
+      })()
     },
     attachments: r.attachments && r.attachments.length ? r.attachments : defaultAttachments
   };
