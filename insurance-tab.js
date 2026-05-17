@@ -2991,7 +2991,15 @@ ${!_insUploaded['leak_opinion_external'] ? '※ 누수소견서가 없으므로 
     // → 분석 안 돌려도 보고서 채워짐, 사건 재진입 시 데이터 보존
     // ─────────────────────────────────────────
     try {
-      const v = (key) => _extractedCandidates[key]?.[0]?.value || null;
+      // v6.2.16: 추출값을 DB 저장할 때도 _userOverrides 우선 적용
+      // (이전엔 _extractedCandidates만 봐서 사용자 수기 수정값이 DB에 반영 안 됨 → 보고서에도 옛 추출값)
+      const v = (key) => {
+        // 우선순위: _userOverrides > _extractedCandidates[0]
+        if (_userOverrides && _userOverrides[key] != null && _userOverrides[key] !== '') {
+          return _userOverrides[key];
+        }
+        return _extractedCandidates[key]?.[0]?.value || null;
+      };
 
       // v6.2.5: 금액 파싱 헬퍼 — "100000000"·"1억"·"10,000만원"·"200,000원" 등 다양한 표기 → 원 단위 정수
       const _parseKRW = (raw) => {
@@ -3609,6 +3617,56 @@ async function s2Analyze() {
     }
     if (!_extractedCandidates || Object.keys(_extractedCandidates).length === 0) {
       throw new Error('추출 결과가 없습니다. 먼저 STEP 1 추출을 실행해주세요.');
+    }
+
+    // v6.2.16: 사용자 수기 수정값(_userOverrides)을 분석 시작 전에 DB에 영구 저장
+    // (이전엔 추출 직후 1회만 DB 저장 → 사용자가 STEP 2에서 수정해도 DB·보고서엔 옛값 남음)
+    try {
+      const OVERRIDE_TO_DB_COLUMN = {
+        // 보험증권
+        'policy_no': 'policy_no',
+        'insurer_name': 'insurer_name',
+        'policy_product': 'policy_product',
+        'policy_address': 'policy_address',
+        // 사고
+        'accident_date': 'accident_date',
+        'accident_address': 'accident_address',
+        // 피보험자
+        'insured_name': 'insured_name',
+        'insured_full_name': 'insured_name',
+        'insured_owner_name': 'insured_owner_name',
+        'insured_cohabitants': 'insured_cohabitants',
+        'cohabitants': 'insured_cohabitants',
+        'insured_registered_address': 'insured_registered_address',
+        // 피해자
+        'victim_name': 'victim_name',
+        'victim_name_v0': 'victim_name',
+        'victim_address': 'victim_address',
+        'victim_address_v0': 'victim_address',
+        'victim_owner_name': 'victim_owner_name',
+        'victim_owner_name_v0': 'victim_owner_name',
+      };
+      const overrideUpdates = { updated_at: new Date().toISOString() };
+      let overrideCount = 0;
+      for (const [overrideKey, dbCol] of Object.entries(OVERRIDE_TO_DB_COLUMN)) {
+        if (_userOverrides[overrideKey] != null && _userOverrides[overrideKey] !== '') {
+          // 마지막에 들어간 값이 우선 (insured_full_name 같이 alias가 있어도 사용자 입력이 우선)
+          overrideUpdates[dbCol] = _userOverrides[overrideKey];
+          overrideCount++;
+        }
+      }
+      if (overrideCount > 0) {
+        const { error: ovErr } = await sb.from('insurance_claims')
+          .update(overrideUpdates).eq('id', _insClaim.id);
+        if (ovErr) {
+          console.error('[v6.2.16] _userOverrides DB 저장 실패:', ovErr);
+        } else {
+          _insClaim = { ..._insClaim, ...overrideUpdates };
+          console.log(`[v6.2.16] 사용자 수기 수정값 ${overrideCount}건 DB 영구 저장 완료`);
+        }
+      }
+    } catch (ovEx) {
+      console.error('[v6.2.16] _userOverrides DB 저장 예외:', ovEx);
     }
 
     // policy_type 결정 — STEP 1에서 사용자가 선택한 약관
