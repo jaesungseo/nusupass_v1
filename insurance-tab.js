@@ -6006,14 +6006,21 @@ function renderReportSection5_Liability(cl, r) {
       <div class="report-subsection-title">다. 피보험자 책임제한 / 피해자 과실</div>
       <table class="report-kv-table">
         <tr><td class="lbl">과실비율</td>
-          <td><input class="report-editable-input" id="rep-fault" value="${escapeHtml(faultRatio)}" placeholder="예: 피보험자 책임 100% / 피해자 무과실"></td>
+          <td><input class="report-editable-input" id="rep-fault" value="${
+            // v6.2.10 B안: 불성립/면책/판단유보 시 과실비율은 '-' (책임 자체가 없거나 보류 상태)
+            (est === '불성립' || est === 'no' || cov === '면책' || cov === '판단유보')
+              ? '-'
+              : escapeHtml(faultRatio)
+          }" placeholder="예: 피보험자 책임 100% / 피해자 무과실"></td>
         </tr>
         <tr><td class="lbl">검토사항</td>
           <td><textarea class="report-editable report-editable-multi" id="rep-fault-note" rows="4"
             placeholder="과실비율 검토 사항">${escapeHtml(cl.fault_ratio_note || (
+              // v6.2.10 B안: 판단유보만 별도, 불성립·면책은 동일 메시지
+              cov === '판단유보' ? '면·부책 판단 보류로 추후 재검토 예정' :
+              (est === '불성립' || est === 'no' || cov === '면책') ? '면책 사유에 해당되어 검토하지 않음' :
               cov === '부책' ? '금번 사고의 제반정황, 당사 현장조사 등을 종합적으로 검토한 바, 피보험자 세대에서 발생한 누수사고에 대하여 피해세대의 과실을 인정할만한 사유가 없으며, 사전에 예측하고 대비하기는 어려웠을 것으로 여겨지므로 피해자 측의 과실을 묻기는 어려울 것으로 사료됨.' :
-              cov === '판단유보' ? '면·부책 판단을 보류한 상태로 과실비율 검토는 추후 진행 예정' :
-              '면책 사유에 해당되어 검토하지 않음'
+              ''
             ))}</textarea></td>
         </tr>
       </table>
@@ -6023,16 +6030,19 @@ function renderReportSection5_Liability(cl, r) {
       <div class="report-subsection-title">라. 손해방지비용 검토</div>
       <table class="report-kv-table">
         <tr><td class="lbl">담보여부</td><td><b>${
-          cov === '부책' ? '검토 대상' :
+          // v6.2.10 B안: 판단유보만 별도 '판단 보류', 불성립·면책·부책 외 모두 '미담보'
+          cov === '부책' ? '담보' :
           cov === '판단유보' ? '판단 보류' :
-          '면책'
+          '미담보'
         }</b></td></tr>
         <tr><td class="lbl">검토사항</td>
           <td><textarea class="report-editable report-editable-multi" id="rep-prev-memo" rows="4"
             placeholder="손해방지비용 검토">${escapeHtml(cl.prevention_cost_memo || (
+              // v6.2.10 B안: 판단유보만 별도, 불성립·면책은 동일 메시지
+              cov === '판단유보' ? '면·부책 판단 보류로 추후 재검토 예정' :
+              (est === '불성립' || est === 'no' || cov === '면책') ? '면책 사유에 해당되어 검토하지 않음' :
               cov === '부책' ? '상법 제680조 제1항에 따라 규정한 손해방지비용 및 대법원 판례 및 금융분쟁조정위원회 의견에 의거 손해확대 또는 방지를 위해 필요 또는 유익한 비용에 해당하는 누수탐지 및 손해방지를 위해 노력한 공사 비용을 지급처리하는 것이 타당할 것으로 판단됨.' :
-              cov === '판단유보' ? '면·부책 판단을 보류한 상태로 손해방지비용 검토는 추후 진행 예정' :
-              '면책 사유에 해당되어 검토하지 않음'
+              ''
             ))}</textarea></td>
         </tr>
       </table>
