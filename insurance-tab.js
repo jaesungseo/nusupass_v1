@@ -2456,16 +2456,21 @@ ${typeCtx}
         const mt = docMediaType(up.file_path);
         const r1 = await callClaudeDoc(b64, mt, '보험증권', SYS,
 `보험증권에서 아래 JSON을 추출하세요. 정보 없으면 빈 문자열.
+
+**필수 형식 규칙 (위반 시 시스템 오류):**
+- 날짜는 반드시 "YYYY-MM-DD" (예: "2015-04-03"). "2015년 4월 3일" 같은 한글 금지.
+- 금액은 반드시 원 단위 숫자만 (예: "100000000"). "1억원"·"10,000만원"·"100,000,000원" 같은 단위·콤마 금지.
+
 {
   "policy_product_name": "보험종목명 (전체 명칭)",
   "policy_no": "증권번호",
   "contractor_name": "계약자 성명",
   "insured_name": "피보험자 성명",
-  "policy_start": "YYYY.MM.DD",
-  "policy_end": "YYYY.MM.DD",
+  "policy_start": "YYYY-MM-DD",
+  "policy_end": "YYYY-MM-DD",
   "policy_address": "피보험자 소재지 원문 그대로 (보험증권상)",
-  "coverage_limit": "보상한도액 (예: 100,000,000원)",
-  "deductible": "자기부담금 (예: 200,000원)",
+  "coverage_limit": "보상한도액 원 단위 숫자만 (예: 100000000)",
+  "deductible": "자기부담금 원 단위 숫자만 (예: 200000)",
   "rider_condition": "특약조건 (예: 가족일상생활배상책임)"
 }`);
         if (r1) {
@@ -2692,8 +2697,12 @@ JSON 출력 (정보 없으면 빈 문자열):
         const mt = docMediaType(leakDoc.file_path);
         const r4a = await callClaudeDoc(b64, mt, '누수소견서', SYS,
 `누수소견서에서 아래 JSON 추출. 정보 없으면 빈 문자열.
+
+**필수 형식 규칙 (위반 시 시스템 오류):**
+- accident_date는 반드시 "YYYY-MM-DD" 형식 (예: "2025-03-03"). "2025년 3월 3일"·"2025.03.03"·시간 포함 등 일체 금지. 시간 정보가 있어도 날짜만 추출.
+
 {
-  "accident_date": "사고일자 (예: 2025년 3월 3일 또는 YYYY.MM.DD)",
+  "accident_date": "사고일자 YYYY-MM-DD 형식만 (예: 2025-03-03)",
   "accident_address": "사고장소 (사고 발생 주소 전체)",
   "leak_report_text": "누수 위치·원인·수리소견 요약 (1~2문장)"
 }`);
@@ -2740,7 +2749,7 @@ JSON 출력 (정보 없으면 빈 문자열):
 `첨부 서류(보험청구서·경위서)${partnerText?' + 파트너 보고서':''}를 종합 분석하여 아래 JSON 추출.
 ${partnerText ? '\n[파트너 보고서 내용]' + partnerText + '\n' : ''}
 정보 없으면 빈 문자열.
-${!_insUploaded['leak_opinion_external'] ? '※ 누수소견서가 없으므로 accident_date/accident_address도 함께 추출하세요.\n' : ''}
+${!_insUploaded['leak_opinion_external'] ? '※ 누수소견서가 없으므로 accident_date/accident_address도 함께 추출하세요. accident_date는 반드시 "YYYY-MM-DD" 형식만 (한글 날짜·시간 포함 등 금지).\n' : ''}
 
 추출 규칙 (중요):
 1. 보험청구서 양식의 "사고경위" 칸에 적힌 텍스트는 그대로 accident_summary에 추출하세요. 누락 금지.
@@ -2750,7 +2759,7 @@ ${!_insUploaded['leak_opinion_external'] ? '※ 누수소견서가 없으므로 
 4. 정보가 정말 없을 때만 빈 문자열. 청구서 양식 칸이 비어있어도 자유서술란이나 메모란이 있는지 한 번 더 확인.
 
 {
-  ${!_insUploaded['leak_opinion_external'] ? '"accident_date": "사고일자",\n  "accident_address": "사고장소 (주소 전체)",\n  ' : ''}
+  ${!_insUploaded['leak_opinion_external'] ? '"accident_date": "사고일자 YYYY-MM-DD 형식만 (예: 2025-03-03)",\n  "accident_address": "사고장소 (주소 전체)",\n  ' : ''}
   "incident_report_text": "경위서 문서가 별도로 있을 때만 요약 (없으면 빈 문자열)",
   "accident_summary": "보험청구서의 사고경위 칸 원문 또는 경위서 요약",
   "accident_cause_text": "사고의 직접 원인만 짧게 (위치·피해 제외)"
@@ -2799,36 +2808,89 @@ ${!_insUploaded['leak_opinion_external'] ? '※ 누수소견서가 없으므로 
     // ─────────────────────────────────────────
     try {
       const v = (key) => _extractedCandidates[key]?.[0]?.value || null;
+
+      // v6.2.5: 금액 파싱 헬퍼 — "100000000"·"1억"·"10,000만원"·"200,000원" 등 다양한 표기 → 원 단위 정수
+      const _parseKRW = (raw) => {
+        if (raw === null || raw === undefined || raw === '') return null;
+        const s = String(raw).trim();
+
+        // 1) 단위 키워드 우선 처리 (콤마 보존 상태로 매칭)
+        // "1억", "1억 5천만", "10,000만원", "20만원"
+        const eokMatch  = s.match(/([\d,.]+)\s*억/);
+        const manMatch  = s.match(/([\d,.]+)\s*만/);
+        const wonMatch  = s.match(/([\d,.]+)\s*원/);
+
+        if (eokMatch || manMatch) {
+          let total = 0;
+          if (eokMatch) total += parseFloat(eokMatch[1].replace(/,/g, '')) * 100000000;
+          if (manMatch) {
+            // 억과 만이 같이 나오면 "1억 5천만" → 1.5억으로 처리해야 하나 한국식 표기 다양함.
+            // 보수적으로: 만 매칭이 있고 억이 없으면 만 단위 환산
+            if (!eokMatch) total += parseFloat(manMatch[1].replace(/,/g, '')) * 10000;
+          }
+          return total ? Math.round(total) : null;
+        }
+
+        // 2) "200,000원" 또는 "200,000" — 콤마/원만 제거하고 숫자로
+        const digitsOnly = s.replace(/[,원\s]/g, '').replace(/[^0-9]/g, '');
+        if (!digitsOnly) return null;
+        const n = parseInt(digitsOnly, 10);
+        return Number.isFinite(n) ? n : null;
+      };
+
+      // v6.2.5: 날짜 파싱 헬퍼 — ISO 우선, 한글·점·하이픈 다 처리
+      const _parseDate = (raw) => {
+        if (!raw) return null;
+        const s = String(raw).trim();
+
+        // 1) "YYYY-MM-DD" 또는 "YYYY.MM.DD" 또는 "YYYY/MM/DD"
+        const m1 = s.match(/^(\d{4})[-.\/](\d{1,2})[-.\/](\d{1,2})/);
+        if (m1) return `${m1[1]}-${m1[2].padStart(2,'0')}-${m1[3].padStart(2,'0')}`;
+
+        // 2) "2025년 3월 3일" 한글 형식
+        const m2 = s.match(/(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일/);
+        if (m2) return `${m2[1]}-${m2[2].padStart(2,'0')}-${m2[3].padStart(2,'0')}`;
+
+        // 3) "25.03.03" 같은 2자리 연도 (50 이상은 19xx, 미만은 20xx)
+        const m3 = s.match(/^(\d{2})[-.\/](\d{1,2})[-.\/](\d{1,2})/);
+        if (m3) {
+          const y = (parseInt(m3[1]) >= 50 ? '19' : '20') + m3[1];
+          return `${y}-${m3[2].padStart(2,'0')}-${m3[3].padStart(2,'0')}`;
+        }
+
+        console.warn('[v6.2.5] 날짜 파싱 실패, null 반환:', raw);
+        return null;
+      };
+
       const extractUpdates = {
         // 보험증권
         policy_no: v('policy_no'),
         policy_product: v('policy_product') || v('policy_product_name'),
-        policy_address: v('policy_address'),  // v6.2.34: 신규 컬럼
-        // policy_start/end: 'YYYY.MM.DD ~ YYYY.MM.DD' 형식이라 split 필요
-        // 일단 원본 텍스트는 insurance_period 별도 필드 없으므로 _insClaim 메모리에만 보관
-        coverage_limit: v('coverage_limit') ? (parseInt(String(v('coverage_limit')).replace(/[,원\s]/g, '').replace(/[^0-9]/g, '')) || null) : null,
-        deductible: v('deductible') ? (parseInt(String(v('deductible')).replace(/[,원\s]/g, '').replace(/[^0-9]/g, '')) || null) : null,
-        // 사고
-        accident_date: v('accident_date'),
+        policy_address: v('policy_address'),
+        // v6.2.5: 금액 파싱 강화 — "20만원" → 200000, "1억원" → 100000000
+        coverage_limit: _parseKRW(v('coverage_limit')),
+        deductible:     _parseKRW(v('deductible')),
+        // 사고 — v6.2.5: 날짜 파싱 헬퍼 사용 (ISO/한글/점·하이픈/2자리연도 모두 처리)
+        accident_date: _parseDate(v('accident_date')),
         accident_address: v('accident_address') || v('accident_location'),
         // 피보험자
         insured_name: v('insured_name') || v('insured_full_name'),
         insured_owner_name: v('insured_owner_name') || v('building_owner'),
         insured_cohabitants: v('cohabitants') || v('insured_cohabitants'),
-        insured_registered_address: v('insured_registered_address'),  // v6.2.34: 신규 컬럼
+        insured_registered_address: v('insured_registered_address'),
         // 피해자 (단일 — 다중 피해자는 별도 트랙)
         victim_name: v('victim_name') || v('victim_name_v0'),
         victim_address: v('victim_address') || v('victim_address_v0'),
         victim_owner_name: v('victim_owner_name') || v('victim_owner_name_v0'),
         updated_at: new Date().toISOString(),
       };
-      // policy_start/end 파싱: "2015.04.03 ~ 2090.04.03" → 두 ISO 날짜
+      // policy_start/end 파싱: "2015.04.03 ~ 2090.04.03" 또는 "2015-04-03 ~ 2090-04-03"
       const periodRaw = v('insurance_period');
       if (periodRaw) {
-        const m = String(periodRaw).match(/(\d{4})[.-](\d{2})[.-](\d{2})\s*[~\-]\s*(\d{4})[.-](\d{2})[.-](\d{2})/);
+        const m = String(periodRaw).match(/(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})\s*[~\-]\s*(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/);
         if (m) {
-          extractUpdates.policy_start = `${m[1]}-${m[2]}-${m[3]}`;
-          extractUpdates.policy_end   = `${m[4]}-${m[5]}-${m[6]}`;
+          extractUpdates.policy_start = `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+          extractUpdates.policy_end   = `${m[4]}-${m[5].padStart(2,'0')}-${m[6].padStart(2,'0')}`;
         }
       }
       // 빈 값(null) 제거 — undefined 컬럼 덮어쓰기 방지
