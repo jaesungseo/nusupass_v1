@@ -1579,16 +1579,17 @@ async function insApplyLeakModal() {
   if (!selected) { toast('파트너 임포트 또는 외부업체 PDF 중 하나를 선택해주세요','w'); return; }
 
   if (selected.value === 'external') {
-    // 외부 PDF 업로드 — 기존 insTrigger 패턴 그대로
+    // 외부 PDF 업로드 — insTrigger의 onchange와 같은 패턴
     const file = document.getElementById('leak-external-file').files[0];
     if (!file) { toast('PDF 파일을 선택해주세요','w'); return; }
     insCloseLeakModal();
-    // 기존 업로드 함수 재사용
-    if (typeof insUploadFile === 'function') {
-      await insUploadFile(file, 'leak_opinion_external', '누수소견서');
+    // v6.2.9: 실제 업로드 함수는 insUpload (insUploadFile 아님 — 옛 버그)
+    // 시그니처: insUpload(file, resolvedCode, name, baseCode, fileIdx)
+    // 외부 누수소견서는 단일 파일이므로 baseCode === resolvedCode, fileIdx 생략
+    if (typeof insUpload === 'function') {
+      await insUpload(file, 'leak_opinion_external', '누수소견서', 'leak_opinion_external');
     } else {
-      // 폴백: 직접 처리 필요 — Phase 2에서 보강
-      toast('외부 PDF 업로드는 백엔드 연결 작업 후 활성화됩니다 (Phase 2)','i');
+      toast('업로드 함수 로딩 실패 — 페이지를 새로고침해주세요','e');
     }
   } else if (selected.value.startsWith('partner-')) {
     // 파트너 임포트
