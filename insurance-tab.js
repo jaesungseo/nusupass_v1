@@ -1186,11 +1186,11 @@ function v6EngineSidebarHTML(step) {
   const faultRatio   = r.fault_ratio || cl.fault_ratio || '';
   const accCause     = (fd?.leak_cause) || cl.accident_cause_type || '';
 
-  // 결과 색상
+  // 결과 색상 (v6.2.4: 판단유보 → "면책(판단유보)" 표기 합성)
   let resultCls = 'gray', resultLabel = '분석 결과 없음', resultValue = '미산출';
   if (coverage === '부책')     { resultCls = '';      resultLabel = '면·부책 결과'; resultValue = '부책'; }
   else if (coverage === '면책') { resultCls = 'red';   resultLabel = '면·부책 결과'; resultValue = '면책'; }
-  else if (coverage === '판단유보') { resultCls = 'amber'; resultLabel = '면·부책 결과'; resultValue = '판단유보'; }
+  else if (coverage === '판단유보') { resultCls = 'amber'; resultLabel = '면·부책 결과'; resultValue = '면책(판단유보)'; }
 
   // 카테고리 매핑 라벨
   const catLabel = causeCat
@@ -3518,8 +3518,9 @@ async function s2Analyze() {
         accident_type: accidentTypeVal,
         shared_liability: !!r8.shared_liability,
         liability_reasoning: r8.liability_reasoning || null,
-        // 9단계
+        // 9단계 (v6.2.4: coverage_subreason 신규 — 면책/판단유보 세분류)
         coverage_result: r9.coverage_result || null,
+        coverage_subreason: r9.coverage_subreason || null,
         coverage_reasoning: r9.coverage_reasoning || null,
         // v6.2.32: LLM이 "제1조 제1호 본문 (일상생활배상)" 처럼 살을 붙여 출력할 수 있어
         // CHECK 제약(제1조 제1호|제1조 제2호|해당없음)에 맞게 정규화
@@ -3596,6 +3597,7 @@ async function s2Analyze() {
     console.log('8. 손해배상책임:', stepResults[8]?.liability_result, '/', stepResults[8]?.accident_category, '/', stepResults[8]?.accident_cause_category);
     console.log('   →', stepResults[8]?.liability_reasoning);
     console.log('9. 보험금 지급:', stepResults[9]?.coverage_result, '[', stepResults[9]?.policy_clause_applied, ']');
+    console.log('   세분류:', stepResults[9]?.coverage_subreason || '(없음)');
     console.log('   →', stepResults[9]?.coverage_reasoning);
     console.groupEnd();
 
@@ -5775,7 +5777,13 @@ function renderReportSection5_Liability(cl, r) {
     (est === '확인불가' || est === '판단유보') ? '판단유보' :
     '—';
   const cov = cl.coverage_result || r.coverage_result || '';
-  const covLabel = cov || '—';
+  // v6.2.4: 판단유보 시 "면책(판단유보)"로 표기 합성 — 정답셋·실무 손해사정사 표현과 일치
+  const covSubreason = cl.coverage_subreason || r.coverage_subreason || '';
+  const covLabel = (() => {
+    if (!cov) return '—';
+    if (cov === '판단유보') return '면책(판단유보)';
+    return cov;  // "부책" 또는 "면책" 그대로
+  })();
   const faultRatio = cl.fault_ratio || r.fault_ratio || '피보험자 100%';
   const liabReason = cl.liability_reasoning || r.liability_reasoning || '';
   const covReason  = cl.coverage_reasoning  || r.coverage_reasoning  || '';
@@ -5821,7 +5829,11 @@ function renderReportSection5_Liability(cl, r) {
         </tr>
         <tr><td class="lbl">검토사항</td>
           <td><textarea class="report-editable report-editable-multi" id="rep-fault-note" rows="4"
-            placeholder="과실비율 검토 사항">${escapeHtml(cl.fault_ratio_note || (cov === '부책' ? '금번 사고의 제반정황, 당사 현장조사 등을 종합적으로 검토한 바, 피보험자 세대에서 발생한 누수사고에 대하여 피해세대의 과실을 인정할만한 사유가 없으며, 사전에 예측하고 대비하기는 어려웠을 것으로 여겨지므로 피해자 측의 과실을 묻기는 어려울 것으로 사료됨.' : '면책 사유에 해당되어 검토하지 않음'))}</textarea></td>
+            placeholder="과실비율 검토 사항">${escapeHtml(cl.fault_ratio_note || (
+              cov === '부책' ? '금번 사고의 제반정황, 당사 현장조사 등을 종합적으로 검토한 바, 피보험자 세대에서 발생한 누수사고에 대하여 피해세대의 과실을 인정할만한 사유가 없으며, 사전에 예측하고 대비하기는 어려웠을 것으로 여겨지므로 피해자 측의 과실을 묻기는 어려울 것으로 사료됨.' :
+              cov === '판단유보' ? '면·부책 판단을 보류한 상태로 과실비율 검토는 추후 진행 예정' :
+              '면책 사유에 해당되어 검토하지 않음'
+            ))}</textarea></td>
         </tr>
       </table>
     </div>
@@ -5829,10 +5841,18 @@ function renderReportSection5_Liability(cl, r) {
     <div class="report-subsection">
       <div class="report-subsection-title">라. 손해방지비용 검토</div>
       <table class="report-kv-table">
-        <tr><td class="lbl">담보여부</td><td><b>${cov === '부책' ? '검토 대상' : '면책'}</b></td></tr>
+        <tr><td class="lbl">담보여부</td><td><b>${
+          cov === '부책' ? '검토 대상' :
+          cov === '판단유보' ? '판단 보류' :
+          '면책'
+        }</b></td></tr>
         <tr><td class="lbl">검토사항</td>
           <td><textarea class="report-editable report-editable-multi" id="rep-prev-memo" rows="4"
-            placeholder="손해방지비용 검토">${escapeHtml(cl.prevention_cost_memo || (cov === '부책' ? '상법 제680조 제1항에 따라 규정한 손해방지비용 및 대법원 판례 및 금융분쟁조정위원회 의견에 의거 손해확대 또는 방지를 위해 필요 또는 유익한 비용에 해당하는 누수탐지 및 손해방지를 위해 노력한 공사 비용을 지급처리하는 것이 타당할 것으로 판단됨.' : '면책 사유에 해당되어 검토하지 않음'))}</textarea></td>
+            placeholder="손해방지비용 검토">${escapeHtml(cl.prevention_cost_memo || (
+              cov === '부책' ? '상법 제680조 제1항에 따라 규정한 손해방지비용 및 대법원 판례 및 금융분쟁조정위원회 의견에 의거 손해확대 또는 방지를 위해 필요 또는 유익한 비용에 해당하는 누수탐지 및 손해방지를 위해 노력한 공사 비용을 지급처리하는 것이 타당할 것으로 판단됨.' :
+              cov === '판단유보' ? '면·부책 판단을 보류한 상태로 손해방지비용 검토는 추후 진행 예정' :
+              '면책 사유에 해당되어 검토하지 않음'
+            ))}</textarea></td>
         </tr>
       </table>
     </div>

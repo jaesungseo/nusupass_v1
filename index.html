@@ -3047,6 +3047,14 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
         <span style="font-size:11px;padding:4px 10px;background:#fef3c7;color:#92400e;border-radius:999px;font-weight:600;">superadmin only</span>
       </div>
 
+      <!-- v6.2.4: 프롬프트 세트 버전 표시 -->
+      <div id="promptSetVersion" style="margin-bottom:12px;padding:10px 14px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;font-size:12px;color:#0c4a6e;display:flex;align-items:center;gap:10px;">
+        <span style="font-weight:600;">📌 프롬프트 세트:</span>
+        <span id="promptSetVersionLabel">로딩 중…</span>
+        <span style="color:#0369a1;">·</span>
+        <span id="promptSetLastUpdate"></span>
+      </div>
+
       <!-- 프롬프트 4개 목록 (탭 형태) -->
       <div class="card prompts-tabs-card">
         <div class="prompts-tab-list" id="promptsTabList">
@@ -5443,9 +5451,60 @@ async function loadPrompts(){
 
     prompts_renderTabs();
     prompts_renderEditor();
+
+    // v6.2.4: 프롬프트 세트 버전 라벨 갱신 (가장 최근 updated_at 기준)
+    prompts_renderVersionLabel();
   } catch(err){
     console.error('[prompts] load', err);
     toast('프롬프트 로드 실패: '+(err.message||err),'e');
+  }
+}
+
+// v6.2.4: 프롬프트 세트 버전 표시 (분석 단계 9개 중 가장 최근 수정시각 기준)
+function prompts_renderVersionLabel(){
+  const labelEl  = document.getElementById('promptSetVersionLabel');
+  const updateEl = document.getElementById('promptSetLastUpdate');
+  if(!labelEl || !updateEl) return;
+
+  // 분석 단계 9개만 대상 (extract_*는 별개 인프라)
+  const analyzeRows = (PROMPTS_STATE.list || [])
+    .filter(p => p.prompt_key && p.prompt_key.startsWith('analyze_step_'));
+
+  if(analyzeRows.length === 0){
+    labelEl.textContent  = '(분석 단계 프롬프트 없음)';
+    updateEl.textContent = '';
+    return;
+  }
+
+  // 가장 최근 updated_at
+  let latest = null;
+  for(const r of analyzeRows){
+    if(!r.updated_at) continue;
+    const t = new Date(r.updated_at);
+    if(!latest || t > latest) latest = t;
+  }
+
+  // 버전 결정: subreason 키워드로 v6.2.4 이상인지 식별 (간단 휴리스틱)
+  // 향후 prompt_templates에 version 컬럼 추가하면 그쪽으로 이관
+  const hasSubreason = analyzeRows.some(r =>
+    r.prompt_key.startsWith('analyze_step_9') &&
+    (r.user_prompt_template || '').includes('coverage_subreason')
+  );
+  const hasSubtype = analyzeRows.some(r =>
+    r.prompt_key.startsWith('analyze_step_9') &&
+    (r.user_prompt_template || '').includes('coverage_subtype')
+  );
+  const version =
+    hasSubreason ? 'v6.2.4' :
+    hasSubtype   ? 'v6.2.3' :
+    'v6.2.1';
+
+  labelEl.textContent = `${version} (분석 9단계 — 약관별 3 variant)`;
+  if(latest){
+    const dt = latest.toLocaleString('ko-KR', { dateStyle:'medium', timeStyle:'short' });
+    updateEl.textContent = `최근 수정: ${dt}`;
+  } else {
+    updateEl.textContent = '';
   }
 }
 
@@ -5706,7 +5765,7 @@ if (typeof window.escapeHtml !== 'function') {
 }
 </script>
 
-<script src="./insurance-tab.js?v=6.2.36"></script>
+<script src="./insurance-tab.js?v=6.2.40"></script>
 <!-- v6 룰엔진은 유지 (분석에 사용되지 않으면 무해, 추출 단계 가드용일 가능성) -->
 <script src="./sabi-rule-v6.js?v=6.0.0"></script>
 <!-- v6.2.25: insurance-tab-v6-patch.js 일시 비활성화 — 옛 4-Call 분석 monkey-patch 가능성 차단.
