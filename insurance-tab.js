@@ -2509,6 +2509,74 @@ ${typeCtx}
       });
     };
 
+    // v6.2.14: 교차검증 (Cross-validation) — AI 환각 자동 탐지
+    // 두 응답에서 같은 키 값을 비교. 정규화 후 일치하면 high, 다르면 low로 둘 다 보존.
+    // 정확도 우선 — 흐릿한 PDF에서 발생하는 인명·주소 환각 (예: 윤분상 vs 윤문상) 자동 차단.
+    const _normalizeForCompare = (s) => {
+      if (s === null || s === undefined) return '';
+      return String(s)
+        .trim()
+        .replace(/\s+/g, '')         // 공백 모두 제거
+        .replace(/[,，、]/g, ',')     // 쉼표 통일
+        .replace(/[()（）]/g, '(')    // 괄호 통일
+        .toLowerCase();
+    };
+    // _extractAndCompare(r1, r2, key, source) → addCandidate 호출 (교차검증 결과 기반)
+    const addCrossValidated = (r1, r2, key, source) => {
+      // v1: r2가 null이면 단일 응답으로 처리 (교차검증 비활성)
+      const getValue = (obj, k) => {
+        if (!obj || !obj[k]) return { value: '', confidence: 'high', reason: '' };
+        const v = obj[k];
+        if (typeof v === 'object' && !Array.isArray(v)) {
+          return { value: v.value || '', confidence: v.confidence || 'high', reason: v.reason || '' };
+        }
+        return { value: String(v || ''), confidence: 'high', reason: '' };
+      };
+      const a = getValue(r1, key);
+      const b = r2 ? getValue(r2, key) : null;
+
+      // 단일 응답 모드 (교차검증 안 함)
+      if (!b) {
+        if (a.value) addCandidate(key, a, source);
+        return;
+      }
+
+      const normA = _normalizeForCompare(a.value);
+      const normB = _normalizeForCompare(b.value);
+
+      // 둘 다 비어있음 → 추출 안 됨
+      if (!normA && !normB) return;
+
+      // 하나만 비어있음 → 비어있지 않은 쪽을 low로 (한 번은 추출했지만 다른 번엔 못 함, 신뢰도 낮음)
+      if (!normA || !normB) {
+        const present = normA ? a : b;
+        addCandidate(key, {
+          value: present.value,
+          confidence: 'low',
+          reason: 'AI 재추출 시 한 번은 추출 실패 — 자신감 낮음, 운영자 확인 필요'
+        }, source);
+        return;
+      }
+
+      // 둘 다 추출됨 — 정규화 비교
+      if (normA === normB) {
+        // 일치 → high (가장 안전)
+        addCandidate(key, { value: a.value, confidence: 'high', reason: '' }, source);
+      } else {
+        // 불일치 → 둘 다 low로 후보에 보존 (운영자가 PDF 보고 선택)
+        addCandidate(key, {
+          value: a.value,
+          confidence: 'low',
+          reason: `AI 재추출 결과와 불일치 (1차 추출): "${a.value}" vs "${b.value}"`
+        }, source);
+        addCandidate(key, {
+          value: b.value,
+          confidence: 'low',
+          reason: `AI 재추출 결과와 불일치 (2차 추출): "${a.value}" vs "${b.value}"`
+        }, source);
+      }
+    };
+
     // ── Call 1: 보험증권 추출 ──
     if (_insUploaded['insurance_policy'] && _insUploaded['insurance_policy'].file_path) {
       showExtracting('보험증권 추출 중...', 10);
@@ -2615,14 +2683,18 @@ JSON 출력 형식 (각 필드는 객체로):
 }
 
 정보가 진짜 없으면(누락된 필드) 빈 문자열 그대로. confidence는 high·medium·low 셋 중 하나, reason은 medium·low일 때만 채우세요.`});
-      const r2a = await callClaudeMulti(contentArr, SYS);
-      if (r2a) {
-        addCandidate('insured_full_name', r2a.insured_full_name, '주민등록등본');
-        addCandidate('insured_rrn', r2a.insured_rrn, '주민등록등본');
-        addCandidate('insured_phone', r2a.insured_phone, '주민등록등본');
-        addCandidate('insured_registered_address', r2a.insured_registered_address, '주민등록등본');
-        addCandidate('insured_cohabitants', r2a.insured_cohabitants, '주민등록등본');
-        addCandidate('family_relation_text', r2a.family_relation_text, '가족관계증명서');
+      // v6.2.14: 교차검증 — 동일 PDF·동일 프롬프트로 2회 호출
+      // 환각 자동 탐지: 두 응답 비교해서 다르면 low confidence로 표시
+      const r2a_1 = await callClaudeMulti(contentArr, SYS);
+      const r2a_2 = await callClaudeMulti(contentArr, SYS);  // 동일 호출 한 번 더
+      if (r2a_1 || r2a_2) {
+        // 두 응답 중 어느 것이라도 있으면 교차검증 적용
+        addCrossValidated(r2a_1, r2a_2, 'insured_full_name', '주민등록등본');
+        addCrossValidated(r2a_1, r2a_2, 'insured_rrn', '주민등록등본');
+        addCrossValidated(r2a_1, r2a_2, 'insured_phone', '주민등록등본');
+        addCrossValidated(r2a_1, r2a_2, 'insured_registered_address', '주민등록등본');
+        addCrossValidated(r2a_1, r2a_2, 'insured_cohabitants', '주민등록등본');
+        addCrossValidated(r2a_1, r2a_2, 'family_relation_text', '가족관계증명서');
       }
     }
 
@@ -2669,9 +2741,11 @@ JSON 출력 (객체 형태):
 }
 
 정보가 진짜 없으면 value를 빈 문자열로. confidence는 항상 셋 중 하나.`});
-      const r2b = await callClaudeMulti(contentArr, SYS);
-      if (r2b) {
-        addCandidate('insured_owner_name', r2b.insured_owner_name, '건축물대장/등기부');
+      // v6.2.14: 교차검증
+      const r2b_1 = await callClaudeMulti(contentArr, SYS);
+      const r2b_2 = await callClaudeMulti(contentArr, SYS);
+      if (r2b_1 || r2b_2) {
+        addCrossValidated(r2b_1, r2b_2, 'insured_owner_name', '건축물대장/등기부');
       }
     }
 
@@ -2723,16 +2797,22 @@ JSON 출력 (정보 없으면 빈 문자열):
   "victim_owner_name_only": "건물 소유자 성명만 (괄호 없이. 공동소유면 ', '로 구분. 예: 권혜주 또는 서재성, 정영윤)",
   "victim_building_address": "사고세대 주소 — 건축물대장 상단의 도로명주소 + 동·호수 (예: 경기도 용인시 수지구 수풍로 38 205동 1502호). 소유자 본인의 주소가 아님!"
 }`});
-      const r3a = await callClaudeMulti(contentArr, SYS);
-      if (r3a) {
-        addCandidate('victim_owner_name_v0', r3a.victim_owner_name, '건축물대장/등기부');
-        // 1차로 피해자 성명·주소 채움 (소유자=피해자 가정 — Call 3b의 등본이 있으면 덮어씀)
-        if (r3a.victim_owner_name_only) {
-          addCandidate('victim_name_v0', r3a.victim_owner_name_only, '건축물대장/등기부 (소유자)');
-        }
-        if (r3a.victim_building_address) {
-          addCandidate('victim_address_v0', r3a.victim_building_address, '건축물대장/등기부');
-        }
+      // v6.2.14: 교차검증 — 정종순 케이스의 피해자 환각(함은아 등) 차단
+      const r3a_1 = await callClaudeMulti(contentArr, SYS);
+      const r3a_2 = await callClaudeMulti(contentArr, SYS);
+      if (r3a_1 || r3a_2) {
+        addCrossValidated(r3a_1, r3a_2, 'victim_owner_name', '건축물대장/등기부');
+        addCrossValidated(r3a_1, r3a_2, 'victim_owner_name_only', '건축물대장/등기부 (소유자)');
+        addCrossValidated(r3a_1, r3a_2, 'victim_building_address', '건축물대장/등기부');
+        // 호환 키 매핑 — 기존 코드와 호환 위해 _v0 키로 복사
+        const copyCandidate = (src, dst) => {
+          if (_extractedCandidates[src]) {
+            _extractedCandidates[dst] = _extractedCandidates[src].map(c => ({...c}));
+          }
+        };
+        copyCandidate('victim_owner_name', 'victim_owner_name_v0');
+        copyCandidate('victim_owner_name_only', 'victim_name_v0');
+        copyCandidate('victim_building_address', 'victim_address_v0');
       }
     }
 
@@ -2762,12 +2842,23 @@ JSON 출력 (정보 없으면 빈 문자열):
   "victim_rrn": "주민등록번호 (마스킹 포함)",
   "victim_address": "피해자 실거주지 (등본상 주소)"
 }`});
-      const r3b = await callClaudeMulti(contentArr, SYS);
-      if (r3b) {
-        // 등본 있으면 우선 적용 (1차 건축물대장 결과를 덮어씀)
-        addCandidate('victim_name_v0', r3b.victim_name, '주민등록등본');
-        addCandidate('victim_rrn_v0', r3b.victim_rrn, '주민등록등본');
-        addCandidate('victim_address_v0', r3b.victim_address, '주민등록등본');
+      // v6.2.14: 교차검증
+      const r3b_1 = await callClaudeMulti(contentArr, SYS);
+      const r3b_2 = await callClaudeMulti(contentArr, SYS);
+      if (r3b_1 || r3b_2) {
+        // 등본 있으면 우선 적용 (1차 건축물대장 결과를 덮어씀 — 기존 동작 유지하면서 교차검증만 추가)
+        addCrossValidated(r3b_1, r3b_2, 'victim_name', '주민등록등본');
+        addCrossValidated(r3b_1, r3b_2, 'victim_rrn', '주민등록등본');
+        addCrossValidated(r3b_1, r3b_2, 'victim_address', '주민등록등본');
+        // _v0 키로 호환 매핑
+        const copyCandidate2 = (src, dst) => {
+          if (_extractedCandidates[src]) {
+            _extractedCandidates[dst] = _extractedCandidates[src].map(c => ({...c}));
+          }
+        };
+        copyCandidate2('victim_name', 'victim_name_v0');
+        copyCandidate2('victim_rrn', 'victim_rrn_v0');
+        copyCandidate2('victim_address', 'victim_address_v0');
       }
     }
 
