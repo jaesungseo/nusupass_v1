@@ -1919,9 +1919,14 @@ function insStep2HTML() {
   const renderField = (field, idx) => {
     const candidates = getCandidate(field.key);
     const userValue = getUserValue(field.key);
-    // 단일 후보 자동 입력
-    const autoFillValue = (candidates.length === 1 && !userValue) ? candidates[0].value : userValue;
-    const isModified = userValue && candidates.length > 0 && userValue !== candidates[0]?.value;
+    // v6.2.13 B안: high/medium만 자동 채움. low는 후보칩만 표시하고 입력 칸은 비워둠
+    //              운영자가 후보칩 클릭하면 그제서야 입력 칸에 들어감
+    const firstCandidate = candidates[0];
+    const autoFillEligible = firstCandidate &&
+                             firstCandidate.confidence !== 'low' &&
+                             candidates.length === 1;
+    const autoFillValue = (autoFillEligible && !userValue) ? firstCandidate.value : userValue;
+    const isModified = userValue && candidates.length > 0 && userValue !== firstCandidate?.value;
     const inputClass = isModified ? 'user-modified' : '';
     const fieldId = `s2-field-${field.key}-${idx}`;
 
@@ -1935,16 +1940,40 @@ function insStep2HTML() {
           value="${escapeHtml(autoFillValue || '')}"
           oninput="s2UpdateField('${field.key}', this.value)">`;
 
-    // 후보칩 영역
+    // 후보칩 영역 — v6.2.13: confidence별 시각 표시
     let chipsHTML = '';
     if (candidates.length > 0) {
-      chipsHTML = candidates.map(c => `
-        <span class="v62-candidate-chip" onclick="s2ApplyCandidate('${field.key}', ${JSON.stringify(c.value).replace(/"/g, '&quot;')}, '${fieldId}')">
-          <span class="v62-candidate-chip-label">[추출]</span>
-          <span class="v62-candidate-chip-value" title="${escapeHtml(c.value)}">${escapeHtml(String(c.value).substring(0,50))}</span>
-        </span>
-      `).join('');
+      chipsHTML = candidates.map(c => {
+        const conf = c.confidence || 'high';
+        const isLow = conf === 'low';
+        const isMedium = conf === 'medium';
+        // low면 주황색 배경 + ⚠️ 라벨, medium은 노란색 점, high는 평시
+        const chipStyle = isLow 
+          ? 'background:#fff7ed;border-color:#fb923c;color:#9a3412;'
+          : isMedium
+          ? 'background:#fefce8;border-color:#facc15;'
+          : '';
+        const warnLabel = isLow 
+          ? `<span class="v62-candidate-warn" style="font-size:10px;color:#c2410c;font-weight:600;margin-left:4px">⚠️ 흐릿함 - 확인 필요</span>`
+          : isMedium
+          ? `<span class="v62-candidate-warn" style="font-size:10px;color:#a16207;font-weight:600;margin-left:4px">⚠ 일부 추정</span>`
+          : '';
+        const reasonTip = c.reason ? ` · ${c.reason}` : '';
+        return `
+          <span class="v62-candidate-chip" style="${chipStyle}" 
+                onclick="s2ApplyCandidate('${field.key}', ${JSON.stringify(c.value).replace(/"/g, '&quot;')}, '${fieldId}')"
+                title="${escapeHtml(c.value)}${escapeHtml(reasonTip)}">
+            <span class="v62-candidate-chip-label">[추출]</span>
+            <span class="v62-candidate-chip-value">${escapeHtml(String(c.value).substring(0,50))}</span>
+            ${warnLabel}
+          </span>
+        `;
+      }).join('');
       chipsHTML += `<span class="v62-candidate-source">출처: ${escapeHtml(field.source)}</span>`;
+      // low confidence이고 자동 채움 안 된 경우 안내 추가
+      if (candidates.length === 1 && firstCandidate.confidence === 'low' && !userValue) {
+        chipsHTML += `<span class="v62-candidate-source" style="color:#c2410c;font-weight:600">→ 후보 클릭 또는 직접 입력</span>`;
+      }
     } else {
       chipsHTML = `<span class="v62-candidate-empty">후보 없음</span><span class="v62-candidate-source">예상 출처: ${escapeHtml(field.source)}</span>`;
     }
@@ -2454,10 +2483,30 @@ ${typeCtx}
   try {
     _extractedCandidates = {};  // 초기화
     _userOverrides = {};         // v6.2.9: 재추출 시 사용자 수정값도 초기화
+    // v6.2.13: addCandidate 확장 — confidence (high/medium/low) + reason
+    // value가 { value, confidence, reason } 객체면 그대로 사용
+    // value가 문자열이면 confidence='high'로 간주 (이전 호환)
     const addCandidate = (key, value, source) => {
-      if (!value || value === '' || value === '정보 없음' || value === '확인불가') return;
+      // 객체 형태 처리
+      let textValue, confidence, reason;
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        textValue = value.value;
+        confidence = value.confidence || 'high';
+        reason = value.reason || '';
+      } else {
+        textValue = value;
+        confidence = 'high';
+        reason = '';
+      }
+      if (!textValue || textValue === '' || textValue === '정보 없음' || textValue === '확인불가') return;
       if (!_extractedCandidates[key]) _extractedCandidates[key] = [];
-      _extractedCandidates[key].push({ value: String(value), source, type: 'extracted' });
+      _extractedCandidates[key].push({
+        value: String(textValue),
+        source,
+        type: 'extracted',
+        confidence,    // 'high' | 'medium' | 'low'
+        reason         // 흐림·도장가림 등 자신감 낮은 이유
+      });
     };
 
     // ── Call 1: 보험증권 추출 ──
@@ -2547,15 +2596,25 @@ ${typeCtx}
 
 【주의】 한국 정부 문서의 "이하여백", "이하 여백", "공란", "==공란==", "이상" 같은 표시는 사람 이름이나 정보가 아닙니다. 단순히 표의 빈 칸을 의미하는 양식 표시이므로 무시하세요.
 
-JSON 출력 (정보 없으면 빈 문자열):
+【중요 4 — 흐릿한 문서 처리 (v6.2.13)】
+스캔본, 도장이 글자 위에 겹쳐 있는 경우, 흐림체 워터마크 등으로 글자가 명확히 안 보이는 경우에도 최대한 추출을 시도하세요.
+다만 정확히 읽었다는 자신감 수준을 confidence로 표시하세요:
+- "high": 글자가 명확하게 보이고 추출값이 100% 정확하다고 확신
+- "medium": 대부분 보이지만 일부 글자가 흐려서 약간 추정 들어감 (예: 일부 한자 또는 숫자 한두 자리)
+- "low": 도장에 가려지거나 너무 흐려서 추출값에 대한 자신감이 낮음 — 운영자 검토 필수
+정확히 읽을 수 없으면 빈 문자열로 두지 말고, 가장 가능성 높은 값을 넣되 confidence='low', reason에 그 이유를 명시하세요.
+
+JSON 출력 형식 (각 필드는 객체로):
 {
-  "insured_full_name": "${policyInsuredName} (등본·가족관계에 존재하면 그대로)",
-  "insured_rrn": "${policyInsuredName}의 주민등록번호 (마스킹 포함)",
-  "insured_phone": "연락처 (있으면)",
-  "insured_registered_address": "등본의 '현주소' 항목 값 그대로 (도로명주소+동·호수+(아파트명) 전체 텍스트)",
-  "insured_cohabitants": "동거인 목록 — '${policyInsuredName}' 본인을 제외한 모든 세대원 (성명+관계, 쉼표 구분. 예: 정영윤(배우자), 서은율(자녀), 서하율(자녀))",
-  "family_relation_text": "가족관계증명서 기준 가족관계 (예: 서재성(본인) - 정영윤(배우자), 서은율(자녀))"
-}`});
+  "insured_full_name": { "value": "${policyInsuredName}", "confidence": "high|medium|low", "reason": "..." },
+  "insured_rrn": { "value": "주민등록번호", "confidence": "...", "reason": "..." },
+  "insured_phone": { "value": "연락처 (있으면)", "confidence": "...", "reason": "..." },
+  "insured_registered_address": { "value": "등본의 '현주소' 항목 값 전체", "confidence": "...", "reason": "..." },
+  "insured_cohabitants": { "value": "동거인 목록 (본인 제외)", "confidence": "...", "reason": "..." },
+  "family_relation_text": { "value": "가족관계증명서 기준 가족관계", "confidence": "...", "reason": "..." }
+}
+
+정보가 진짜 없으면(누락된 필드) 빈 문자열 그대로. confidence는 high·medium·low 셋 중 하나, reason은 medium·low일 때만 채우세요.`});
       const r2a = await callClaudeMulti(contentArr, SYS);
       if (r2a) {
         addCandidate('insured_full_name', r2a.insured_full_name, '주민등록등본');
@@ -2598,10 +2657,18 @@ JSON 출력 (정보 없으면 빈 문자열):
 【주의】 한국 정부 문서의 "이하여백", "- 이하여백 -", "이하 여백", "공란", "이상" 같은 표시는
 사람 이름이나 정보가 아닙니다. 단순히 표의 빈 칸 표시이므로 무시하세요.
 
-JSON 출력 (정보 없으면 빈 문자열):
+【중요 — 흐릿한 문서 처리 (v6.2.13)】
+스캔본, 도장 겹침, 워터마크 등으로 글자가 명확히 안 보이는 경우에도 최대한 추출을 시도하되 자신감을 confidence로 표시하세요.
+- "high": 명확히 보이고 100% 확신
+- "medium": 대부분 보이지만 일부 추정
+- "low": 도장가림·흐림 등으로 자신감 낮음 — 운영자 검토 필수
+
+JSON 출력 (객체 형태):
 {
-  "insured_owner_name": "사고세대 건물 소유자 (공동소유면 모든 소유자 지분 포함)"
-}`});
+  "insured_owner_name": { "value": "사고세대 건물 소유자 (공동소유면 지분 포함)", "confidence": "high|medium|low", "reason": "low/medium일 때 이유" }
+}
+
+정보가 진짜 없으면 value를 빈 문자열로. confidence는 항상 셋 중 하나.`});
       const r2b = await callClaudeMulti(contentArr, SYS);
       if (r2b) {
         addCandidate('insured_owner_name', r2b.insured_owner_name, '건축물대장/등기부');
