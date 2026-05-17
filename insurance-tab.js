@@ -1919,11 +1919,10 @@ function insStep2HTML() {
   const renderField = (field, idx) => {
     const candidates = getCandidate(field.key);
     const userValue = getUserValue(field.key);
-    // v6.2.13 B안: high/medium만 자동 채움. low는 후보칩만 표시하고 입력 칸은 비워둠
-    //              운영자가 후보칩 클릭하면 그제서야 입력 칸에 들어감
+    // v6.2.15: confidence 2단계 — high면 자동 채움, low는 빈 칸 + ⚠️ 라벨
     const firstCandidate = candidates[0];
     const autoFillEligible = firstCandidate &&
-                             firstCandidate.confidence !== 'low' &&
+                             firstCandidate.confidence === 'high' &&
                              candidates.length === 1;
     const autoFillValue = (autoFillEligible && !userValue) ? firstCandidate.value : userValue;
     const isModified = userValue && candidates.length > 0 && userValue !== firstCandidate?.value;
@@ -1940,23 +1939,16 @@ function insStep2HTML() {
           value="${escapeHtml(autoFillValue || '')}"
           oninput="s2UpdateField('${field.key}', this.value)">`;
 
-    // 후보칩 영역 — v6.2.13: confidence별 시각 표시
+    // 후보칩 영역 — v6.2.15: high(평시) / low(주황+⚠️) 2단계
     let chipsHTML = '';
     if (candidates.length > 0) {
       chipsHTML = candidates.map(c => {
-        const conf = c.confidence || 'high';
-        const isLow = conf === 'low';
-        const isMedium = conf === 'medium';
-        // low면 주황색 배경 + ⚠️ 라벨, medium은 노란색 점, high는 평시
+        const isLow = c.confidence === 'low';
         const chipStyle = isLow 
           ? 'background:#fff7ed;border-color:#fb923c;color:#9a3412;'
-          : isMedium
-          ? 'background:#fefce8;border-color:#facc15;'
           : '';
         const warnLabel = isLow 
           ? `<span class="v62-candidate-warn" style="font-size:10px;color:#c2410c;font-weight:600;margin-left:4px">⚠️ 흐릿함 - 확인 필요</span>`
-          : isMedium
-          ? `<span class="v62-candidate-warn" style="font-size:10px;color:#a16207;font-weight:600;margin-left:4px">⚠ 일부 추정</span>`
           : '';
         const reasonTip = c.reason ? ` · ${c.reason}` : '';
         return `
@@ -1970,9 +1962,9 @@ function insStep2HTML() {
         `;
       }).join('');
       chipsHTML += `<span class="v62-candidate-source">출처: ${escapeHtml(field.source)}</span>`;
-      // low confidence이고 자동 채움 안 된 경우 안내 추가
+      // low confidence 단일 후보 & 미입력 시 안내
       if (candidates.length === 1 && firstCandidate.confidence === 'low' && !userValue) {
-        chipsHTML += `<span class="v62-candidate-source" style="color:#c2410c;font-weight:600">→ 후보 클릭 또는 직접 입력</span>`;
+        chipsHTML += `<span class="v62-candidate-source" style="color:#c2410c;font-weight:600">→ PDF 확인 후 후보 클릭 또는 직접 입력</span>`;
       }
     } else {
       chipsHTML = `<span class="v62-candidate-empty">후보 없음</span><span class="v62-candidate-source">예상 출처: ${escapeHtml(field.source)}</span>`;
@@ -2483,15 +2475,17 @@ ${typeCtx}
   try {
     _extractedCandidates = {};  // 초기화
     _userOverrides = {};         // v6.2.9: 재추출 시 사용자 수정값도 초기화
-    // v6.2.13: addCandidate 확장 — confidence (high/medium/low) + reason
+    // v6.2.15: confidence 2단계로 단순화 (high/low). medium 제거.
+    // - high: 명확히 보임 → 자동 채움
+    // - low: 흐림·도장·환각 위험 → ⚠️ 라벨, 빈 칸
     // value가 { value, confidence, reason } 객체면 그대로 사용
     // value가 문자열이면 confidence='high'로 간주 (이전 호환)
     const addCandidate = (key, value, source) => {
-      // 객체 형태 처리
       let textValue, confidence, reason;
       if (value && typeof value === 'object' && !Array.isArray(value)) {
         textValue = value.value;
-        confidence = value.confidence || 'high';
+        // medium은 high로 흡수 (옛 응답 호환)
+        confidence = (value.confidence === 'low') ? 'low' : 'high';
         reason = value.reason || '';
       } else {
         textValue = value;
@@ -2504,77 +2498,9 @@ ${typeCtx}
         value: String(textValue),
         source,
         type: 'extracted',
-        confidence,    // 'high' | 'medium' | 'low'
+        confidence,    // 'high' | 'low' (2단계)
         reason         // 흐림·도장가림 등 자신감 낮은 이유
       });
-    };
-
-    // v6.2.14: 교차검증 (Cross-validation) — AI 환각 자동 탐지
-    // 두 응답에서 같은 키 값을 비교. 정규화 후 일치하면 high, 다르면 low로 둘 다 보존.
-    // 정확도 우선 — 흐릿한 PDF에서 발생하는 인명·주소 환각 (예: 윤분상 vs 윤문상) 자동 차단.
-    const _normalizeForCompare = (s) => {
-      if (s === null || s === undefined) return '';
-      return String(s)
-        .trim()
-        .replace(/\s+/g, '')         // 공백 모두 제거
-        .replace(/[,，、]/g, ',')     // 쉼표 통일
-        .replace(/[()（）]/g, '(')    // 괄호 통일
-        .toLowerCase();
-    };
-    // _extractAndCompare(r1, r2, key, source) → addCandidate 호출 (교차검증 결과 기반)
-    const addCrossValidated = (r1, r2, key, source) => {
-      // v1: r2가 null이면 단일 응답으로 처리 (교차검증 비활성)
-      const getValue = (obj, k) => {
-        if (!obj || !obj[k]) return { value: '', confidence: 'high', reason: '' };
-        const v = obj[k];
-        if (typeof v === 'object' && !Array.isArray(v)) {
-          return { value: v.value || '', confidence: v.confidence || 'high', reason: v.reason || '' };
-        }
-        return { value: String(v || ''), confidence: 'high', reason: '' };
-      };
-      const a = getValue(r1, key);
-      const b = r2 ? getValue(r2, key) : null;
-
-      // 단일 응답 모드 (교차검증 안 함)
-      if (!b) {
-        if (a.value) addCandidate(key, a, source);
-        return;
-      }
-
-      const normA = _normalizeForCompare(a.value);
-      const normB = _normalizeForCompare(b.value);
-
-      // 둘 다 비어있음 → 추출 안 됨
-      if (!normA && !normB) return;
-
-      // 하나만 비어있음 → 비어있지 않은 쪽을 low로 (한 번은 추출했지만 다른 번엔 못 함, 신뢰도 낮음)
-      if (!normA || !normB) {
-        const present = normA ? a : b;
-        addCandidate(key, {
-          value: present.value,
-          confidence: 'low',
-          reason: 'AI 재추출 시 한 번은 추출 실패 — 자신감 낮음, 운영자 확인 필요'
-        }, source);
-        return;
-      }
-
-      // 둘 다 추출됨 — 정규화 비교
-      if (normA === normB) {
-        // 일치 → high (가장 안전)
-        addCandidate(key, { value: a.value, confidence: 'high', reason: '' }, source);
-      } else {
-        // 불일치 → 둘 다 low로 후보에 보존 (운영자가 PDF 보고 선택)
-        addCandidate(key, {
-          value: a.value,
-          confidence: 'low',
-          reason: `AI 재추출 결과와 불일치 (1차 추출): "${a.value}" vs "${b.value}"`
-        }, source);
-        addCandidate(key, {
-          value: b.value,
-          confidence: 'low',
-          reason: `AI 재추출 결과와 불일치 (2차 추출): "${a.value}" vs "${b.value}"`
-        }, source);
-      }
     };
 
     // ── Call 1: 보험증권 추출 ──
@@ -2664,17 +2590,42 @@ ${typeCtx}
 
 【주의】 한국 정부 문서의 "이하여백", "이하 여백", "공란", "==공란==", "이상" 같은 표시는 사람 이름이나 정보가 아닙니다. 단순히 표의 빈 칸을 의미하는 양식 표시이므로 무시하세요.
 
-【중요 4 — 흐릿한 문서 처리 (v6.2.13)】
-스캔본, 도장이 글자 위에 겹쳐 있는 경우, 흐림체 워터마크 등으로 글자가 명확히 안 보이는 경우에도 최대한 추출을 시도하세요.
-다만 정확히 읽었다는 자신감 수준을 confidence로 표시하세요:
-- "high": 글자가 명확하게 보이고 추출값이 100% 정확하다고 확신
-- "medium": 대부분 보이지만 일부 글자가 흐려서 약간 추정 들어감 (예: 일부 한자 또는 숫자 한두 자리)
-- "low": 도장에 가려지거나 너무 흐려서 추출값에 대한 자신감이 낮음 — 운영자 검토 필수
-정확히 읽을 수 없으면 빈 문자열로 두지 말고, 가장 가능성 높은 값을 넣되 confidence='low', reason에 그 이유를 명시하세요.
+═══════════════════════════════════════════════════════════
+【⚠️ 매우 중요 — confidence 판정 규칙 (v6.2.15)】
+
+손해사정서는 보험사 제출용 공식 문서이므로 환각·추측은 절대 금지입니다.
+글자가 100% 명확하지 않으면 무조건 confidence="low"로 표시하세요.
+운영자가 PDF 원본을 보고 검증할 것입니다.
+
+▼ 무조건 confidence="low" 처리 (보수적으로 판단):
+  ❶ 도장이 글자 위에 겹쳐 있어서 일부 획이 가려진 경우
+  ❷ 스캔본·복사본 흐림으로 한자/한글 자모음 구분이 어려운 경우
+  ❸ 흐림체 워터마크·반복무늬가 글자 위에 깔린 경우
+  ❹ 비슷한 글자(분/문, 일/이, 0/O, 1/l, 정/장 등) 어느 쪽인지 단정하기 애매한 경우
+  ❺ 글자 일부가 잘리거나, 흐려서 추측이 필요한 경우
+  ❻ 이름의 한자(漢字)와 한글이 일치 확인이 어려운 경우
+
+▼ confidence="high" 처리 (확실한 경우만):
+  ❶ 글자가 또렷이 보이고 100% 확신할 때
+  ❷ 도장·워터마크 영향이 없는 영역
+  ❸ 인쇄 글자가 선명하고 한자·한글 모두 명확한 경우
+
+▼ 절대 금지 사항:
+  ❶ 흐릿한 글자를 "아마도 ~일 것"이라며 추측해서 high로 표시
+  ❷ 도장에 가려진 이름을 모양만 보고 비슷한 이름으로 채우기
+  ❸ 한자를 음성적으로 비슷한 다른 한글로 변환 (예: 文→분, 文→문 헷갈리면 low)
+  ❹ "정보 없음" 또는 빈 문자열로 회피 → 가능한 값 + confidence="low"가 정답
+
+▼ low로 표시할 때 reason에 구체적 이유 명시:
+  좋은 예: "도장이 두 번째 글자 위에 겹침 — 분/문 확인 어려움"
+  좋은 예: "흐림으로 끝 두 글자(아파트 호수) 판독 불확실"
+  나쁜 예: "흐릿함" (구체성 없음)
+
+═══════════════════════════════════════════════════════════
 
 JSON 출력 형식 (각 필드는 객체로):
 {
-  "insured_full_name": { "value": "${policyInsuredName}", "confidence": "high|medium|low", "reason": "..." },
+  "insured_full_name": { "value": "${policyInsuredName}", "confidence": "high|low", "reason": "low일 때 이유" },
   "insured_rrn": { "value": "주민등록번호", "confidence": "...", "reason": "..." },
   "insured_phone": { "value": "연락처 (있으면)", "confidence": "...", "reason": "..." },
   "insured_registered_address": { "value": "등본의 '현주소' 항목 값 전체", "confidence": "...", "reason": "..." },
@@ -2682,19 +2633,17 @@ JSON 출력 형식 (각 필드는 객체로):
   "family_relation_text": { "value": "가족관계증명서 기준 가족관계", "confidence": "...", "reason": "..." }
 }
 
-정보가 진짜 없으면(누락된 필드) 빈 문자열 그대로. confidence는 high·medium·low 셋 중 하나, reason은 medium·low일 때만 채우세요.`});
-      // v6.2.14: 교차검증 — 동일 PDF·동일 프롬프트로 2회 호출
-      // 환각 자동 탐지: 두 응답 비교해서 다르면 low confidence로 표시
-      const r2a_1 = await callClaudeMulti(contentArr, SYS);
-      const r2a_2 = await callClaudeMulti(contentArr, SYS);  // 동일 호출 한 번 더
-      if (r2a_1 || r2a_2) {
-        // 두 응답 중 어느 것이라도 있으면 교차검증 적용
-        addCrossValidated(r2a_1, r2a_2, 'insured_full_name', '주민등록등본');
-        addCrossValidated(r2a_1, r2a_2, 'insured_rrn', '주민등록등본');
-        addCrossValidated(r2a_1, r2a_2, 'insured_phone', '주민등록등본');
-        addCrossValidated(r2a_1, r2a_2, 'insured_registered_address', '주민등록등본');
-        addCrossValidated(r2a_1, r2a_2, 'insured_cohabitants', '주민등록등본');
-        addCrossValidated(r2a_1, r2a_2, 'family_relation_text', '가족관계증명서');
+정보가 진짜 없으면(누락된 필드) value를 빈 문자열로. confidence는 high·low 둘 중 하나, reason은 low일 때만 채우세요.
+조금이라도 의심이 들면 무조건 low — 보수적으로 판단하는 것이 더 안전합니다.`});
+      // v6.2.15: 교차검증 롤백 — 단일 호출로 복귀 (프롬프트 강화로 환각 차단)
+      const r2a = await callClaudeMulti(contentArr, SYS);
+      if (r2a) {
+        addCandidate('insured_full_name', r2a.insured_full_name, '주민등록등본');
+        addCandidate('insured_rrn', r2a.insured_rrn, '주민등록등본');
+        addCandidate('insured_phone', r2a.insured_phone, '주민등록등본');
+        addCandidate('insured_registered_address', r2a.insured_registered_address, '주민등록등본');
+        addCandidate('insured_cohabitants', r2a.insured_cohabitants, '주민등록등본');
+        addCandidate('family_relation_text', r2a.family_relation_text, '가족관계증명서');
       }
     }
 
@@ -2729,23 +2678,45 @@ JSON 출력 형식 (각 필드는 객체로):
 【주의】 한국 정부 문서의 "이하여백", "- 이하여백 -", "이하 여백", "공란", "이상" 같은 표시는
 사람 이름이나 정보가 아닙니다. 단순히 표의 빈 칸 표시이므로 무시하세요.
 
-【중요 — 흐릿한 문서 처리 (v6.2.13)】
-스캔본, 도장 겹침, 워터마크 등으로 글자가 명확히 안 보이는 경우에도 최대한 추출을 시도하되 자신감을 confidence로 표시하세요.
-- "high": 명확히 보이고 100% 확신
-- "medium": 대부분 보이지만 일부 추정
-- "low": 도장가림·흐림 등으로 자신감 낮음 — 운영자 검토 필수
+═══════════════════════════════════════════════════════════
+【⚠️ 매우 중요 — confidence 판정 규칙 (v6.2.15)】
 
-JSON 출력 (객체 형태):
+손해사정서는 보험사 제출용 공식 문서이므로 환각·추측은 절대 금지입니다.
+
+▼ 무조건 confidence="low" (보수적 판단):
+  ❶ 도장이 글자 위에 겹쳐 일부 획이 가려짐
+  ❷ 스캔본 흐림으로 한자/한글 자모음 구분 어려움
+  ❸ 비슷한 글자(분/문, 일/이, 정/장 등) 단정 애매
+  ❹ 글자 일부 잘림·흐림으로 추측 필요
+  ❺ 한자(漢字)와 한글 일치 확인 어려움
+  ❻ 공동소유자 중 일부 이름만 흐릿한 경우 → 전체를 low로
+
+▼ confidence="high" (확실한 경우만):
+  ❶ 글자 또렷이 보이고 100% 확신
+  ❷ 도장·워터마크 영향 없는 영역
+  ❸ 인쇄 글자 선명
+
+▼ 절대 금지:
+  ❶ 추측해서 high로 표시
+  ❷ 도장에 가려진 이름을 모양만 보고 비슷한 이름으로 채우기
+  ❸ 빈 문자열로 회피 → 가능한 값 + low가 정답
+
+▼ reason에 구체적 이유:
+  좋은 예: "공동소유자 두 번째 이름에 도장 겹침 — 정확한 판독 어려움"
+  나쁜 예: "흐릿함"
+
+═══════════════════════════════════════════════════════════
+
+JSON 출력:
 {
-  "insured_owner_name": { "value": "사고세대 건물 소유자 (공동소유면 지분 포함)", "confidence": "high|medium|low", "reason": "low/medium일 때 이유" }
+  "insured_owner_name": { "value": "사고세대 건물 소유자 (공동소유면 지분 포함)", "confidence": "high|low", "reason": "low일 때 이유" }
 }
 
-정보가 진짜 없으면 value를 빈 문자열로. confidence는 항상 셋 중 하나.`});
-      // v6.2.14: 교차검증
-      const r2b_1 = await callClaudeMulti(contentArr, SYS);
-      const r2b_2 = await callClaudeMulti(contentArr, SYS);
-      if (r2b_1 || r2b_2) {
-        addCrossValidated(r2b_1, r2b_2, 'insured_owner_name', '건축물대장/등기부');
+조금이라도 의심이 들면 low — 보수적이 더 안전합니다.`});
+      // v6.2.15: 교차검증 롤백 — 단일 호출
+      const r2b = await callClaudeMulti(contentArr, SYS);
+      if (r2b) {
+        addCandidate('insured_owner_name', r2b.insured_owner_name, '건축물대장/등기부');
       }
     }
 
@@ -2791,28 +2762,54 @@ JSON 출력 (객체 형태):
 소유자가 1명이면 그 이름, 2명 이상이면 모든 소유자를 지분과 함께 표기.
 예: "권혜주 (소유권이전 2020.07.23)" 또는 "서재성 1/2, 정영윤 1/2 (소유권이전 2023.08.17)"
 
-JSON 출력 (정보 없으면 빈 문자열):
+═══════════════════════════════════════════════════════════
+【⚠️ 매우 중요 — confidence 판정 규칙 (v6.2.15)】
+
+손해사정서는 보험사 제출용 공식 문서이므로 환각·추측은 절대 금지입니다.
+
+▼ 무조건 confidence="low":
+  ❶ 도장 겹침으로 일부 획 가려짐
+  ❷ 스캔본·복사본 흐림으로 한자/한글 자모음 구분 어려움
+  ❸ 비슷한 글자(분/문, 일/이, 정/장, 김/검 등) 단정 애매
+  ❹ 글자 일부 잘림·흐림
+  ❺ 공동소유자 중 일부 흐릿하면 전체 low
+  ❻ 호수 숫자가 흐려서 한 자리라도 단정 어려움
+
+▼ confidence="high" (확실한 경우만):
+  ❶ 글자 또렷이 보이고 100% 확신
+  ❷ 인쇄 글자 선명, 도장·워터마크 영향 없음
+
+▼ 절대 금지:
+  ❶ 추측해서 high
+  ❷ 도장 가려진 이름을 모양만 보고 비슷한 이름으로 채우기 ("함은아" 같은 환각 금지)
+  ❸ 공동소유자 일부 누락 (예: 두 명인데 한 명만 추출)
+
+▼ reason 구체적으로:
+  좋은 예: "두 번째 소유자 이름에 도장 겹침 — 김/검 단정 어려움"
+  좋은 예: "호수 숫자 끝 자리 흐림"
+  나쁜 예: "흐릿함"
+
+═══════════════════════════════════════════════════════════
+
+JSON 출력 (객체 형태):
 {
-  "victim_owner_name": "피해세대 건물 소유자 (공동소유면 모든 소유자 지분 포함. 소유권 이전일 함께)",
-  "victim_owner_name_only": "건물 소유자 성명만 (괄호 없이. 공동소유면 ', '로 구분. 예: 권혜주 또는 서재성, 정영윤)",
-  "victim_building_address": "사고세대 주소 — 건축물대장 상단의 도로명주소 + 동·호수 (예: 경기도 용인시 수지구 수풍로 38 205동 1502호). 소유자 본인의 주소가 아님!"
-}`});
-      // v6.2.14: 교차검증 — 정종순 케이스의 피해자 환각(함은아 등) 차단
-      const r3a_1 = await callClaudeMulti(contentArr, SYS);
-      const r3a_2 = await callClaudeMulti(contentArr, SYS);
-      if (r3a_1 || r3a_2) {
-        addCrossValidated(r3a_1, r3a_2, 'victim_owner_name', '건축물대장/등기부');
-        addCrossValidated(r3a_1, r3a_2, 'victim_owner_name_only', '건축물대장/등기부 (소유자)');
-        addCrossValidated(r3a_1, r3a_2, 'victim_building_address', '건축물대장/등기부');
-        // 호환 키 매핑 — 기존 코드와 호환 위해 _v0 키로 복사
-        const copyCandidate = (src, dst) => {
-          if (_extractedCandidates[src]) {
-            _extractedCandidates[dst] = _extractedCandidates[src].map(c => ({...c}));
-          }
-        };
-        copyCandidate('victim_owner_name', 'victim_owner_name_v0');
-        copyCandidate('victim_owner_name_only', 'victim_name_v0');
-        copyCandidate('victim_building_address', 'victim_address_v0');
+  "victim_owner_name": { "value": "피해세대 건물 소유자 (공동소유면 모든 소유자 지분 포함. 소유권 이전일 함께)", "confidence": "high|low", "reason": "low일 때 구체적 이유" },
+  "victim_owner_name_only": { "value": "건물 소유자 성명만 (괄호 없이. 공동소유면 ', '로 구분. 예: 권혜주 또는 서재성, 정영윤)", "confidence": "...", "reason": "..." },
+  "victim_building_address": { "value": "사고세대 주소 — 건축물대장 상단의 도로명주소 + 동·호수. 소유자 본인의 주소가 아님!", "confidence": "...", "reason": "..." }
+}
+
+조금이라도 의심이 들면 low. 보수적이 더 안전합니다.`});
+      // v6.2.15: 교차검증 롤백 — 단일 호출 + 프롬프트 강화
+      const r3a = await callClaudeMulti(contentArr, SYS);
+      if (r3a) {
+        addCandidate('victim_owner_name_v0', r3a.victim_owner_name, '건축물대장/등기부');
+        // 1차로 피해자 성명·주소 채움 (소유자=피해자 가정 — Call 3b의 등본이 있으면 덮어씀)
+        if (r3a.victim_owner_name_only) {
+          addCandidate('victim_name_v0', r3a.victim_owner_name_only, '건축물대장/등기부 (소유자)');
+        }
+        if (r3a.victim_building_address) {
+          addCandidate('victim_address_v0', r3a.victim_building_address, '건축물대장/등기부');
+        }
       }
     }
 
@@ -2836,29 +2833,42 @@ JSON 출력 (정보 없으면 빈 문자열):
       });
       contentArr.push({ type:'text', text:
 `첨부 서류(피해자 주민등록등본·가족관계증명서)를 분석하여 아래 JSON 추출.
-정보 없으면 빈 문자열.
+
+═══════════════════════════════════════════════════════════
+【⚠️ 매우 중요 — confidence 판정 규칙 (v6.2.15)】
+
+손해사정서는 공식 문서이므로 환각·추측은 절대 금지입니다.
+
+▼ 무조건 confidence="low":
+  ❶ 도장 겹침, 워터마크, 스캔 흐림
+  ❷ 비슷한 글자 단정 애매 (분/문, 일/이, 정/장 등)
+  ❸ 글자 일부 잘림
+  ❹ 한자(漢字)와 한글 일치 확인 어려움
+
+▼ confidence="high" (확실할 때만):
+  ❶ 글자 또렷이 보이고 100% 확신
+
+▼ 절대 금지: 추측해서 high. 모양 비슷한 이름으로 채우기.
+
+▼ reason 구체적으로: "이름 두 번째 글자에 도장 겹침" 같이.
+
+═══════════════════════════════════════════════════════════
+
+JSON 출력 (객체 형태):
 {
-  "victim_name": "피해자 본인 성명 (등본상 청구권자)",
-  "victim_rrn": "주민등록번호 (마스킹 포함)",
-  "victim_address": "피해자 실거주지 (등본상 주소)"
-}`});
-      // v6.2.14: 교차검증
-      const r3b_1 = await callClaudeMulti(contentArr, SYS);
-      const r3b_2 = await callClaudeMulti(contentArr, SYS);
-      if (r3b_1 || r3b_2) {
-        // 등본 있으면 우선 적용 (1차 건축물대장 결과를 덮어씀 — 기존 동작 유지하면서 교차검증만 추가)
-        addCrossValidated(r3b_1, r3b_2, 'victim_name', '주민등록등본');
-        addCrossValidated(r3b_1, r3b_2, 'victim_rrn', '주민등록등본');
-        addCrossValidated(r3b_1, r3b_2, 'victim_address', '주민등록등본');
-        // _v0 키로 호환 매핑
-        const copyCandidate2 = (src, dst) => {
-          if (_extractedCandidates[src]) {
-            _extractedCandidates[dst] = _extractedCandidates[src].map(c => ({...c}));
-          }
-        };
-        copyCandidate2('victim_name', 'victim_name_v0');
-        copyCandidate2('victim_rrn', 'victim_rrn_v0');
-        copyCandidate2('victim_address', 'victim_address_v0');
+  "victim_name": { "value": "피해자 본인 성명 (등본상 청구권자)", "confidence": "high|low", "reason": "low일 때 이유" },
+  "victim_rrn": { "value": "주민등록번호 (마스킹 포함)", "confidence": "...", "reason": "..." },
+  "victim_address": { "value": "피해자 실거주지 (등본상 주소)", "confidence": "...", "reason": "..." }
+}
+
+조금이라도 의심 들면 low. 보수적이 더 안전합니다.`});
+      // v6.2.15: 교차검증 롤백 — 단일 호출 + 프롬프트 강화
+      const r3b = await callClaudeMulti(contentArr, SYS);
+      if (r3b) {
+        // 등본 있으면 우선 적용 (1차 건축물대장 결과를 덮어씀)
+        addCandidate('victim_name_v0', r3b.victim_name, '주민등록등본');
+        addCandidate('victim_rrn_v0', r3b.victim_rrn, '주민등록등본');
+        addCandidate('victim_address_v0', r3b.victim_address, '주민등록등본');
       }
     }
 
