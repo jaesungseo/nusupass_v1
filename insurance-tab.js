@@ -2463,7 +2463,8 @@ ${typeCtx}
 
 {
   "policy_product_name": "보험종목명 (전체 명칭)",
-  "policy_no": "증권번호",
+  "policy_no": "증권번호 (마스킹 없이 원문 그대로)",
+  "insurer_name": "보험사명 (예: DB손해보험, 삼성화재, 현대해상)",
   "contractor_name": "계약자 성명",
   "insured_name": "피보험자 성명",
   "policy_start": "YYYY-MM-DD",
@@ -2475,6 +2476,8 @@ ${typeCtx}
 }`);
         if (r1) {
           addCandidate('policy_product_name', r1.policy_product_name, '보험증권');
+          addCandidate('policy_no', r1.policy_no, '보험증권');
+          addCandidate('insurer_name', r1.insurer_name, '보험증권');
           addCandidate('contractor_name', r1.contractor_name, '보험증권');
           addCandidate('insured_name', r1.insured_name, '보험증권');
           if (r1.policy_start && r1.policy_end) {
@@ -2865,6 +2868,7 @@ ${!_insUploaded['leak_opinion_external'] ? '※ 누수소견서가 없으므로 
       const extractUpdates = {
         // 보험증권
         policy_no: v('policy_no'),
+        insurer_name: v('insurer_name'),  // v6.2.6: 보고서 수신 자동 채움용
         policy_product: v('policy_product') || v('policy_product_name'),
         policy_address: v('policy_address'),
         // v6.2.5: 금액 파싱 강화 — "20만원" → 200000, "1억원" → 100000000
@@ -5220,7 +5224,8 @@ function insStep3HTML() {
   const prevCost = cl.damage_prevention_cost || 0;
 
   // v6.1.4: 보고서 양식(iframe)에 주입할 데이터 빌드
-  _reportRecipient = cl.report_recipient || cl.insurer_name || 'DB손해보험';
+  // v6.2.6: 수신 기본값 빈 값 (사용자가 보험사명 직접 입력)
+  _reportRecipient = cl.report_recipient || cl.insurer_name || '';
   _reportDept = cl.report_cc || '손해사정팀';
   _insCurrentReportData = buildReportData(cl, r, co, _insPartners, victims, photos, _insHandler);
 
@@ -5241,13 +5246,13 @@ function insStep3HTML() {
     ${v6CaseHeaderHTML()}
   </div>
 
-  <!-- 출력 화면 헤더: 수신/참조/제목 인라인 -->
+  <!-- 출력 화면 헤더: 수신/참조/제목/증권번호 인라인 (v6.2.6) -->
   <div class="v6-output-header no-print">
     <label>
       <span>수신</span>
       <input type="text" id="rep-recipient" 
-        value="${escapeHtml(cl.report_recipient || cl.insurer_name || 'DB손해보험')}" 
-        placeholder="보험사명"
+        value="${escapeHtml(cl.report_recipient || cl.insurer_name || '')}" 
+        placeholder="예: DB손해보험"
         oninput="s3UpdateReportField('recipient', this.value)">
     </label>
     <label>
@@ -5261,8 +5266,15 @@ function insStep3HTML() {
       <span>제목</span>
       <input type="text" id="rep-title" 
         value="${escapeHtml(cl.report_title || '누수사고 손해사정서')}" 
-        placeholder="보고서 제목" style="width:240px"
+        placeholder="보고서 제목" style="width:200px"
         oninput="s3UpdateReportField('title', this.value)">
+    </label>
+    <label>
+      <span>증권번호</span>
+      <input type="text" id="rep-policy-no" 
+        value="${escapeHtml(cl.policy_no || r.policy_no || '')}" 
+        placeholder="보험증권에서 자동 채움" style="width:180px"
+        oninput="s3UpdateReportField('policyNo', this.value)">
     </label>
     <span style="margin-left:auto;font-size:11px;color:var(--ins-ink-3)">→ 변경 시 양식에 즉시 반영</span>
   </div>
@@ -5293,7 +5305,7 @@ function insStep3HTML() {
       <div id="tab-content-report" style="display:block">
         <iframe
           id="reportFrame"
-          src="./report-template-v2.html?embed=1&case=${encodeURIComponent(cl.case_no || 'SMPL_01_백석균')}&recipient=${encodeURIComponent(_reportRecipient || (r.report_cc || '보험사'))}&dept=${encodeURIComponent(_reportDept || '손해사정팀')}&title=${encodeURIComponent(r.report_title || '누수사고 손해사정서')}"
+          src="./report-template-v2.html?embed=1&case=${encodeURIComponent(cl.case_no || 'SMPL_01_백석균')}&recipient=${encodeURIComponent(_reportRecipient || '')}&dept=${encodeURIComponent(_reportDept || '손해사정팀')}&title=${encodeURIComponent(cl.report_title || '누수사고 손해사정서')}&policyNo=${encodeURIComponent(cl.policy_no || r.policy_no || '')}"
           style="width:100%;height:1400px;border:1px solid var(--ins-line);border-radius:6px;background:white;display:block;"
           title="손해사정서 양식 (SMPL_01 기반 v6.1.4)"
           onload="s3InjectReportData()"
@@ -5607,16 +5619,23 @@ function renderReportCover(cl, co, victims) {
 }
 
 // ─── 1. 총괄표 ──────────────────────────────────────────────
+// v6.2.6: cl(DB) 우선 + r(메모리) fallback — buildReportData와 같은 정공법으로 통일
+//         이전엔 r만 봐서 _insResult가 비면 NaN/'—'로 표시되던 버그 (백석균 케이스 PDF NaN 원인)
 function renderReportSection1_Summary(cl, r, fd, pa, rc, ded, pay, prevCost) {
-  const typeLabel = INS_TYPE_LABELS[cl.insurance_type] || '배상책임보험';
+  const typeLabel = INS_TYPE_LABELS[cl.insurance_type || r.insurance_type] || '배상책임보험';
   const accDate = cl.accident_datetime 
     ? fmtDateTime(cl.accident_datetime)
-    : (cl.accident_date ? fmtDate(cl.accident_date) : '');
-  const insuredName = r.insured_name || cl.insured_name || '';
-  const period = (r.policy_start && r.policy_end)
-    ? `${fmtDate(r.policy_start)} ~ ${fmtDate(r.policy_end)}`
+    : (cl.accident_date ? fmtDate(cl.accident_date) : (r.accident_date ? fmtDate(r.accident_date) : ''));
+  const insuredName = cl.insured_name || r.insured_name || '';
+  // 보험기간: cl 먼저, 없으면 r
+  const _ps = cl.policy_start || r.policy_start;
+  const _pe = cl.policy_end || r.policy_end;
+  const period = (_ps && _pe)
+    ? `${fmtDate(_ps)} ~ ${fmtDate(_pe)}`
     : '';
-  const accLoc = r.accident_location_from_doc || pa.attacker_unit || cl.victim_address || '';
+  // 보상한도액: cl 먼저 (BIGINT 숫자), r fallback
+  const _covLimit = cl.coverage_limit || r.coverage_limit || 0;
+  const accLoc = cl.accident_address || r.accident_location_from_doc || pa.attacker_unit || cl.victim_address || '';
   const accCause = pa.leak_cause || cl.accident_cause_type || r.accident_cause_detail || '';
   // v6: 사고원인 select 옵션 (현재값이 표준 13개에 없으면 "(현재) ___" 항목 추가)
   const causeStandardList = (typeof INS_CAUSES !== 'undefined') ? INS_CAUSES : [];
@@ -5639,7 +5658,7 @@ function renderReportSection1_Summary(cl, r, fd, pa, rc, ded, pay, prevCost) {
       <tr><td class="lbl">나. 계 약 자</td><td>${escapeHtml(insuredName)}</td></tr>
       <tr><td class="lbl">다. 피 보 험 자</td><td>${escapeHtml(insuredName)}</td></tr>
       <tr><td class="lbl">라. 보 험 기 간</td><td>${period}</td></tr>
-      <tr><td class="lbl">마. 보 상 한 도 액</td><td>${r.coverage_limit ? Number(r.coverage_limit).toLocaleString()+'원' : '—'}</td></tr>
+      <tr><td class="lbl">마. 보 상 한 도 액</td><td>${_covLimit ? Number(_covLimit).toLocaleString()+'원' : '—'}</td></tr>
       <tr><td class="lbl">바. 자 기 부 담 금</td><td>${money(ded)} / 대물 ${money(ded)}, 대인 없음</td></tr>
       <tr><td class="lbl">사. 사 고 일 시</td><td>${accDate}</td></tr>
       <tr><td class="lbl">아. 사 고 장 소</td><td>${escapeHtml(accLoc)}</td></tr>
@@ -5655,7 +5674,7 @@ function renderReportSection1_Summary(cl, r, fd, pa, rc, ded, pay, prevCost) {
       </tr>
       <tr>
         <td class="lbl">손해방지비용</td>
-        <td>${r.coverage_limit ? Number(r.coverage_limit).toLocaleString() : '-'}</td>
+        <td>${_covLimit ? Number(_covLimit).toLocaleString() : '-'}</td>
         <td>${prevCost ? prevCost.toLocaleString() : '-'}</td>
         <td>${prevCost ? prevCost.toLocaleString() : '-'}</td>
         <td>-</td>
@@ -5663,7 +5682,7 @@ function renderReportSection1_Summary(cl, r, fd, pa, rc, ded, pay, prevCost) {
       </tr>
       <tr>
         <td class="lbl">대물배상</td>
-        <td>${r.coverage_limit ? Number(r.coverage_limit).toLocaleString()+'원' : '-'}</td>
+        <td>${_covLimit ? Number(_covLimit).toLocaleString()+'원' : '-'}</td>
         <td>${rc ? rc.toLocaleString()+'원' : '-'}</td>
         <td>${rc ? rc.toLocaleString()+'원' : '-'}</td>
         <td>${money(ded)}</td>
@@ -5671,7 +5690,7 @@ function renderReportSection1_Summary(cl, r, fd, pa, rc, ded, pay, prevCost) {
       </tr>
       <tr class="total-row">
         <td class="lbl"><b>합계</b></td>
-        <td><b>${r.coverage_limit ? Number(r.coverage_limit).toLocaleString()+'원' : '-'}</b></td>
+        <td><b>${_covLimit ? Number(_covLimit).toLocaleString()+'원' : '-'}</b></td>
         <td><b>${(rc+prevCost) ? (rc+prevCost).toLocaleString()+'원' : '-'}</b></td>
         <td><b>${(rc+prevCost) ? (rc+prevCost).toLocaleString()+'원' : '-'}</b></td>
         <td><b>${money(ded)}</b></td>
@@ -5929,10 +5948,11 @@ function renderReportSection6_Damage(rc, ded, pay) {
   const r  = _insResult || {};
   const prevCost = cl.damage_prevention_cost || 0;
   const damageAmt = cl.damage_amount || rc;
-  const limit = r.coverage_limit || cl.coverage_limit || 0;
+  // v6.2.6: cl 우선 + r fallback — 정공법 통일
+  const limit = cl.coverage_limit || r.coverage_limit || 0;
 
   // 부책 시 법률상 배상책임액 = 손해액, 면책 시 0
-  const covYes = (r.coverage_result || cl.coverage_result) === '부책';
+  const covYes = (cl.coverage_result || r.coverage_result) === '부책';
   const liabAmt = covYes ? damageAmt : 0;
 
   // 합계
@@ -6084,14 +6104,9 @@ function buildReportData(cl, r, co, partners, victims, photos, handler) {
   const accDate = String(accDateRaw).slice(0,10).replace(/-/g,'.');
   const accDateLong = accDate ? accDate.replace(/(\d{4})\.(\d{2})\.(\d{2})/, '$1년 $2월 $3일') : '';
 
-  // 증권번호 마스킹
+  // 증권번호 (v6.2.6: 보험사 제출용이므로 마스킹 없이 전체 노출)
   const policyNoRaw = cl.policy_no || r.policy_no || '';
-  const policyNoMasked = (() => {
-    const p = policyNoRaw;
-    if (!p) return '';
-    if (p.length < 8) return p;
-    return p.slice(0,5) + '****' + p.slice(-3);
-  })();
+  const policyNoMasked = policyNoRaw;  // 마스킹 제거 — 키 이름은 호환성 위해 보존
 
   // 보험기간 텍스트
   const policyPeriodText = (() => {
@@ -6430,17 +6445,38 @@ function s3UpdateReportField(field, value) {
   if (!iframe) return;
   if (field === 'recipient') _reportRecipient = value || '';
   if (field === 'dept') _reportDept = value || '';
+  // v6.2.6: 증권번호도 메모리·DB·iframe 모두 갱신
+  if (field === 'policyNo') {
+    if (_insClaim) _insClaim.policy_no = value || null;
+    // _insResult도 동기화 (다른 렌더링에서 r.policy_no 읽음)
+    if (_insResult) _insResult.policy_no = value || null;
+    // DB에 silent persist (async, await 안 함 — 입력 흐름 막지 않도록)
+    if (_insClaim?.id && typeof sb !== 'undefined') {
+      sb.from('insurance_claims')
+        .update({ policy_no: value || null, updated_at: new Date().toISOString() })
+        .eq('id', _insClaim.id)
+        .then(({ error }) => {
+          if (error) console.warn('[v6.2.6 policy_no 저장 실패]', error);
+        });
+    }
+  }
   // URL 파라미터 갱신해서 iframe 재로딩 (postMessage로도 가능하나 URL이 양식과 단방향 결합되어 있어 URL 갱신이 가장 확실)
   try {
     const url = new URL(iframe.src, location.href);
     if (field === 'recipient') url.searchParams.set('recipient', value || '');
     if (field === 'dept') url.searchParams.set('dept', value || '');
     if (field === 'title') url.searchParams.set('title', value || '');
+    if (field === 'policyNo') url.searchParams.set('policyNo', value || '');
     // src를 변경하지 않고도 postMessage로 빠른 갱신
     if (iframe.contentWindow) {
       iframe.contentWindow.postMessage({
         type: 'setHeader',
-        data: { recipient: _reportRecipient, dept: _reportDept, title: field === 'title' ? value : undefined }
+        data: {
+          recipient: _reportRecipient,
+          dept: _reportDept,
+          title: field === 'title' ? value : undefined,
+          policyNo: field === 'policyNo' ? value : undefined,
+        }
       }, '*');
     }
   } catch (e) {
