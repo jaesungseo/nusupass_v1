@@ -4860,7 +4860,9 @@ async function s2Save() {
       p_claim_id:              _insClaim.id,
       p_liability_established: _insResult.liability_result||'yes',
       p_liability_pay:         coverage==='부책'?'pay':(coverage==='면책'?'exempt':'pending'),
-      p_fault_ratio:           _insResult.fault_ratio||'피보험자 100%',
+      // v6.2.11: 부책일 때만 기본값 '피보험자 100%' 저장. 면책·불성립·판단유보는 NULL로 저장하여
+      //          renderReportSection5의 분기 로직이 동적으로 적용되도록 함
+      p_fault_ratio:           coverage==='부책' ? (_insResult.fault_ratio||'피보험자 100%') : null,
       p_liability_memo:        _insResult.coverage_reasoning||null,
       p_damage_amount:         rc||null,
       p_payout_amount:         pay||null,
@@ -6008,20 +6010,21 @@ function renderReportSection5_Liability(cl, r) {
         <tr><td class="lbl">과실비율</td>
           <td><input class="report-editable-input" id="rep-fault" value="${
             // v6.2.10 B안: 불성립/면책/판단유보 시 과실비율은 '-' (책임 자체가 없거나 보류 상태)
+            //              DB값 무시 (이전 버전이 잘못 저장한 값 우선 차단)
             (est === '불성립' || est === 'no' || cov === '면책' || cov === '판단유보')
               ? '-'
-              : escapeHtml(faultRatio)
+              : escapeHtml(cl.fault_ratio || faultRatio || '')
           }" placeholder="예: 피보험자 책임 100% / 피해자 무과실"></td>
         </tr>
         <tr><td class="lbl">검토사항</td>
           <td><textarea class="report-editable report-editable-multi" id="rep-fault-note" rows="4"
-            placeholder="과실비율 검토 사항">${escapeHtml(cl.fault_ratio_note || (
-              // v6.2.10 B안: 판단유보만 별도, 불성립·면책은 동일 메시지
-              cov === '판단유보' ? '면·부책 판단 보류로 추후 재검토 예정' :
-              (est === '불성립' || est === 'no' || cov === '면책') ? '면책 사유에 해당되어 검토하지 않음' :
-              cov === '부책' ? '금번 사고의 제반정황, 당사 현장조사 등을 종합적으로 검토한 바, 피보험자 세대에서 발생한 누수사고에 대하여 피해세대의 과실을 인정할만한 사유가 없으며, 사전에 예측하고 대비하기는 어려웠을 것으로 여겨지므로 피해자 측의 과실을 묻기는 어려울 것으로 사료됨.' :
-              ''
-            ))}</textarea></td>
+            placeholder="과실비율 검토 사항">${escapeHtml((() => {
+              // v6.2.10 B안 (v6.2.11에서 강화): 부책일 때만 DB값 우선 사용, 그 외엔 분기 로직 강제
+              if (cov === '판단유보') return '면·부책 판단 보류로 추후 재검토 예정';
+              if (est === '불성립' || est === 'no' || cov === '면책') return '면책 사유에 해당되어 검토하지 않음';
+              if (cov === '부책') return cl.fault_ratio_note || '금번 사고의 제반정황, 당사 현장조사 등을 종합적으로 검토한 바, 피보험자 세대에서 발생한 누수사고에 대하여 피해세대의 과실을 인정할만한 사유가 없으며, 사전에 예측하고 대비하기는 어려웠을 것으로 여겨지므로 피해자 측의 과실을 묻기는 어려울 것으로 사료됨.';
+              return cl.fault_ratio_note || '';
+            })())}</textarea></td>
         </tr>
       </table>
     </div>
@@ -6037,13 +6040,13 @@ function renderReportSection5_Liability(cl, r) {
         }</b></td></tr>
         <tr><td class="lbl">검토사항</td>
           <td><textarea class="report-editable report-editable-multi" id="rep-prev-memo" rows="4"
-            placeholder="손해방지비용 검토">${escapeHtml(cl.prevention_cost_memo || (
-              // v6.2.10 B안: 판단유보만 별도, 불성립·면책은 동일 메시지
-              cov === '판단유보' ? '면·부책 판단 보류로 추후 재검토 예정' :
-              (est === '불성립' || est === 'no' || cov === '면책') ? '면책 사유에 해당되어 검토하지 않음' :
-              cov === '부책' ? '상법 제680조 제1항에 따라 규정한 손해방지비용 및 대법원 판례 및 금융분쟁조정위원회 의견에 의거 손해확대 또는 방지를 위해 필요 또는 유익한 비용에 해당하는 누수탐지 및 손해방지를 위해 노력한 공사 비용을 지급처리하는 것이 타당할 것으로 판단됨.' :
-              ''
-            ))}</textarea></td>
+            placeholder="손해방지비용 검토">${escapeHtml((() => {
+              // v6.2.10 B안 (v6.2.11에서 강화): 부책일 때만 DB값 우선, 그 외엔 분기 로직 강제
+              if (cov === '판단유보') return '면·부책 판단 보류로 추후 재검토 예정';
+              if (est === '불성립' || est === 'no' || cov === '면책') return '면책 사유에 해당되어 검토하지 않음';
+              if (cov === '부책') return cl.prevention_cost_memo || '상법 제680조 제1항에 따라 규정한 손해방지비용 및 대법원 판례 및 금융분쟁조정위원회 의견에 의거 손해확대 또는 방지를 위해 필요 또는 유익한 비용에 해당하는 누수탐지 및 손해방지를 위해 노력한 공사 비용을 지급처리하는 것이 타당할 것으로 판단됨.';
+              return cl.prevention_cost_memo || '';
+            })())}</textarea></td>
         </tr>
       </table>
     </div>
@@ -6482,6 +6485,13 @@ async function s3SaveReport() {
     const repPrevCost = parseInt((g('rep-prev-cost')||'').replace(/[^0-9]/g,'')) || null;
     const repDamageAmt = parseInt((g('rep-damage-amt')||'').replace(/[^0-9]/g,'')) || null;
 
+    // v6.2.11: 면책/불성립/판단유보 케이스에서는 다·라 textarea 값을 DB에 저장하지 않음
+    //          (분기 로직이 매번 동적으로 처리하도록 NULL 유지)
+    //          부책 케이스에서만 사용자 편집 내용을 DB에 저장
+    const _est = _insClaim.liability_result;
+    const _cov = _insClaim.coverage_result;
+    const _isExemptOrSuspended = (_est === '불성립' || _est === 'no' || _cov === '면책' || _cov === '판단유보');
+
     const updates = {
       // v6.1.1: 보험사명/담당자 입력은 출력 헤더의 rep-recipient/rep-cc로 통합됨 — DB 컬럼은 호환 유지
       insurer_name:         g('rep-recipient') || _insClaim.insurer_name,    // 호환: 보험사명 = 수신자
@@ -6495,9 +6505,10 @@ async function s3SaveReport() {
       // v6.2.33-B: reasoning은 절대 빈 값으로 덮어쓰지 않음 (9-Call 결과 보호)
       liability_reasoning:  gKeep('rep-liab-reason', 'liability_reasoning'),
       coverage_reasoning:   gKeep('rep-cov-reason', 'coverage_reasoning'),
-      fault_ratio:          gKeep('rep-fault', 'fault_ratio'),
-      fault_ratio_note:     gKeep('rep-fault-note', 'fault_ratio_note'),
-      prevention_cost_memo: gKeep('rep-prev-memo', 'prevention_cost_memo'),
+      // v6.2.11: 면책/불성립/판단유보 시 NULL 유지 (분기 로직이 동적 처리)
+      fault_ratio:          _isExemptOrSuspended ? null : gKeep('rep-fault', 'fault_ratio'),
+      fault_ratio_note:     _isExemptOrSuspended ? null : gKeep('rep-fault-note', 'fault_ratio_note'),
+      prevention_cost_memo: _isExemptOrSuspended ? null : gKeep('rep-prev-memo', 'prevention_cost_memo'),
       damage_prevention_cost: repPrevCost !== null ? repPrevCost : _insClaim.damage_prevention_cost,
       damage_amount:        repDamageAmt !== null ? repDamageAmt : _insClaim.damage_amount,
       // v6.2.33-D: 보고서 저장 시 STEP 3 진입 상태로 마킹 → 재진입 시 STEP 3로 바로 감
