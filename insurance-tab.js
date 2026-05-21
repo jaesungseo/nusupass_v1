@@ -524,6 +524,7 @@ const COVERAGE_RESULT_VALUES = ['부책','면책','판단유보'];
 // ─────────────────────────────────────────────
 let _insClaim    = null;
 let _insCaseId   = null;
+let _s3ReloadGuard = false;  // v6.2.193: STEP3 사진 재로드 1회 가드 (무한루프 방지)
 let _insField    = null;   // 파트너 수리 자료 (호환 유지: 첫 번째 또는 detection 우선)
 let _insPartners = [];     // v6.1: 다중 파트너 배열 — [{id, purpose, work_status, repair_cost, ...}]
 let _insImportedPartners = new Set();  // v6.1: 임포트 토글 상태 (assignment_id Set)
@@ -5504,6 +5505,21 @@ async function s3Enter() {
 }
 
 function insStep3HTML() {
+  // v6.2.193: STEP3 렌더 최상단에서 _insCaseId 복구 (진단/사진로드보다 먼저 보장).
+  //   새로고침(F5) 후 전역만 풀리고 _insClaim은 복원된 상태에서, 사진 쿼리가
+  //   case_id=null로 나가 0건 반환되던 근본 버그 차단.
+  if (!_insCaseId && _insClaim && _insClaim.case_id) {
+    _insCaseId = _insClaim.case_id;
+    console.warn('[s3HTML] _insCaseId 복구:', _insCaseId);
+    // 사진이 비어있으면(이전 null 조회 잔재) 재로드 후 재렌더 — 1회만
+    const ph = _insRepairPhotos || {};
+    const empty = !((ph.before||[]).length || (ph.during||[]).length || (ph.after||[]).length);
+    if (empty && !_s3ReloadGuard) {
+      _s3ReloadGuard = true;
+      s3LoadReportData().then(() => { _s3ReloadGuard = false; insRender(); })
+                        .catch(e => { _s3ReloadGuard = false; console.warn('[s3HTML] 재로드 실패:', e); });
+    }
+  }
   const cl = _insClaim || {};
   const r  = _insResult || {};
   const co = _insCompany || {};
@@ -5604,7 +5620,7 @@ function insStep3HTML() {
           const imp = Array.from(_insImportedPartners || []);
           const len = o => `B${(o.before||[]).length}/D${(o.during||[]).length}/A${(o.after||[]).length}`;
           return `<div style="margin-bottom:10px;padding:10px 14px;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;font-size:12px;color:#7f1d1d;font-family:monospace;line-height:1.7">
-            <b>🔧 진단 v6.2.192</b><br>
+            <b>🔧 진단 v6.2.193</b><br>
             case_id: ${escapeHtml(_insCaseId || 'null')}<br>
             _insClaim.case_id: ${escapeHtml((_insClaim && _insClaim.case_id) || 'null')}<br>
             _insRepairPhotos(signed): ${len(rp)}<br>
@@ -5662,7 +5678,7 @@ function insStep3HTML() {
           <div>보고서 번호 · ${escapeHtml(reportNo)}</div>
           <div>약관 · ${escapeHtml(insTypeLabel)}</div>
           <div>판단 결과 · ${covVal || '미산출'}</div>
-          <div>버전 · v6.2.192 (진단판)</div>
+          <div>버전 · v6.2.193 (진단판)</div>
         </div>
       </div>
     </div>
