@@ -5212,6 +5212,12 @@ function money(n) { return (n||0).toLocaleString() + '원'; }
 
 // 파트너 수리 데이터 + 사진 signed URL 로드
 async function s3LoadReportData() {
+  // v6.2.191: _insCaseId가 풀렸을 때(_insClaim은 살아있는데 전역만 null) 복구.
+  //   사진 쿼리가 case_id=null로 나가 0건 반환되던 버그 방지.
+  if (!_insCaseId && _insClaim && _insClaim.case_id) {
+    console.warn('[s3] _insCaseId 비어있음 → _insClaim.case_id로 복구:', _insClaim.case_id);
+    _insCaseId = _insClaim.case_id;
+  }
   console.log('[s3] 보고서 데이터 로드 시작 case_id=', _insCaseId);
 
   // 1) 파트너 assignment 최신 수리완료 건 (신 컬럼 포함)
@@ -5598,8 +5604,9 @@ function insStep3HTML() {
           const imp = Array.from(_insImportedPartners || []);
           const len = o => `B${(o.before||[]).length}/D${(o.during||[]).length}/A${(o.after||[]).length}`;
           return `<div style="margin-bottom:10px;padding:10px 14px;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;font-size:12px;color:#7f1d1d;font-family:monospace;line-height:1.7">
-            <b>🔧 진단 v6.2.191</b><br>
+            <b>🔧 진단 v6.2.192</b><br>
             case_id: ${escapeHtml(_insCaseId || 'null')}<br>
+            _insClaim.case_id: ${escapeHtml((_insClaim && _insClaim.case_id) || 'null')}<br>
             _insRepairPhotos(signed): ${len(rp)}<br>
             빌드된 accident.photos: ${len(ap)}<br>
             _insImportedPartners: ${imp.length}건 [${escapeHtml(imp.join(', ').slice(0,80))}]<br>
@@ -5655,7 +5662,7 @@ function insStep3HTML() {
           <div>보고서 번호 · ${escapeHtml(reportNo)}</div>
           <div>약관 · ${escapeHtml(insTypeLabel)}</div>
           <div>판단 결과 · ${covVal || '미산출'}</div>
-          <div>버전 · v6.2.191 (진단판)</div>
+          <div>버전 · v6.2.192 (진단판)</div>
         </div>
       </div>
     </div>
