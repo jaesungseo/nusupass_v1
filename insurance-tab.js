@@ -5082,9 +5082,19 @@ async function s2Save() {
       p_coverage_limit:     _insResult.coverage_limit||null,
       p_deductible:         ded||null,
     });
+    // v6.2.18: liability_result 정규화 — DB CHECK은 '성립/불성립/확인불가'만 허용
+    //          AI나 옛 코드가 'no'/'yes'를 반환할 수 있으므로 한글로 변환 후 저장
+    const _normLiabilityResult = (v) => {
+      if (v === 'no'  || v === '불성립') return '불성립';
+      if (v === 'yes' || v === '성립')   return '성립';
+      if (v === '확인불가') return '확인불가';
+      return v || null;  // 그 외는 그대로 (null 포함)
+    };
+    const _liabResultForDB = _normLiabilityResult(_insResult.liability_result);
+
     await sb.rpc('rpc_save_judgment', {
       p_claim_id:              _insClaim.id,
-      p_liability_established: _insResult.liability_result||'yes',
+      p_liability_established: _liabResultForDB || '성립',
       p_liability_pay:         coverage==='부책'?'pay':(coverage==='면책'?'exempt':'pending'),
       // v6.2.11: 부책일 때만 기본값 '피보험자 100%' 저장. 면책·불성립·판단유보는 NULL로 저장하여
       //          renderReportSection5의 분기 로직이 동적으로 적용되도록 함
@@ -5093,7 +5103,7 @@ async function s2Save() {
       p_damage_amount:         rc||null,
       p_payout_amount:         pay||null,
       // v5.2.1 신규: 신 컬럼도 RPC 내부에서 함께 저장됨
-      p_liability_result:      _insResult.liability_result||null,
+      p_liability_result:      _liabResultForDB,
       p_coverage_result:       coverage,
       p_liability_reasoning:   _insResult.liability_reasoning||null,
       p_coverage_reasoning:    _insResult.coverage_reasoning||null,
