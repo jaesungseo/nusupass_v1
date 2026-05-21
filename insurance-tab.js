@@ -5591,6 +5591,22 @@ function insStep3HTML() {
 
       <!-- 탭 컨텐츠 1: 손해사정서 (report-template-v2.html iframe 임베드 — v6.1.4) -->
       <div id="tab-content-report" style="display:block">
+        ${(() => {
+          // v6.2.191 임시 진단 패널 — 사진 흐름 실측 (F12 불가 환경용, 확인 후 제거 예정)
+          const rp = _insRepairPhotos || {};
+          const ap = (_insCurrentReportData && _insCurrentReportData.accident && _insCurrentReportData.accident.photos) || {};
+          const imp = Array.from(_insImportedPartners || []);
+          const len = o => `B${(o.before||[]).length}/D${(o.during||[]).length}/A${(o.after||[]).length}`;
+          return `<div style="margin-bottom:10px;padding:10px 14px;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;font-size:12px;color:#7f1d1d;font-family:monospace;line-height:1.7">
+            <b>🔧 진단 v6.2.191</b><br>
+            case_id: ${escapeHtml(_insCaseId || 'null')}<br>
+            _insRepairPhotos(signed): ${len(rp)}<br>
+            빌드된 accident.photos: ${len(ap)}<br>
+            _insImportedPartners: ${imp.length}건 [${escapeHtml(imp.join(', ').slice(0,80))}]<br>
+            _insPartners: ${(_insPartners||[]).length}건<br>
+            첫 사진 URL: ${escapeHtml(((rp.before||[])[0]||{}).url ? '있음(' + (((rp.before||[])[0]).url||'').slice(0,40) + '...)' : '없음')}
+          </div>`;
+        })()}
         <iframe
           id="reportFrame"
           src="./report-template-v2.html?embed=1&case=${encodeURIComponent(cl.case_no || 'SMPL_01_백석균')}&recipient=${encodeURIComponent(_reportRecipient || '')}&dept=${encodeURIComponent(_reportDept || '손해사정팀')}&title=${encodeURIComponent(cl.report_title || '누수사고 손해사정서')}&policyNo=${encodeURIComponent(cl.policy_no || r.policy_no || '')}"
@@ -5639,7 +5655,7 @@ function insStep3HTML() {
           <div>보고서 번호 · ${escapeHtml(reportNo)}</div>
           <div>약관 · ${escapeHtml(insTypeLabel)}</div>
           <div>판단 결과 · ${covVal || '미산출'}</div>
-          <div>버전 · v6.2.190</div>
+          <div>버전 · v6.2.191 (진단판)</div>
         </div>
       </div>
     </div>
