@@ -703,10 +703,10 @@ function insRenderImportModal() {
   // 보고서 제출된 파트너 = 첫 임포트 후보
   const firstReady = _insPartners.find(p => p.has_report);
   list.innerHTML = _insPartners.map(p => {
-    const purposeLabel = p.assignment_purpose === 'restore' ? '인테리어업체'
-                       : p.assignment_purpose === 'detection' ? '누수업체'
+    const purposeLabel = isInterior(p.assignment_purpose) ? '인테리어업체'
+                       : isDetection(p.assignment_purpose) ? '누수업체'
                        : '파트너';
-    const purposePillCls = p.assignment_purpose === 'restore' ? 'amber' : '';
+    const purposePillCls = isInterior(p.assignment_purpose) ? 'amber' : '';
     const isReady = p.has_report;
     const isSelected = isReady && p.id === firstReady?.id;
     const detail = (isReady && p.leak_cause) ? `· 누수원인: ${escapeHtml(p.leak_cause)}<br>` : '';
@@ -1502,16 +1502,16 @@ window.s1ChangePolicyType = s1ChangePolicyType;
 // v6.2.8: detection·restore 파트너 모두 노출 (이전엔 detection만)
 function insOpenLeakModal() {
   // 사용 가능한 파트너 목록 (보고서 제출됨) — detection·restore 모두 포함
-  const eligiblePartners = (_insPartners || []).filter(p => p.has_report && (p.assignment_purpose === 'detection' || p.assignment_purpose === 'restore'));
-  // detection을 위에, restore를 아래에 정렬 (실무 흐름 — 누수탐지가 먼저)
+  const eligiblePartners = (_insPartners || []).filter(p => p.has_report && (isDetection(p.assignment_purpose) || isInterior(p.assignment_purpose)));
+  // detection을 위에, interior를 아래에 정렬 (실무 흐름 — 누수탐지가 먼저)
   eligiblePartners.sort((a, b) => {
-    if (a.assignment_purpose === b.assignment_purpose) return 0;
-    return a.assignment_purpose === 'detection' ? -1 : 1;
+    if (normPurpose(a.assignment_purpose) === normPurpose(b.assignment_purpose)) return 0;
+    return isDetection(a.assignment_purpose) ? -1 : 1;
   });
 
   const purposeLabelOf = (purpose) =>
-    purpose === 'detection' ? '🔍 누수탐지' :
-    purpose === 'restore'   ? '🏠 인테리어 복구' :
+    isDetection(purpose) ? '🔍 누수탐지' :
+    isInterior(purpose)  ? '🏠 인테리어 복구' :
     '파트너 작업';
 
   const partnerOptionsHTML = eligiblePartners.length > 0
@@ -1521,7 +1521,7 @@ function insOpenLeakModal() {
           <div class="v62-modal-option-body">
             <div class="v62-modal-option-title">파트너 임포트 — ${escapeHtml(p.partner_name)} <span style="font-size:11px;color:#6b7280;font-weight:500">· ${purposeLabelOf(p.assignment_purpose)}</span></div>
             <div class="v62-modal-option-meta">
-              ${p.leak_cause ? `사고원인: ${escapeHtml(p.leak_cause)}` : (p.assignment_purpose === 'detection' ? '누수탐지 보고서 제출됨' : '복구 보고서 제출됨')}
+              ${p.leak_cause ? `사고원인: ${escapeHtml(p.leak_cause)}` : (isDetection(p.assignment_purpose) ? '누수탐지 보고서 제출됨' : '복구 보고서 제출됨')}
               ${p.work_done_at ? ` · ${fmtDate(p.work_done_at)}` : ''}
             </div>
           </div>
@@ -1630,8 +1630,8 @@ function s1TogglePartner(partnerId, checked) {
   }
   // 첫 임포트된 파트너를 _insField에 반영 (분석 시 우선 사용)
   // 우선순위: detection > restore > 첫 번째
-  const importedDetection = _insPartners.find(p => p.has_report && _insImportedPartners.has(p.id) && p.assignment_purpose === 'detection');
-  const importedRestore   = _insPartners.find(p => p.has_report && _insImportedPartners.has(p.id) && p.assignment_purpose === 'restore');
+  const importedDetection = _insPartners.find(p => p.has_report && _insImportedPartners.has(p.id) && isDetection(p.assignment_purpose));
+  const importedRestore   = _insPartners.find(p => p.has_report && _insImportedPartners.has(p.id) && isInterior(p.assignment_purpose));
   const firstImported     = _insPartners.find(p => p.has_report && _insImportedPartners.has(p.id));
   _insField = importedDetection || importedRestore || firstImported || null;
   insRender();
@@ -5176,6 +5176,16 @@ let _reportRecipient = '';   // 수신 (보험사명)
 let _reportDept = '';         // 참조 (손해사정팀 등)
 let _currentReportTab = 'report';  // v6.1.5: 출력 탭 추적 ('report' | 'leak')
 
+// v6.2.190: assignment_purpose 정규화
+//   인테리어 복구를 가리키는 두 레거시 값('restore'/'interior')을 표준 'interior'로 수렴.
+//   detection은 그대로. 신규/과거 데이터 어느 값이 와도 보고서가 깨지지 않도록 하는 방어선.
+function normPurpose(p) {
+  if (p === 'restore' || p === 'interior') return 'interior';
+  return p; // 'detection' 등은 그대로
+}
+function isInterior(p)  { return normPurpose(p) === 'interior'; }
+function isDetection(p) { return p === 'detection'; }
+
 // 유틸: 날짜·시간 포맷
 function fmtDate(d) {
   if (!d) return '';
@@ -5250,9 +5260,9 @@ async function s3LoadReportData() {
     (_insPartners || []).forEach(p => {
       partnerMap[p.id] = {
         name: p.partner_name || '파트너',
-        purpose: p.assignment_purpose, // 'detection' or 'restore'
-        purposeLabel: p.assignment_purpose === 'detection' ? '누수탐지'
-                    : p.assignment_purpose === 'restore'   ? '인테리어 복구'
+        purpose: normPurpose(p.assignment_purpose), // 정규화: 'detection' | 'interior'
+        purposeLabel: isDetection(p.assignment_purpose) ? '누수탐지'
+                    : isInterior(p.assignment_purpose)  ? '인테리어 복구'
                     : '파트너 작업',
       };
     });
@@ -5691,7 +5701,7 @@ window.s3LoadStampImages = s3LoadStampImages;
 function renderLeakOpinion(cl, r, pa, photos, partners) {
   // 임포트한 첫 파트너 → 명의자
   const importedIds = Array.from(_insImportedPartners || []);
-  const namedPartner = (partners || []).find(p => importedIds.includes(p.id) && p.assignment_purpose === 'detection')
+  const namedPartner = (partners || []).find(p => importedIds.includes(p.id) && isDetection(p.assignment_purpose))
     || (partners || []).find(p => importedIds.includes(p.id))
     || (partners || [])[0]
     || null;
@@ -6130,14 +6140,14 @@ function renderReportSection4_Accident(cl, r, pa, photos) {
   //   - 한쪽만 있으면: 종래 양식 (단일 수리 전·중·후)
   const allPhotos = [...(photos.before||[]), ...(photos.during||[]), ...(photos.after||[])];
   const detectionPhotoCount = allPhotos.filter(p => p.partner_purpose === 'detection').length;
-  const restorePhotoCount   = allPhotos.filter(p => p.partner_purpose === 'restore').length;
+  const restorePhotoCount   = allPhotos.filter(p => p.partner_purpose === 'interior').length;
   const isSplit = detectionPhotoCount > 0 && restorePhotoCount > 0;
 
   let photoSectionHTML = '';
   if (isSplit) {
     // 두 파트너 모두 사진 있음 — 섹션 분리
-    const detectionPartnerName = importedPartners.find(p => p.assignment_purpose === 'detection')?.partner_name || '누수탐지업체';
-    const restorePartnerName   = importedPartners.find(p => p.assignment_purpose === 'restore')?.partner_name   || '인테리어업체';
+    const detectionPartnerName = importedPartners.find(p => isDetection(p.assignment_purpose))?.partner_name || '누수탐지업체';
+    const restorePartnerName   = importedPartners.find(p => isInterior(p.assignment_purpose))?.partner_name   || '인테리어업체';
     const filterByPurpose = (arr, purpose) => (arr || []).filter(p => p.partner_purpose === purpose);
 
     photoSectionHTML = `
@@ -6154,9 +6164,9 @@ function renderReportSection4_Accident(cl, r, pa, photos) {
         <div style="margin:18px 0 12px;padding:8px 12px;background:#f0fdf4;border-left:3px solid #16a34a;border-radius:0 4px 4px 0;font-size:12px;color:#14532d;font-weight:500">
           🏠 인테리어 복구 — ${escapeHtml(restorePartnerName)}
         </div>
-        ${renderPhotoGroup('① 수리 전', filterByPurpose(photos.before, 'restore'), true)}
-        ${renderPhotoGroup('② 수리 중', filterByPurpose(photos.during, 'restore'), true)}
-        ${renderPhotoGroup('③ 수리 후', filterByPurpose(photos.after,  'restore'), true)}
+        ${renderPhotoGroup('① 수리 전', filterByPurpose(photos.before, 'interior'), true)}
+        ${renderPhotoGroup('② 수리 중', filterByPurpose(photos.during, 'interior'), true)}
+        ${renderPhotoGroup('③ 수리 후', filterByPurpose(photos.after,  'interior'), true)}
       </div>`;
   } else {
     // 한쪽만 (또는 둘 다 없음) — 종래 양식 그대로 (출처 라벨은 표시)
@@ -6303,8 +6313,8 @@ function renderReportSection6_Damage(rc, ded, pay) {
 
   // v6.2.8: 파트너별 repair_cost 자동 분배
   const importedPartners = (_insPartners || []).filter(p => _insImportedPartners?.has(p.id));
-  const detectionPartner = importedPartners.find(p => p.assignment_purpose === 'detection');
-  const restorePartner   = importedPartners.find(p => p.assignment_purpose === 'restore');
+  const detectionPartner = importedPartners.find(p => isDetection(p.assignment_purpose));
+  const restorePartner   = importedPartners.find(p => isInterior(p.assignment_purpose));
 
   // 손해방지비용: detection 파트너의 repair_cost 우선, 없으면 cl.damage_prevention_cost (수기 입력)
   const prevCost = (detectionPartner?.repair_cost)
