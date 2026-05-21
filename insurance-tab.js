@@ -5632,7 +5632,7 @@ function insStep3HTML() {
           <div>보고서 번호 · ${escapeHtml(reportNo)}</div>
           <div>약관 · ${escapeHtml(insTypeLabel)}</div>
           <div>판단 결과 · ${covVal || '미산출'}</div>
-          <div>버전 · v6.2.36</div>
+          <div>버전 · v6.2.190</div>
         </div>
       </div>
     </div>
