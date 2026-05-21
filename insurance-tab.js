@@ -1035,7 +1035,12 @@ function insRender() {
   const c = document.getElementById('insContent');
   if      (_insStep === 1) c.innerHTML = insStep1HTML();
   else if (_insStep === 2) c.innerHTML = insStep2HTML();
-  else if (_insStep === 3) c.innerHTML = insStep3HTML();
+  else if (_insStep === 3) {
+    c.innerHTML = insStep3HTML();
+    // v6.2.190: iframe이 새로 박혔으면 onload가, 이미 살아있으면 아래 호출이 주입을 받음.
+    // 양쪽 모두 커버하여 사진 누락(타이밍 경쟁) 방지.
+    s3InjectReportData();
+  }
   if (_insStep === 1) insInitDropzones();
 }
 
@@ -5155,7 +5160,9 @@ async function s2Save() {
     _insClaim = { ..._insClaim, insurance_tab_status: 'ready_for_draft',
       deductible: ded, payout_amount: pay };
     toast('저장 완료!', 's');
-    _insStep = 3; insRender();
+    // v6.2.190: STEP3 진입 시 사진 등 보고서 데이터 로드 보장 (3920행 경로와 통일)
+    _insStep = 3;
+    s3LoadReportData().then(() => insRender()).catch(e => { console.warn('[s3] 로드 실패:', e); insRender(); });
   } catch(e) { toast('저장 실패: ' + e.message, 'e'); }
 }
 
@@ -6843,19 +6850,28 @@ async function s3ExportPdf() {
 }
 
 // v6.1.4: 현재 케이스의 데이터를 iframe(report-template-v2.html)에 주입
-function s3InjectReportData() {
+// v6.2.190: A안 — 주입 보장. iframe 로드/데이터 빌드 타이밍 경쟁 제거.
+//   - onload 1회성 의존 제거: 데이터 빌드 후에도 명시 호출
+//   - iframe contentWindow 미준비 시 짧게 폴링 재시도 (최대 ~2초)
+//   - 사진은 iframe URL이 아닌 postMessage로만 전달되므로, 빌드된 데이터가
+//     반드시 한 번은 살아있는 iframe에 도달하도록 보장
+function s3InjectReportData(_retry) {
+  const tries = _retry || 0;
   const iframe = document.getElementById('reportFrame');
-  if (!iframe || !iframe.contentWindow) return;
-  // 현재 보고서 데이터를 _insCurrentReportData에 모아두면 iframe에 postMessage
-  if (typeof _insCurrentReportData !== 'undefined' && _insCurrentReportData) {
-    try {
-      iframe.contentWindow.postMessage({
-        type: 'setCase',
-        data: _insCurrentReportData
-      }, '*');
-    } catch (e) {
-      console.warn('s3InjectReportData postMessage failed', e);
-    }
+  // 데이터가 아직 없으면 주입할 게 없음 (빌드 후 재호출됨)
+  if (typeof _insCurrentReportData === 'undefined' || !_insCurrentReportData) return;
+  // iframe이 아직 DOM/contentWindow 미준비면 잠시 후 재시도
+  if (!iframe || !iframe.contentWindow) {
+    if (tries < 20) setTimeout(() => s3InjectReportData(tries + 1), 100);
+    else console.warn('[s3inject] iframe 준비 안 됨 — 주입 포기 (retry 초과)');
+    return;
+  }
+  try {
+    iframe.contentWindow.postMessage({ type: 'setCase', data: _insCurrentReportData }, '*');
+    const ph = (_insCurrentReportData.accident && _insCurrentReportData.accident.photos) || {};
+    console.log(`[s3inject] setCase 주입 (retry=${tries}) — 사진 before=${(ph.before||[]).length} during=${(ph.during||[]).length} after=${(ph.after||[]).length}`);
+  } catch (e) {
+    console.warn('s3InjectReportData postMessage failed', e);
   }
 }
 
