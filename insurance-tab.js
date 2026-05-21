@@ -5174,7 +5174,8 @@ async function s2Save() {
 
 // 보고서용 부가 상태
 let _insPartnerReport = null;   // 파트너 수리완료 보고 (assignment 레코드 일부)
-let _insRepairPhotos  = { before: [], during: [], after: [] };  // signed URLs
+let _insRepairPhotos  = { before: [], during: [], after: [] };  // signed URLs (보고서 포함분)
+let _insAllPhotos     = { before: [], during: [], after: [] };  // v6.2.195: 편집 UI용 전체(제외 포함)
 let _insLatestAnalysis = null;  // v6.2.30: 가장 최근 완료된 claim_analyses row
 let _insHandler       = null;   // v6.1.4: 본인(담당자) 정보 — admin_users row
 
@@ -5250,24 +5251,32 @@ async function s3LoadReportData() {
 
   // 2) case_documents 사진 3단계별 signed URL
   //    v6.2.8: 사진에 파트너 정보 부착 (출처 라벨 + 섹션 분리 렌더링 위한 메타)
+  //    v6.2.195: 보고서 편집(제외/이동/순서) 반영.
+  //      - report_include=false → 보고서에서 제외 (편집 UI엔 회색으로 표시)
+  //      - report_stage(있으면) → 단계 재배치, 없으면 document_type 따름
+  //      - report_order → 표시 순서 (NULL이면 created_at順)
+  //      - _insAllPhotos: 편집 UI용 전체(제외 포함), _insRepairPhotos: 보고서용(include만)
   _insRepairPhotos = { before: [], during: [], after: [] };
+  _insAllPhotos = { before: [], during: [], after: [] };
   try {
     const importedIds = Array.from(_insImportedPartners || []);
     let docsQuery = sb.from('case_documents')
-      .select('id, document_type, file_url, file_name, created_at, assignment_id')
+      .select('id, document_type, file_url, file_name, created_at, assignment_id, report_include, report_stage, report_order')
       .eq('case_id', _insCaseId)
       .in('document_type', ['repair_photo_before','repair_photo_during','repair_photo_after'])
+      .order('report_order', { ascending: true, nullsFirst: false })
       .order('created_at', { ascending: true });
 
     // 임포트한 파트너가 있으면 그 assignment_id의 사진만
+    //   v6.2.195: 단, 관리자가 보고서에서 직접 추가한 외부 사진(assignment_id=NULL)은 항상 포함
     if (importedIds.length > 0) {
-      docsQuery = docsQuery.in('assignment_id', importedIds);
+      docsQuery = docsQuery.or(`assignment_id.in.(${importedIds.join(',')}),assignment_id.is.null`);
     }
 
     const { data: docs, error: docErr } = await docsQuery;
     if (docErr) { console.warn('[s3] case_documents 쿼리 에러:', docErr); }
     console.log('[s3] case_documents 로드:', docs?.length || 0, '건 (필터:',
-      importedIds.length > 0 ? `assignment_id IN (${importedIds.length}건)` : 'case_id 전체', ')');
+      importedIds.length > 0 ? `assignment_id IN (${importedIds.length}건)+null` : 'case_id 전체', ')');
 
     // v6.2.8: assignment_id → 파트너 정보 매핑 테이블 구축
     const partnerMap = {};
@@ -5283,20 +5292,29 @@ async function s3LoadReportData() {
 
     let signedSuccess = 0, signedFail = 0;
     for (const d of (docs || [])) {
-      const stage = d.document_type.replace('repair_photo_', '');  // before/during/after
+      // v6.2.195: 단계 결정 — report_stage 우선, 없으면 document_type
+      const stage = d.report_stage || d.document_type.replace('repair_photo_', '');  // before/during/after
+      if (!['before','during','after'].includes(stage)) continue;
       try {
         const { data: s, error: signErr } = await sb.storage.from('partner-work').createSignedUrl(d.file_url, 3600);
         if (signErr) { console.warn(`[s3] signed URL 에러 (${d.file_url}):`, signErr); signedFail++; continue; }
         if (s?.signedUrl) {
-          const partnerInfo = partnerMap[d.assignment_id] || { name: '파트너', purpose: 'unknown', purposeLabel: '파트너 작업' };
-          _insRepairPhotos[stage].push({
+          const partnerInfo = partnerMap[d.assignment_id] || { name: '외부/직접추가', purpose: 'external', purposeLabel: '직접 추가' };
+          const photoObj = {
+            doc_id: d.id,                          // v6.2.195: 편집 시 행 식별
             url: s.signedUrl,
+            file_url: d.file_url,
             name: d.file_name || stage,
+            stage,
             assignment_id: d.assignment_id,
+            report_include: d.report_include !== false,  // 기본 true
+            report_order: d.report_order,
             partner_name: partnerInfo.name,
             partner_purpose: partnerInfo.purpose,
             partner_purpose_label: partnerInfo.purposeLabel,
-          });
+          };
+          _insAllPhotos[stage].push(photoObj);
+          if (photoObj.report_include) _insRepairPhotos[stage].push(photoObj);
           signedSuccess++;
         } else {
           signedFail++;
@@ -5307,7 +5325,7 @@ async function s3LoadReportData() {
       }
     }
     console.log(`[s3] 사진 signed URL 결과: 성공 ${signedSuccess} / 실패 ${signedFail}`);
-    console.log(`[s3] 사진 분류: before=${_insRepairPhotos.before.length} / during=${_insRepairPhotos.during.length} / after=${_insRepairPhotos.after.length}`);
+    console.log(`[s3] 보고서 포함: before=${_insRepairPhotos.before.length} / during=${_insRepairPhotos.during.length} / after=${_insRepairPhotos.after.length} (전체 ${_insAllPhotos.before.length+_insAllPhotos.during.length+_insAllPhotos.after.length})`);
   } catch (e) { console.warn('[s3] case_documents 로드 실패:', e); }
 
   // v6.2.30: 가장 최근 분석 결과(claim_analyses)를 로드하여 _insClaim에 머지
@@ -5615,7 +5633,7 @@ function insStep3HTML() {
       <div id="tab-content-report" style="display:block">
         <iframe
           id="reportFrame"
-          src="./report-template-v2.html?embed=1&tv=6.2.194&case=${encodeURIComponent(cl.case_no || 'SMPL_01_백석균')}&recipient=${encodeURIComponent(_reportRecipient || '')}&dept=${encodeURIComponent(_reportDept || '손해사정팀')}&title=${encodeURIComponent(cl.report_title || '누수사고 손해사정서')}&policyNo=${encodeURIComponent(cl.policy_no || r.policy_no || '')}"
+          src="./report-template-v2.html?embed=1&tv=6.2.195&case=${encodeURIComponent(cl.case_no || 'SMPL_01_백석균')}&recipient=${encodeURIComponent(_reportRecipient || '')}&dept=${encodeURIComponent(_reportDept || '손해사정팀')}&title=${encodeURIComponent(cl.report_title || '누수사고 손해사정서')}&policyNo=${encodeURIComponent(cl.policy_no || r.policy_no || '')}"
           style="width:100%;height:1400px;border:1px solid var(--ins-line);border-radius:6px;background:white;display:block;"
           title="손해사정서 양식 (SMPL_01 기반 v6.1.4)"
           onload="s3InjectReportData()"
@@ -5623,6 +5641,7 @@ function insStep3HTML() {
         <div style="margin-top:8px;font-size:11px;color:var(--ins-muted);text-align:center">
           ⓘ 양식: SMPL_01 백석균 양식 정본 7페이지 · 우측 PDF 다운로드 버튼으로 인쇄
         </div>
+        ${s3PhotoEditPanelHTML()}
       </div>
 
       <!-- 탭 컨텐츠 2: 누수소견서 (파트너 명의) -->
@@ -5661,7 +5680,7 @@ function insStep3HTML() {
           <div>보고서 번호 · ${escapeHtml(reportNo)}</div>
           <div>약관 · ${escapeHtml(insTypeLabel)}</div>
           <div>판단 결과 · ${covVal || '미산출'}</div>
-          <div>버전 · v6.2.194</div>
+          <div>버전 · v6.2.195</div>
         </div>
       </div>
     </div>
@@ -6959,3 +6978,131 @@ window.s3ExportPdf = s3ExportPdf;
 window.s3SwitchTab = s3SwitchTab;
 window.s3InjectReportData = s3InjectReportData;
 window.s3UpdateReportField = s3UpdateReportField;
+
+// ═══════════════════════════════════════════════════════════════
+// v6.2.195: 보고서 사진 편집 (제외/복원 · 단계이동 · 외부추가)
+//   _insAllPhotos(전체) 기반으로 편집 UI 렌더. 변경은 case_documents에 즉시 persist.
+//   원본 분류(document_type)는 보존, 보고서 표시만 report_* 컬럼으로 제어.
+// ═══════════════════════════════════════════════════════════════
+const _S3_STAGE_LABEL = { before: '수리 전', during: '수리 중', after: '수리 후' };
+
+function s3PhotoEditPanelHTML() {
+  const all = _insAllPhotos || { before: [], during: [], after: [] };
+  const total = all.before.length + all.during.length + all.after.length;
+
+  const cardHTML = (p) => {
+    const dimmed = p.report_include ? '' : 'opacity:.4;filter:grayscale(1)';
+    const src = escapeHtml(p.partner_name || '');
+    return `
+      <div style="position:relative;border:1px solid var(--ins-line);border-radius:6px;overflow:hidden;background:#fff;${dimmed}">
+        <img src="${p.url}" alt="" style="width:100%;height:90px;object-fit:cover;display:block">
+        <div style="font-size:9px;color:#6b7280;padding:2px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📸 ${src}</div>
+        <div style="display:flex;border-top:1px solid var(--ins-line)">
+          ${p.report_include
+            ? `<button onclick="s3PhotoToggle('${p.doc_id}',false)" title="보고서에서 제외" style="flex:1;border:none;background:#fef2f2;color:#b91c1c;font-size:11px;padding:3px;cursor:pointer">✕ 제외</button>`
+            : `<button onclick="s3PhotoToggle('${p.doc_id}',true)" title="보고서에 복원" style="flex:1;border:none;background:#f0fdf4;color:#15803d;font-size:11px;padding:3px;cursor:pointer">↩ 복원</button>`}
+          <select onchange="s3PhotoMove('${p.doc_id}', this.value)" title="단계 이동" style="flex:1;border:none;border-left:1px solid var(--ins-line);font-size:10px;cursor:pointer;background:#fff">
+            <option value="before" ${p.stage==='before'?'selected':''}>전</option>
+            <option value="during" ${p.stage==='during'?'selected':''}>중</option>
+            <option value="after"  ${p.stage==='after'?'selected':''}>후</option>
+          </select>
+        </div>
+      </div>`;
+  };
+
+  const stageBlock = (stage) => {
+    const arr = all[stage] || [];
+    const cards = arr.length
+      ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px">${arr.map(cardHTML).join('')}</div>`
+      : `<div style="font-size:12px;color:var(--ins-muted);padding:8px">사진 없음</div>`;
+    const incl = arr.filter(p => p.report_include).length;
+    return `
+      <div style="margin-bottom:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <div style="font-size:13px;font-weight:600;color:var(--ins-ink-1)">${_S3_STAGE_LABEL[stage]} <span style="font-weight:400;color:var(--ins-muted)">· 보고서 ${incl}/${arr.length}장</span></div>
+          <label style="font-size:11px;color:#2563eb;cursor:pointer">
+            + 외부사진 추가
+            <input type="file" accept="image/*" multiple style="display:none" onchange="s3PhotoUpload(event,'${stage}')">
+          </label>
+        </div>
+        ${cards}
+      </div>`;
+  };
+
+  return `
+    <div class="no-print" style="margin-top:16px;padding:14px 16px;background:#fafafa;border:1px solid var(--ins-line);border-radius:8px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div style="font-size:14px;font-weight:700;color:var(--ins-ink-1)">🖼 현장사진 편집 <span style="font-size:11px;font-weight:400;color:var(--ins-muted)">· 전체 ${total}장 · 변경 즉시 저장</span></div>
+        <div style="font-size:11px;color:var(--ins-muted)">제외/단계이동/외부추가 — 보고서에 바로 반영</div>
+      </div>
+      ${stageBlock('before')}
+      ${stageBlock('during')}
+      ${stageBlock('after')}
+    </div>`;
+}
+
+// 보고서 포함/제외 토글
+async function s3PhotoToggle(docId, include) {
+  try {
+    const { error } = await sb.from('case_documents')
+      .update({ report_include: include }).eq('id', docId);
+    if (error) throw error;
+    await s3LoadReportData();
+    insRender();
+    toast(include ? '보고서에 복원됨' : '보고서에서 제외됨', 's');
+  } catch (e) { console.warn('[s3PhotoToggle]', e); toast('변경 실패: ' + e.message, 'e'); }
+}
+window.s3PhotoToggle = s3PhotoToggle;
+
+// 단계 이동 (보고서 표시 단계 재배치 — 원본 document_type 보존)
+async function s3PhotoMove(docId, newStage) {
+  if (!['before','during','after'].includes(newStage)) return;
+  try {
+    const { error } = await sb.from('case_documents')
+      .update({ report_stage: newStage }).eq('id', docId);
+    if (error) throw error;
+    await s3LoadReportData();
+    insRender();
+    toast(`${_S3_STAGE_LABEL[newStage]}(으)로 이동`, 's');
+  } catch (e) { console.warn('[s3PhotoMove]', e); toast('이동 실패: ' + e.message, 'e'); }
+}
+window.s3PhotoMove = s3PhotoMove;
+
+// 외부 사진 업로드 (관리자가 보고서에서 직접 추가)
+//   storage: partner-work/{case_id}/admin_{stage}_{ts}_{i}.{ext}
+//   case_documents: assignment_id=NULL, uploaded_by_role='admin', report_stage=stage
+async function s3PhotoUpload(ev, stage) {
+  const files = Array.from(ev.target.files || []);
+  if (!files.length) return;
+  if (!_insCaseId) { toast('사건 정보가 없어 업로드할 수 없습니다', 'e'); return; }
+  toast(`${files.length}장 업로드 중…`, 's');
+  let ok = 0, fail = 0;
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i];
+    try {
+      const ext = (f.name.split('.').pop() || 'jpg').toLowerCase();
+      const path = `${_insCaseId}/admin_${stage}_${Date.now()}_${i}.${ext}`;
+      const { error: upErr } = await sb.storage.from('partner-work').upload(path, f, { upsert: false });
+      if (upErr) throw upErr;
+      const { error: docErr } = await sb.from('case_documents').insert({
+        case_id: _insCaseId,
+        document_type: `repair_photo_${stage}`,
+        file_url: path,
+        file_name: f.name,
+        assignment_id: null,
+        uploaded_by_role: 'admin',
+        uploaded_by_type: 'admin',
+        report_include: true,
+        report_stage: stage,
+      });
+      if (docErr) throw docErr;
+      ok++;
+    } catch (e) { console.warn('[s3PhotoUpload]', f.name, e); fail++; }
+  }
+  ev.target.value = '';  // 같은 파일 재선택 가능하게 초기화
+  await s3LoadReportData();
+  insRender();
+  toast(`업로드 완료: 성공 ${ok}${fail ? ` / 실패 ${fail}` : ''}`, fail ? 'e' : 's');
+}
+window.s3PhotoUpload = s3PhotoUpload;
+window.s3PhotoEditPanelHTML = s3PhotoEditPanelHTML;
