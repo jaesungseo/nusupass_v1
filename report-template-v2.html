@@ -838,7 +838,9 @@ function renderPhotoRow(label, photos){
         </td>
       </tr>`;
   }
-  // 사진 2장씩 묶어서 행 생성. 첫 행에만 라벨 표시 (rowspan), 나머지 행은 라벨 셀 생략
+  // v6.2.197: rowspan 제거 + 매 행에 단계 라벨.
+  //   rowspan이 페이지 분할을 막아 앞 페이지가 비고 다음 장에 몰리던 문제 해결.
+  //   각 행이 독립적으로 페이지 경계를 넘으며 자연스럽게 채워짐. 라벨은 매 행 표시(A-1).
   const rows = [];
   for (let i = 0; i < p.length; i += 2) {
     const a = p[i] ? `<div class="photo-slot"><img src="${escapeHtml(p[i].url||'')}" alt=""/></div>` : `<div class="photo-slot"></div>`;
@@ -848,9 +850,7 @@ function renderPhotoRow(label, photos){
   const totalRows = rows.length;
   return rows.map((r, idx) => `
     <tr class="photo-row">
-      ${idx === 0
-        ? `<td class="lbl-photo" rowspan="${totalRows}">현장사진<br>(${escapeHtml(label)})${totalRows > 1 ? `<br><span style="font-size:10px;color:var(--ink-3)">${p.length}장</span>` : ''}</td>`
-        : ''}
+      <td class="lbl-photo">현장사진<br>(${escapeHtml(label)})${totalRows > 1 ? `<br><span style="font-size:10px;color:var(--ink-3)">${idx+1}/${totalRows}</span>` : ''}</td>
       <td class="photo-cell" colspan="2">
         <div class="photo-cell-row">
           ${r.a}

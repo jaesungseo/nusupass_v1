@@ -5641,7 +5641,7 @@ function insStep3HTML() {
       <div id="tab-content-report" style="display:block">
         <iframe
           id="reportFrame"
-          src="./report-template-v2.html?embed=1&tv=6.2.195&case=${encodeURIComponent(cl.case_no || 'SMPL_01_백석균')}&recipient=${encodeURIComponent(_reportRecipient || '')}&dept=${encodeURIComponent(_reportDept || '손해사정팀')}&title=${encodeURIComponent(cl.report_title || '누수사고 손해사정서')}&policyNo=${encodeURIComponent(cl.policy_no || r.policy_no || '')}"
+          src="./report-template-v2.html?embed=1&tv=6.2.197&case=${encodeURIComponent(cl.case_no || 'SMPL_01_백석균')}&recipient=${encodeURIComponent(_reportRecipient || '')}&dept=${encodeURIComponent(_reportDept || '손해사정팀')}&title=${encodeURIComponent(cl.report_title || '누수사고 손해사정서')}&policyNo=${encodeURIComponent(cl.policy_no || r.policy_no || '')}"
           style="width:100%;height:1400px;border:1px solid var(--ins-line);border-radius:6px;background:white;display:block;"
           title="손해사정서 양식 (SMPL_01 기반 v6.1.4)"
           onload="s3InjectReportData()"
@@ -5688,7 +5688,7 @@ function insStep3HTML() {
           <div>보고서 번호 · ${escapeHtml(reportNo)}</div>
           <div>약관 · ${escapeHtml(insTypeLabel)}</div>
           <div>판단 결과 · ${covVal || '미산출'}</div>
-          <div>버전 · v6.2.196</div>
+          <div>버전 · v6.2.197</div>
         </div>
       </div>
     </div>
