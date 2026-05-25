@@ -564,6 +564,10 @@ function clearInsuranceState() {
   _extractedCandidates = {};
   _userOverrides = {};
   _analyzingStep = 0;
+  // v6.2.196: 보고서/사진 상태도 초기화 (이전 케이스가 보고서에 남는 오염 방지)
+  _insCurrentReportData = null;
+  _insRepairPhotos = { before: [], during: [], after: [] };
+  _insAllPhotos    = { before: [], during: [], after: [] };
 }
 window.clearInsuranceState = clearInsuranceState;
 
@@ -578,6 +582,10 @@ async function openInsuranceTab(caseId, caseNo) {
   _extractedCandidates = {};
   _userOverrides = {};
   _analyzingStep = 0;
+  // v6.2.196: 보고서/사진 상태 초기화 (이전 케이스가 보고서에 남는 오염 방지)
+  _insCurrentReportData = null;
+  _insRepairPhotos = { before: [], during: [], after: [] };
+  _insAllPhotos    = { before: [], during: [], after: [] };
 
   go('insurance');
   document.getElementById('insurancePageSub').textContent = `사건 ${caseNo || caseId.slice(0,8)}`;
@@ -5680,7 +5688,7 @@ function insStep3HTML() {
           <div>보고서 번호 · ${escapeHtml(reportNo)}</div>
           <div>약관 · ${escapeHtml(insTypeLabel)}</div>
           <div>판단 결과 · ${covVal || '미산출'}</div>
-          <div>버전 · v6.2.195</div>
+          <div>버전 · v6.2.196</div>
         </div>
       </div>
     </div>
