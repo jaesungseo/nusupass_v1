@@ -3199,6 +3199,36 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 </div><!-- /mainApp -->
 
 <!-- ── 접수 상세 모달 ── -->
+<div class="modal-overlay" id="accEditModal">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <div class="modal-title">계정 수정</div>
+      <button class="modal-close" onclick="closeModal('accEditModal')">✕</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <input type="hidden" id="accEdit-type">
+      <input type="hidden" id="accEdit-id">
+      <label style="display:block;">
+        <span style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;" id="accEdit-name-label">이름 *</span>
+        <input type="text" id="accEdit-name" style="width:100%;padding:9px;border:1px solid #d1d5db;border-radius:6px;">
+      </label>
+      <label style="display:block;">
+        <span style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;">전화</span>
+        <input type="text" id="accEdit-phone" placeholder="010-0000-0000" style="width:100%;padding:9px;border:1px solid #d1d5db;border-radius:6px;">
+      </label>
+      <label style="display:block;" id="accEdit-role-wrap">
+        <span style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;" id="accEdit-role-label">역할</span>
+        <select id="accEdit-role" style="width:100%;padding:9px;border:1px solid #d1d5db;border-radius:6px;"></select>
+        <span style="font-size:11px;color:#9ca3af;display:block;margin-top:4px;" id="accEdit-role-hint"></span>
+      </label>
+    </div>
+    <div class="modal-footer" style="margin-top:20px;display:flex;gap:8px;justify-content:flex-end;">
+      <button class="btn btn-ghost" onclick="closeModal('accEditModal')">취소</button>
+      <button class="btn btn-primary" onclick="accEditSave()">저장</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="caseDetailModal">
   <div class="modal" style="max-width:640px">
     <div class="modal-header">
@@ -5547,7 +5577,7 @@ async function accCreate(){
   const kind = document.getElementById('acc-kind').value;
   const name = document.getElementById('acc-name').value.trim();
   const company_name = document.getElementById('acc-company').value.trim();
-  const phone = document.getElementById('acc-phone').value.trim();
+  const phone = formatPhone(document.getElementById('acc-phone').value.trim());
   const isPartner = (kind==='leak' || kind==='int');
 
   if(!name){ toast('이름을 입력하세요','e'); return; }
@@ -5596,6 +5626,9 @@ async function accCreate(){
 async function loadAccounts(){
   if(!isReal){ document.getElementById('acc-list').innerHTML='<div class="empty"><div class="empty-text">Supabase 연결 필요</div></div>'; return; }
   accKindChanged();
+  // 전화 입력칸 자동 하이픈 (중복 부착 방지)
+  const phoneEl = document.getElementById('acc-phone');
+  if(phoneEl && !phoneEl.dataset.phoneFmt){ attachPhoneFormat(phoneEl); phoneEl.dataset.phoneFmt='1'; }
   const listEl = document.getElementById('acc-list');
   try {
     // 직원(admin_users) + 파트너(partner_companies + users)
@@ -5611,11 +5644,12 @@ async function loadAccounts(){
         <td>${escapeHtml(a.email||'-')}</td>
         <td>${escapeHtml(a.phone||'-')}</td>
         <td>${a.is_active?'<span style="color:#16a34a;">활성</span>':'<span style="color:#9ca3af;">비활성</span>'}</td>
-        <td>${a.role_code==='superadmin'?'<span style="color:#9ca3af;font-size:11px;">대표관리자 계정</span>':`<button class="btn btn-ghost btn-sm" onclick="accToggleActive('admin','${a.id}',${!a.is_active})">${a.is_active?'비활성화':'활성화'}</button>`}</td>
+        <td>${a.role_code==='superadmin'?'<span style="color:#9ca3af;font-size:11px;">대표관리자 계정</span>':`<button class="btn btn-ghost btn-sm" onclick="accEdit('admin','${a.id}','${escapeHtml(a.name||'')}','${escapeHtml(a.phone||'')}','${a.role_code}')">수정</button> <button class="btn btn-ghost btn-sm" onclick="accToggleActive('admin','${a.id}',${!a.is_active})">${a.is_active?'비활성화':'활성화'}</button>`}</td>
       </tr>`).join('');
 
     const partnerRows = (partners||[]).map(p=>{
-      const sp = (p.specialty_codes||[]).includes('detection')?'누수업체':(p.specialty_codes||[]).includes('interior')?'인테리어':'파트너';
+      const specCode = (p.specialty_codes||[]).includes('interior')?'interior':'detection';
+      const sp = specCode==='detection'?'누수업체':'인테리어';
       const email = (p.partner_users&&p.partner_users[0])?p.partner_users[0].email:'-';
       return `
       <tr>
@@ -5624,7 +5658,7 @@ async function loadAccounts(){
         <td>${escapeHtml(email)}</td>
         <td>${escapeHtml(p.phone||'-')}</td>
         <td>${p.is_active?'<span style="color:#16a34a;">활성</span>':'<span style="color:#9ca3af;">비활성</span>'}</td>
-        <td><button class="btn btn-ghost btn-sm" onclick="accToggleActive('partner','${p.id}',${!p.is_active})">${p.is_active?'비활성화':'활성화'}</button></td>
+        <td><button class="btn btn-ghost btn-sm" onclick="accEdit('partner','${p.id}','${escapeHtml(p.owner_name||'')}','${escapeHtml(p.phone||'')}','${specCode}')">수정</button> <button class="btn btn-ghost btn-sm" onclick="accToggleActive('partner','${p.id}',${!p.is_active})">${p.is_active?'비활성화':'활성화'}</button></td>
       </tr>`;
     }).join('');
 
@@ -5655,6 +5689,88 @@ async function accToggleActive(type, id, next){
     loadAccounts();
   } catch(e){ console.error('[accToggleActive]',e); toast('실패: '+(e.message||e),'e'); }
 }
+
+// 전화번호 자동 하이픈 포맷
+//   010-XXXX-XXXX (휴대폰), 02-XXX(X)-XXXX (서울), 0XX-XXX(X)-XXXX (지역)
+function formatPhone(v){
+  const d = (v||'').replace(/\D/g,'').slice(0,11);  // 숫자만, 최대 11자리
+  if(!d) return '';
+  if(d.startsWith('02')){
+    // 서울 02
+    if(d.length<3) return d;
+    if(d.length<6) return d.replace(/(\d{2})(\d+)/,'$1-$2');
+    if(d.length<10) return d.replace(/(\d{2})(\d{3})(\d+)/,'$1-$2-$3');
+    return d.replace(/(\d{2})(\d{4})(\d+)/,'$1-$2-$3');
+  }
+  // 010 등 3자리 국번
+  if(d.length<4) return d;
+  if(d.length<8) return d.replace(/(\d{3})(\d+)/,'$1-$2');
+  if(d.length<11) return d.replace(/(\d{3})(\d{3})(\d+)/,'$1-$2-$3');
+  return d.replace(/(\d{3})(\d{4})(\d+)/,'$1-$2-$3');
+}
+// input에 실시간 적용
+function attachPhoneFormat(el){
+  if(!el) return;
+  el.addEventListener('input', ()=>{ el.value = formatPhone(el.value); });
+}
+
+// 계정 수정 모달 열기 — manager 이상. 이름·전화 + 같은 그룹 내 역할/전문분야 변경.
+//   admin: staff↔manager (superadmin 변경 불가), partner: leak↔int
+function accEdit(type, id, curName, curPhone, curRoleOrSpec){
+  document.getElementById('accEdit-type').value = type;
+  document.getElementById('accEdit-id').value = id;
+  document.getElementById('accEdit-name').value = curName||'';
+  document.getElementById('accEdit-phone').value = curPhone||'';
+  document.getElementById('accEdit-name-label').textContent = (type==='partner'?'대표자 이름 *':'이름 *');
+
+  const roleSel = document.getElementById('accEdit-role');
+  const roleLabel = document.getElementById('accEdit-role-label');
+  const roleHint = document.getElementById('accEdit-role-hint');
+  if(type==='admin'){
+    roleLabel.textContent = '역할';
+    roleSel.innerHTML = `<option value="staff">직원 (staff)</option><option value="manager">관리자 (manager)</option>`;
+    roleSel.value = (curRoleOrSpec==='manager')?'manager':'staff';
+    roleHint.textContent = '직원 ↔ 관리자 변경 가능 (대표관리자로는 변경 불가)';
+  } else {
+    roleLabel.textContent = '전문분야';
+    roleSel.innerHTML = `<option value="detection">누수업체 (leak)</option><option value="interior">인테리어업체 (int)</option>`;
+    roleSel.value = (curRoleOrSpec==='interior')?'interior':'detection';
+    roleHint.textContent = '누수 ↔ 인테리어 전문분야 변경';
+  }
+  // 전화 자동 하이픈
+  const pe = document.getElementById('accEdit-phone');
+  if(pe && !pe.dataset.phoneFmt){ attachPhoneFormat(pe); pe.dataset.phoneFmt='1'; }
+  openModal('accEditModal');
+}
+window.accEdit = accEdit;
+
+async function accEditSave(){
+  const type = document.getElementById('accEdit-type').value;
+  const id = document.getElementById('accEdit-id').value;
+  const name = document.getElementById('accEdit-name').value.trim();
+  const phone = formatPhone(document.getElementById('accEdit-phone').value.trim());
+  const roleOrSpec = document.getElementById('accEdit-role').value;
+  if(!name){ toast('이름은 비울 수 없습니다','e'); return; }
+  try {
+    if(type==='admin'){
+      // superadmin으로의 변경은 방어 (드롭다운에 없지만 이중 안전장치)
+      if(roleOrSpec==='superadmin'){ toast('대표관리자로는 변경할 수 없습니다','e'); return; }
+      const { error } = await sb.from('admin_users')
+        .update({ name, phone:phone||null, role_code:roleOrSpec }).eq('id', id);
+      if(error) throw error;
+    } else {
+      const { error } = await sb.from('partner_companies')
+        .update({ owner_name:name, phone:phone||null, specialty_codes:[roleOrSpec] }).eq('id', id);
+      if(error) throw error;
+    }
+    closeModal('accEditModal');
+    toast('수정되었습니다','s');
+    loadAccounts();
+  } catch(e){ console.error('[accEditSave]',e); toast('수정 실패: '+(e.message||e),'e'); }
+}
+window.accEditSave = accEditSave;
+
+
 
 function loadMyAccount(){
   document.getElementById('my-name').textContent = curUser?.name || '-';
@@ -6022,7 +6138,7 @@ if (typeof window.escapeHtml !== 'function') {
 }
 </script>
 
-<script src="./insurance-tab.js?v=6.2.199"></script>
+<script src="./insurance-tab.js?v=6.2.201"></script>
 <!-- v6 룰엔진은 유지 (분석에 사용되지 않으면 무해, 추출 단계 가드용일 가능성) -->
 <script src="./sabi-rule-v6.js?v=6.0.0"></script>
 <!-- v6.2.25: insurance-tab-v6-patch.js 일시 비활성화 — 옛 4-Call 분석 monkey-patch 가능성 차단.
