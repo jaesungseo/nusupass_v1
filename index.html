@@ -5533,7 +5533,7 @@ const PROMPT_DISPLAY_ORDER = [
 function escapeHtml(s){
   return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
-const ROLE_LABEL = { superadmin:'대표', manager:'관리자', staff:'직원' };
+const ROLE_LABEL = { superadmin:'대표관리자', manager:'관리자', staff:'직원' };
 
 function accKindChanged(){
   const kind = document.getElementById('acc-kind').value;
@@ -5611,7 +5611,7 @@ async function loadAccounts(){
         <td>${escapeHtml(a.email||'-')}</td>
         <td>${escapeHtml(a.phone||'-')}</td>
         <td>${a.is_active?'<span style="color:#16a34a;">활성</span>':'<span style="color:#9ca3af;">비활성</span>'}</td>
-        <td>${a.role_code==='superadmin'?'<span style="color:#9ca3af;font-size:11px;">대표 계정</span>':`<button class="btn btn-ghost btn-sm" onclick="accToggleActive('admin','${a.id}',${!a.is_active})">${a.is_active?'비활성화':'활성화'}</button>`}</td>
+        <td>${a.role_code==='superadmin'?'<span style="color:#9ca3af;font-size:11px;">대표관리자 계정</span>':`<button class="btn btn-ghost btn-sm" onclick="accToggleActive('admin','${a.id}',${!a.is_active})">${a.is_active?'비활성화':'활성화'}</button>`}</td>
       </tr>`).join('');
 
     const partnerRows = (partners||[]).map(p=>{
@@ -6022,7 +6022,7 @@ if (typeof window.escapeHtml !== 'function') {
 }
 </script>
 
-<script src="./insurance-tab.js?v=6.2.197"></script>
+<script src="./insurance-tab.js?v=6.2.199"></script>
 <!-- v6 룰엔진은 유지 (분석에 사용되지 않으면 무해, 추출 단계 가드용일 가능성) -->
 <script src="./sabi-rule-v6.js?v=6.0.0"></script>
 <!-- v6.2.25: insurance-tab-v6-patch.js 일시 비활성화 — 옛 4-Call 분석 monkey-patch 가능성 차단.
