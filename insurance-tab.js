@@ -1976,12 +1976,13 @@ function insStep2HTML() {
         `;
       }).join('');
       chipsHTML += `<span class="v62-candidate-source">출처: ${escapeHtml(field.source)}</span>`;
-      // v6.2.x: 출처에 대응하는 업로드 PDF가 있으면 "원본 보기" 버튼 추가
-      const _srcCode = s2SourceToDocCode(field.source, field.key);
-      if (_srcCode) {
+      // v6.2.x: 해당 필드가 속한 문서 그룹에 업로드된 원본이 있으면 "원본 보기" 버튼 추가
+      const _grp = s2FieldGroup(field.key);
+      const _grpDocs = s2DocsForGroup(_grp);
+      if (_grpDocs.length > 0) {
         const _hasLow = candidates.some(c => c.confidence === 'low');
         chipsHTML += `<button type="button" class="v62-src-pdf-btn${_hasLow ? ' is-warn' : ''}"
-          onclick="s2OpenSourcePdf('${_srcCode}', ${JSON.stringify(field.source).replace(/"/g,'&quot;')})">📄 원본 보기</button>`;
+          onclick="s2OpenSourcePdf('${_grp}', ${JSON.stringify(field.source).replace(/"/g,'&quot;')})">📄 원본 보기</button>`;
       }
       // low confidence 단일 후보 & 미입력 시 안내
       if (candidates.length === 1 && firstCandidate.confidence === 'low' && !userValue) {
@@ -2104,6 +2105,17 @@ function insStep2HTML() {
         color:#6b7280; padding:2px 8px; border-radius:6px;
       }
       .s2-pdf-panel-close:hover{ background:#e5e7eb; color:#111827; }
+      .s2-pdf-panel-tabs{
+        display:flex; gap:4px; flex-wrap:wrap;
+        padding:8px 12px; border-bottom:1px solid #e2e8f0; background:#f1f5f9;
+      }
+      .s2-pdf-tab{
+        padding:4px 10px; font-size:11px; font-weight:600;
+        color:#475569; background:#fff; border:1px solid #cbd5e1;
+        border-radius:6px; cursor:pointer; white-space:nowrap;
+      }
+      .s2-pdf-tab:hover{ background:#e2e8f0; }
+      .s2-pdf-tab.active{ color:#fff; background:#2563eb; border-color:#2563eb; }
       .s2-pdf-panel-body{ flex:1; overflow:auto; background:#525659; }
       .s2-pdf-frame{ width:100%; height:100%; border:none; }
       .s2-pdf-img{ width:100%; height:auto; display:block; }
@@ -2335,45 +2347,60 @@ function s2ApplyCandidate(key, value, fieldId) {
 window.s2ApplyCandidate = s2ApplyCandidate;
 
 // ─────────────────────────────────────────────
-// v6.2.x: 검수 편의 — 출처 PDF 미리보기 (우측 슬라이드 패널)
+// v6.2.x: 검수 편의 — 원본 문서 미리보기 (그룹 기반 + 탭 패널)
 // ─────────────────────────────────────────────
-// 출처 라벨(field.source) + 필드키 → 업로드 doc_code 매핑.
-// 한 출처에 여러 문서가 묶인 경우 우선순위 순으로 처음 존재하는 것을 사용.
-// 피보험자/피해자 구분: victim 필드키는 피해자 문서 우선.
-function s2SourceToDocCode(source, fieldKey) {
-  const isVictim = /^victim_/.test(fieldKey || '');
-  const tryList = (codes) => codes.find(c => _insUploaded[c] && _insUploaded[c].file_path) || null;
-
-  switch (source) {
-    case '보험증권':
-      return tryList(['insurance_policy']);
-    case '주민등록등본':
-      return isVictim
-        ? tryList(['family_doc_victim', 'family_doc_victim_2', 'resident_reg', 'family_doc'])
-        : tryList(['resident_reg', 'family_doc', 'family_doc_2', 'family_cert']);
-    case '주민등록등본/청구서':
-      return tryList(['resident_reg', 'family_doc', 'claim_form']);
-    case '건축물대장/등기부':
-      return isVictim
-        ? tryList(['ownership_doc_victim', 'ownership_doc_victim_2', 'ownership_victim'])
-        : tryList(['ownership_insured', 'ownership_insured_2', 'ownership_accident']);
-    case '누수소견서/경위서':
-      return tryList(['leak_opinion_external', 'incident_statement', 'claim_form']);
-    default:
-      // '룰 기반 자동', '분석 단계에서 결정' 등은 원본 PDF가 없음
-      return null;
-  }
+// 출처 라벨을 doc_code로 번역하지 않는다(번역은 라벨↔실제출처 불일치로 깨짐).
+// 대신 필드가 속한 "문서 그룹"의 업로드 문서를 그대로 나열한다.
+//   - victim_*           → C_public_victim (피해자 공공서류)
+//   - policy/계약 관련    → A_contract (보험증권)
+//   - accident_date/addr → B_claim (청구·소견·경위)
+//   - 그 외(insured_* 등) → C_public_insured (피보험자 공공서류)
+function s2FieldGroup(fieldKey) {
+  const k = fieldKey || '';
+  if (/^victim_/.test(k)) return 'C_public_victim';
+  if (/^(policy_|contractor|insurance_period|coverage_limit|deductible|rider)/.test(k)) return 'A_contract';
+  if (/^accident_(date|address)/.test(k)) return 'B_claim';
+  return 'C_public_insured';
 }
 
-// 우측 슬라이드 패널에 출처 PDF 표시
-async function s2OpenSourcePdf(docCode, sourceLabel) {
-  const up = _insUploaded[docCode];
-  if (!up || !up.file_path) {
-    toast('해당 출처의 원본 파일을 찾을 수 없습니다.', 'w');
+// 그룹에 속하고 실제 업로드된 문서만 수집 (멀티파일 _2 + legacy 포함)
+// 반환: [{ code, name, file_path, doc_name }, ...]
+function s2DocsForGroup(group) {
+  // 해당 그룹의 base code 목록 (INS_DOCS 시스템 정의 역참조 — 하드코딩 매핑 아님)
+  const baseCodes = INS_DOCS
+    .filter(d => d.group === group || (group.startsWith('C_public') && d.group === '_legacy'))
+    .map(d => d.code);
+
+  const out = [];
+  const seen = new Set();
+  const pushIf = (code, fallbackName) => {
+    const up = _insUploaded[code];
+    if (up && up.file_path && !seen.has(up.file_path)) {
+      seen.add(up.file_path);
+      out.push({ code, name: up.doc_name || fallbackName || code, file_path: up.file_path, doc_name: up.doc_name });
+    }
+  };
+
+  for (const c of baseCodes) {
+    const def = INS_DOCS.find(d => d.code === c);
+    pushIf(c, def?.name);          // base
+    pushIf(c + '_2', def?.name);   // 멀티파일 두 번째
+    pushIf(c + '_3', def?.name);   // 혹시 세 번째까지
+  }
+  return out;
+}
+
+// 우측 슬라이드 패널 — 그룹 문서를 탭으로 전환하며 미리보기
+let _s2PdfDocs = [];   // 현재 패널에 로드된 문서 목록
+async function s2OpenSourcePdf(group, sourceLabel) {
+  const docs = s2DocsForGroup(group);
+  if (docs.length === 0) {
+    toast('해당 항목에 업로드된 원본 문서가 없습니다.', 'w');
     return;
   }
+  _s2PdfDocs = docs;
 
-  // 패널 DOM 준비 (없으면 생성)
+  // 패널 DOM 준비
   let panel = document.getElementById('s2-pdf-panel');
   if (!panel) {
     panel = document.createElement('div');
@@ -2384,6 +2411,7 @@ async function s2OpenSourcePdf(docCode, sourceLabel) {
         <span id="s2-pdf-panel-title">원본 문서</span>
         <button type="button" class="s2-pdf-panel-close" onclick="s2CloseSourcePdf()">✕</button>
       </div>
+      <div class="s2-pdf-panel-tabs" id="s2-pdf-panel-tabs"></div>
       <div class="s2-pdf-panel-body" id="s2-pdf-panel-body">
         <div class="s2-pdf-loading">불러오는 중…</div>
       </div>`;
@@ -2391,27 +2419,57 @@ async function s2OpenSourcePdf(docCode, sourceLabel) {
   }
 
   const titleEl = document.getElementById('s2-pdf-panel-title');
-  const bodyEl  = document.getElementById('s2-pdf-panel-body');
-  if (titleEl) titleEl.textContent = `${sourceLabel || '원본 문서'} — ${up.doc_name || docCode}`;
-  if (bodyEl)  bodyEl.innerHTML = '<div class="s2-pdf-loading">불러오는 중…</div>';
+  const grpLabel = (INS_DOC_GROUPS[group] && INS_DOC_GROUPS[group].title) || sourceLabel || '원본 문서';
+  if (titleEl) titleEl.textContent = grpLabel;
+
+  // 탭 렌더 (문서 2개 이상일 때만 표시)
+  const tabsEl = document.getElementById('s2-pdf-panel-tabs');
+  if (tabsEl) {
+    tabsEl.innerHTML = docs.length > 1
+      ? docs.map((d, i) =>
+          `<button type="button" class="s2-pdf-tab${i===0?' active':''}" data-idx="${i}"
+             onclick="s2ShowPdfDoc(${i})" title="${escapeHtml(d.name)}">${escapeHtml(s2ShortDocName(d.name))}</button>`
+        ).join('')
+      : '';
+    tabsEl.style.display = docs.length > 1 ? 'flex' : 'none';
+  }
 
   panel.classList.add('open');
+  s2ShowPdfDoc(0);
+}
 
-  // 서명 URL 생성 (createSignedUrl: 버킷 루트 기준 상대경로)
+// 파일명 짧게 (탭 라벨용)
+function s2ShortDocName(name) {
+  if (!name) return '문서';
+  let s = String(name).replace(/\.(pdf|jpe?g|png|webp|heic)$/i, '');
+  // 흔한 접두 SMPL_xx_y- 패턴 제거 + (피보)/(피해) 등 괄호 표기 유지
+  s = s.replace(/^SMPL[_\w]*?[-_]/i, '');
+  return s.length > 18 ? s.slice(0, 17) + '…' : s;
+}
+
+async function s2ShowPdfDoc(idx) {
+  const doc = _s2PdfDocs[idx];
+  const bodyEl = document.getElementById('s2-pdf-panel-body');
+  if (!doc || !bodyEl) return;
+
+  // 탭 active 갱신
+  document.querySelectorAll('#s2-pdf-panel-tabs .s2-pdf-tab').forEach(b => {
+    b.classList.toggle('active', Number(b.dataset.idx) === idx);
+  });
+
+  bodyEl.innerHTML = '<div class="s2-pdf-loading">불러오는 중…</div>';
   try {
     const { data, error } = await sb.storage.from('insurance-docs')
-      .createSignedUrl(up.file_path, 600); // 10분 유효
+      .createSignedUrl(doc.file_path, 600); // 10분 유효
     if (error || !data?.signedUrl) throw new Error(error?.message || 'URL 생성 실패');
     const url = data.signedUrl;
-    const isPdf = /\.pdf($|\?)/i.test(up.file_path) || (up.file_path && !/\.(png|jpe?g|webp|heic)$/i.test(up.file_path));
-    if (bodyEl) {
-      bodyEl.innerHTML = isPdf
-        ? `<iframe class="s2-pdf-frame" src="${url}#toolbar=1&navpanes=0" title="원본 PDF"></iframe>`
-        : `<img class="s2-pdf-img" src="${url}" alt="원본 이미지">`;
-    }
+    const isImg = /\.(png|jpe?g|webp|heic)($|\?)/i.test(doc.file_path);
+    bodyEl.innerHTML = isImg
+      ? `<img class="s2-pdf-img" src="${url}" alt="원본 이미지">`
+      : `<iframe class="s2-pdf-frame" src="${url}#toolbar=1&navpanes=0" title="원본 PDF"></iframe>`;
   } catch (e) {
-    console.error('[s2OpenSourcePdf] 실패:', e);
-    if (bodyEl) bodyEl.innerHTML = `<div class="s2-pdf-loading" style="color:#c2410c">원본을 불러오지 못했습니다: ${escapeHtml(e.message)}</div>`;
+    console.error('[s2ShowPdfDoc] 실패:', e);
+    bodyEl.innerHTML = `<div class="s2-pdf-loading" style="color:#c2410c">원본을 불러오지 못했습니다: ${escapeHtml(e.message)}</div>`;
   }
 }
 
@@ -2420,9 +2478,11 @@ function s2CloseSourcePdf() {
   if (panel) panel.classList.remove('open');
 }
 
-window.s2SourceToDocCode = s2SourceToDocCode;
-window.s2OpenSourcePdf   = s2OpenSourcePdf;
-window.s2CloseSourcePdf  = s2CloseSourcePdf;
+window.s2FieldGroup     = s2FieldGroup;
+window.s2DocsForGroup   = s2DocsForGroup;
+window.s2OpenSourcePdf  = s2OpenSourcePdf;
+window.s2ShowPdfDoc     = s2ShowPdfDoc;
+window.s2CloseSourcePdf = s2CloseSourcePdf;
 
 // v6.2: STEP 1로 돌아가기
 function s2GoBackToStep1() {
