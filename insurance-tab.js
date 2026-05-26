@@ -1908,9 +1908,9 @@ function insStep2HTML() {
 
   // 피해자 필드 정의 (피해자별 반복)
   const VICTIM_FACT_FIELDS = [
-    { name:'성명',              key:'victim_name',            source:'주민등록등본', type:'text' },
-    { name:'주민등록번호',      key:'victim_rrn',             source:'주민등록등본', type:'text' },
-    { name:'소재지',            key:'victim_address',         source:'주민등록등본', type:'text' },
+    { name:'성명',              key:'victim_name',            source:'건축물대장/등기부', type:'text' },
+    { name:'주민등록번호',      key:'victim_rrn',             source:'건축물대장/등기부', type:'text' },
+    { name:'소재지',            key:'victim_address',         source:'건축물대장/등기부', type:'text' },
     { name:'건물소유자 여부',  key:'victim_owner_name',      source:'건축물대장/등기부', type:'text' },
   ];
 
