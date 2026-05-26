@@ -1976,9 +1976,16 @@ function insStep2HTML() {
         `;
       }).join('');
       chipsHTML += `<span class="v62-candidate-source">출처: ${escapeHtml(field.source)}</span>`;
+      // v6.2.x: 출처에 대응하는 업로드 PDF가 있으면 "원본 보기" 버튼 추가
+      const _srcCode = s2SourceToDocCode(field.source, field.key);
+      if (_srcCode) {
+        const _hasLow = candidates.some(c => c.confidence === 'low');
+        chipsHTML += `<button type="button" class="v62-src-pdf-btn${_hasLow ? ' is-warn' : ''}"
+          onclick="s2OpenSourcePdf('${_srcCode}', ${JSON.stringify(field.source).replace(/"/g,'&quot;')})">📄 원본 보기</button>`;
+      }
       // low confidence 단일 후보 & 미입력 시 안내
       if (candidates.length === 1 && firstCandidate.confidence === 'low' && !userValue) {
-        chipsHTML += `<span class="v62-candidate-source" style="color:#c2410c;font-weight:600">→ PDF 확인 후 후보 클릭 또는 직접 입력</span>`;
+        chipsHTML += `<span class="v62-candidate-source" style="color:#c2410c;font-weight:600">→ 원본 보기로 확인 후 후보 클릭 또는 직접 입력</span>`;
       }
     } else {
       chipsHTML = `<span class="v62-candidate-empty">후보 없음</span><span class="v62-candidate-source">예상 출처: ${escapeHtml(field.source)}</span>`;
@@ -2065,6 +2072,46 @@ function insStep2HTML() {
       }
       .s2-step-pill.done::before {
         content: "✓ ";
+      }
+      /* v6.2.x 검수 편의 — 원본 보기 버튼 + PDF 슬라이드 패널 */
+      .v62-src-pdf-btn{
+        display:inline-flex; align-items:center; gap:2px;
+        margin-left:6px; padding:2px 8px;
+        font-size:11px; font-weight:600; line-height:1.4;
+        color:#1d4ed8; background:#eff6ff; border:1px solid #bfdbfe;
+        border-radius:6px; cursor:pointer; transition:background .15s;
+      }
+      .v62-src-pdf-btn:hover{ background:#dbeafe; }
+      .v62-src-pdf-btn.is-warn{
+        color:#9a3412; background:#fff7ed; border-color:#fdba74;
+      }
+      .v62-src-pdf-btn.is-warn:hover{ background:#ffedd5; }
+      .s2-pdf-panel{
+        position:fixed; top:0; right:0; height:100vh; width:min(560px, 46vw);
+        background:#fff; border-left:1px solid #e2e8f0;
+        box-shadow:-8px 0 28px rgba(0,0,0,.12);
+        transform:translateX(100%); transition:transform .25s ease;
+        z-index:1000; display:flex; flex-direction:column;
+      }
+      .s2-pdf-panel.open{ transform:translateX(0); }
+      .s2-pdf-panel-header{
+        display:flex; align-items:center; justify-content:space-between;
+        padding:12px 16px; border-bottom:1px solid #e2e8f0;
+        font-size:14px; font-weight:700; color:#111827; background:#f8fafc;
+      }
+      .s2-pdf-panel-close{
+        border:none; background:transparent; font-size:18px; cursor:pointer;
+        color:#6b7280; padding:2px 8px; border-radius:6px;
+      }
+      .s2-pdf-panel-close:hover{ background:#e5e7eb; color:#111827; }
+      .s2-pdf-panel-body{ flex:1; overflow:auto; background:#525659; }
+      .s2-pdf-frame{ width:100%; height:100%; border:none; }
+      .s2-pdf-img{ width:100%; height:auto; display:block; }
+      .s2-pdf-loading{
+        padding:40px 20px; text-align:center; color:#fff; font-size:13px;
+      }
+      @media (max-width:768px){
+        .s2-pdf-panel{ width:100vw; }
       }
     </style>
     <div id="s2-loading" style="display:none; margin-top:16px; padding:20px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px;">
@@ -2286,6 +2333,96 @@ function s2ApplyCandidate(key, value, fieldId) {
   }
 }
 window.s2ApplyCandidate = s2ApplyCandidate;
+
+// ─────────────────────────────────────────────
+// v6.2.x: 검수 편의 — 출처 PDF 미리보기 (우측 슬라이드 패널)
+// ─────────────────────────────────────────────
+// 출처 라벨(field.source) + 필드키 → 업로드 doc_code 매핑.
+// 한 출처에 여러 문서가 묶인 경우 우선순위 순으로 처음 존재하는 것을 사용.
+// 피보험자/피해자 구분: victim 필드키는 피해자 문서 우선.
+function s2SourceToDocCode(source, fieldKey) {
+  const isVictim = /^victim_/.test(fieldKey || '');
+  const tryList = (codes) => codes.find(c => _insUploaded[c] && _insUploaded[c].file_path) || null;
+
+  switch (source) {
+    case '보험증권':
+      return tryList(['insurance_policy']);
+    case '주민등록등본':
+      return isVictim
+        ? tryList(['family_doc_victim', 'family_doc_victim_2', 'resident_reg', 'family_doc'])
+        : tryList(['resident_reg', 'family_doc', 'family_doc_2', 'family_cert']);
+    case '주민등록등본/청구서':
+      return tryList(['resident_reg', 'family_doc', 'claim_form']);
+    case '건축물대장/등기부':
+      return isVictim
+        ? tryList(['ownership_doc_victim', 'ownership_doc_victim_2', 'ownership_victim'])
+        : tryList(['ownership_insured', 'ownership_insured_2', 'ownership_accident']);
+    case '누수소견서/경위서':
+      return tryList(['leak_opinion_external', 'incident_statement', 'claim_form']);
+    default:
+      // '룰 기반 자동', '분석 단계에서 결정' 등은 원본 PDF가 없음
+      return null;
+  }
+}
+
+// 우측 슬라이드 패널에 출처 PDF 표시
+async function s2OpenSourcePdf(docCode, sourceLabel) {
+  const up = _insUploaded[docCode];
+  if (!up || !up.file_path) {
+    toast('해당 출처의 원본 파일을 찾을 수 없습니다.', 'w');
+    return;
+  }
+
+  // 패널 DOM 준비 (없으면 생성)
+  let panel = document.getElementById('s2-pdf-panel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 's2-pdf-panel';
+    panel.className = 's2-pdf-panel';
+    panel.innerHTML = `
+      <div class="s2-pdf-panel-header">
+        <span id="s2-pdf-panel-title">원본 문서</span>
+        <button type="button" class="s2-pdf-panel-close" onclick="s2CloseSourcePdf()">✕</button>
+      </div>
+      <div class="s2-pdf-panel-body" id="s2-pdf-panel-body">
+        <div class="s2-pdf-loading">불러오는 중…</div>
+      </div>`;
+    document.body.appendChild(panel);
+  }
+
+  const titleEl = document.getElementById('s2-pdf-panel-title');
+  const bodyEl  = document.getElementById('s2-pdf-panel-body');
+  if (titleEl) titleEl.textContent = `${sourceLabel || '원본 문서'} — ${up.doc_name || docCode}`;
+  if (bodyEl)  bodyEl.innerHTML = '<div class="s2-pdf-loading">불러오는 중…</div>';
+
+  panel.classList.add('open');
+
+  // 서명 URL 생성 (createSignedUrl: 버킷 루트 기준 상대경로)
+  try {
+    const { data, error } = await sb.storage.from('insurance-docs')
+      .createSignedUrl(up.file_path, 600); // 10분 유효
+    if (error || !data?.signedUrl) throw new Error(error?.message || 'URL 생성 실패');
+    const url = data.signedUrl;
+    const isPdf = /\.pdf($|\?)/i.test(up.file_path) || (up.file_path && !/\.(png|jpe?g|webp|heic)$/i.test(up.file_path));
+    if (bodyEl) {
+      bodyEl.innerHTML = isPdf
+        ? `<iframe class="s2-pdf-frame" src="${url}#toolbar=1&navpanes=0" title="원본 PDF"></iframe>`
+        : `<img class="s2-pdf-img" src="${url}" alt="원본 이미지">`;
+    }
+  } catch (e) {
+    console.error('[s2OpenSourcePdf] 실패:', e);
+    if (bodyEl) bodyEl.innerHTML = `<div class="s2-pdf-loading" style="color:#c2410c">원본을 불러오지 못했습니다: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function s2CloseSourcePdf() {
+  const panel = document.getElementById('s2-pdf-panel');
+  if (panel) panel.classList.remove('open');
+}
+
+window.s2SourceToDocCode = s2SourceToDocCode;
+window.s2OpenSourcePdf   = s2OpenSourcePdf;
+window.s2CloseSourcePdf  = s2CloseSourcePdf;
 
 // v6.2: STEP 1로 돌아가기
 function s2GoBackToStep1() {
