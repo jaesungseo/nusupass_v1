@@ -3318,7 +3318,7 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
         <div class="form-group" style="margin-bottom:0">
-          <label class="form-label" style="font-size:12px">누수 부위</label>
+          <label class="form-label" style="font-size:12px">누수 부위 (물리적 위치)</label>
           <select class="form-control" id="wd_leak_area">
             <option value="">선택</option>
             <option value="living">거실</option>
@@ -3335,8 +3335,23 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
           </select>
         </div>
         <div class="form-group" style="margin-bottom:0">
-          <label class="form-label" style="font-size:12px">누수 원인</label>
-          <input class="form-control" id="wd_leak_cause" placeholder="예: 배관 노후, 실리콘 크랙, 방수층 손상 등"/>
+          <label class="form-label" style="font-size:12px">누수 구역 <span style="color:var(--danger,#d33)">*</span></label>
+          <select class="form-control" id="wd_leak_zone" onchange="onLeakZoneChange()">
+            <option value="">선택</option>
+            <option value="exclusive">전유부 (세대 전용)</option>
+            <option value="common">공용부 (공용배관·옥상·외벽)</option>
+            <option value="mixed">전유부+공용부 (복합)</option>
+            <option value="unknown">확인불가 (추가 탐지 필요)</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr;gap:8px;margin-bottom:10px">
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label" style="font-size:12px">누수 원인 <span style="color:var(--danger,#d33)">*</span></label>
+          <select class="form-control" id="wd_leak_cause" onchange="onLeakCauseChange()">
+            <option value="">구역을 먼저 선택하세요</option>
+          </select>
+          <input class="form-control" id="wd_leak_cause_etc" placeholder="기타 원인을 직접 입력하세요" style="margin-top:6px;display:none"/>
         </div>
       </div>
       <div class="form-group" style="margin-bottom:0">
@@ -4628,6 +4643,109 @@ async function updateWorkStatus(newStatus){
 // 파트너가 수리완료 보고서를 작성 중인 배정의 purpose 추적
 let workDonePurpose = null;
 
+// ══════════════════════════════════════════════════════════
+// v6.3.5: 누수 구역(leak_zone) → 원인 드롭 종속 필터링
+// 단일 출처는 insurance-tab.js의 INS_CAUSE_RULEBOOK_MAP.
+// 미로드(로드 실패/순서) 대비 로컬 폴백 매핑 유지.
+// ══════════════════════════════════════════════════════════
+const WD_CAUSE_FALLBACK = {
+  '배관 (노후/파손)':           { code:'a', zone:'exclusive' },
+  '배관 (관리과실/동파)':       { code:'b', zone:'exclusive' },
+  '배관 (시공불량 10년이내)':   { code:'e', zone:'exclusive' },
+  '방수층 (노후/파손)':         { code:'a', zone:'exclusive' },
+  '방수층 (시공불량 10년이내)': { code:'e', zone:'exclusive' },
+  '분배기 (고장/노후)':         { code:'a', zone:'exclusive' },
+  '보일러 (고장/노후)':         { code:'a', zone:'exclusive' },
+  '배수구 막힘 (관리태만)':     { code:'b', zone:'exclusive' },
+  '사용 부주의 (세탁기/정수기/비데/수도 등)': { code:'c', zone:'exclusive' },
+  '공용배관 (노후/파손)':       { code:'d', zone:'common' },
+  '옥상·외벽 등 (노후/파손)':   { code:'d', zone:'common' },
+  '공용설비 (시공불량)':        { code:'d', zone:'common' },
+  '원인미상 (누수탐지 필요)':   { code:'unknown', zone:null },
+  '기타(직접입력)':             { code:null, zone:null },
+};
+function wdCauseMap() {
+  return (typeof INS_CAUSE_RULEBOOK_MAP !== 'undefined') ? INS_CAUSE_RULEBOOK_MAP : WD_CAUSE_FALLBACK;
+}
+// 구역 선택 시 원인 드롭을 해당 구역 원인만으로 다시 채움
+function onLeakZoneChange() {
+  const zone = document.getElementById('wd_leak_zone').value;
+  const causeSel = document.getElementById('wd_leak_cause');
+  const causeEtc = document.getElementById('wd_leak_cause_etc');
+  if (!causeSel) return;
+  const map = wdCauseMap();
+
+  // 확인불가 → 원인 자동 '원인미상' 고정 + 비활성
+  if (zone === 'unknown') {
+    causeSel.innerHTML = '<option value="원인미상 (누수탐지 필요)">원인미상 (누수탐지 필요)</option>';
+    causeSel.value = '원인미상 (누수탐지 필요)';
+    causeSel.disabled = true;
+    if (causeEtc){ causeEtc.style.display='none'; causeEtc.value=''; }
+    return;
+  }
+  causeSel.disabled = false;
+
+  let opts = ['<option value="">선택</option>'];
+  if (zone === 'exclusive') {
+    // 전유부 원인 (zone===exclusive) + 기타
+    for (const [name, m] of Object.entries(map)) {
+      if (m.zone === 'exclusive') opts.push(`<option value="${name}">${name}</option>`);
+    }
+    opts.push('<option value="기타(직접입력)">기타(직접입력)</option>');
+  } else if (zone === 'common') {
+    // 공용부 원인 (zone===common) + 기타
+    for (const [name, m] of Object.entries(map)) {
+      if (m.zone === 'common') opts.push(`<option value="${name}">${name}</option>`);
+    }
+    opts.push('<option value="기타(직접입력)">기타(직접입력)</option>');
+  } else if (zone === 'mixed') {
+    // 복합 → 전유+공용 모두 노출
+    for (const [name, m] of Object.entries(map)) {
+      if (m.zone === 'exclusive' || m.zone === 'common') opts.push(`<option value="${name}">${name}</option>`);
+    }
+    opts.push('<option value="기타(직접입력)">기타(직접입력)</option>');
+  } else {
+    opts = ['<option value="">구역을 먼저 선택하세요</option>'];
+  }
+  // 레거시/중복 키 제거 위해 Set으로 정리
+  const seen = new Set();
+  causeSel.innerHTML = opts.filter(o => {
+    const v = o.match(/value="([^"]*)"/)?.[1] || '';
+    if (seen.has(v)) return false; seen.add(v); return true;
+  }).join('');
+  causeSel.value = '';
+  if (causeEtc){ causeEtc.style.display='none'; causeEtc.value=''; }
+}
+// 원인 선택 시 '기타' 직접입력 칸 토글
+function onLeakCauseChange() {
+  const cause = document.getElementById('wd_leak_cause').value;
+  const causeEtc = document.getElementById('wd_leak_cause_etc');
+  if (!causeEtc) return;
+  causeEtc.style.display = (cause === '기타(직접입력)') ? 'block' : 'none';
+  if (cause !== '기타(직접입력)') causeEtc.value = '';
+}
+// 저장용: 선택된 원인 → {leak_cause(텍스트), leak_cause_category(code)} 산출
+function wdResolveLeakCause() {
+  const causeSel = document.getElementById('wd_leak_cause');
+  const causeEtc = document.getElementById('wd_leak_cause_etc');
+  const zone = document.getElementById('wd_leak_zone')?.value || null;
+  const selected = causeSel?.value || '';
+  const map = wdCauseMap();
+
+  let leakCauseText = selected;
+  let category = map[selected]?.code || null;
+
+  if (selected === '기타(직접입력)') {
+    const etc = (causeEtc?.value || '').trim();
+    leakCauseText = etc || '기타';
+    category = null;  // 기타는 수리소견 기반 판단 → category 미지정
+  }
+  // 복합 구역은 category를 mixed 신호로 — 8단계에서 검토필요 처리
+  // (leak_zone='mixed'가 별도 전달되므로 category는 선택 원인 코드 유지)
+  return { leakCauseText: leakCauseText || null, category, zone };
+}
+
+
 function openWorkDoneModal(){
   // 배정 상세 모달에서 넘겨받은 purpose를 window 전역 변수로 저장해둠
   workDonePurpose = window._activePurpose || null;
@@ -4650,13 +4768,27 @@ function openWorkDoneModal(){
   document.getElementById('wd_detection_fields').style.display = (workDonePurpose==='detection') ? 'block' : 'none';
   document.getElementById('wd_interior_fields').style.display  = (workDonePurpose==='interior')  ? 'block' : 'none';
 
+  // ── v6.3.5: 누수 구역/원인 드롭 (detection 전용) ──
+  // interior 배정이면 구역·원인을 숨김 (DB CHECK상 interior는 leak_zone NULL 강제)
+  const zoneWrap = document.getElementById('wd_leak_zone')?.closest('.form-group');
+  const causeWrap = document.getElementById('wd_leak_cause')?.closest('.form-group');
+  const showZoneCause = (workDonePurpose === 'detection');
+  if (zoneWrap)  zoneWrap.style.display  = showZoneCause ? '' : 'none';
+  if (causeWrap) causeWrap.parentElement.style.display = showZoneCause ? '' : 'none';
+
   // 모든 값 초기화
   ['wd_cost','wd_opinion','wd_accident_dt','wd_accident_note','wd_attacker','wd_victim',
-   'wd_leak_area','wd_leak_cause','wd_leak_detail_part','wd_detection_count',
+   'wd_leak_area','wd_leak_detail_part','wd_detection_count',
    'wd_worker_count','wd_start_date','wd_end_date'].forEach(id=>{
     const el = document.getElementById(id);
     if(el) el.value='';
   });
+  // 구역/원인 드롭 초기화
+  const zoneSel = document.getElementById('wd_leak_zone');
+  if (zoneSel) zoneSel.value = '';
+  const causeEtc = document.getElementById('wd_leak_cause_etc');
+  if (causeEtc) { causeEtc.value=''; causeEtc.style.display='none'; }
+  if (showZoneCause) onLeakZoneChange();  // 원인 드롭을 빈 상태로 리셋
   document.querySelectorAll('.wd_detection_tool, .wd_interior_scope').forEach(cb=>cb.checked=false);
 
   // N장 사진 갤러리 초기화 (전/중/후)
@@ -4911,7 +5043,11 @@ async function submitWorkDone(){
   const attacker = document.getElementById('wd_attacker').value.trim();
   const victim = document.getElementById('wd_victim').value.trim();
   const leakArea = document.getElementById('wd_leak_area').value;
-  const leakCause = document.getElementById('wd_leak_cause').value.trim();
+  // v6.3.5: 누수 원인은 드롭+기타입력 → resolve 함수로 {텍스트, category, zone} 산출
+  const _leakResolved = wdResolveLeakCause();
+  const leakCause = _leakResolved.leakCauseText;
+  const leakZone = (workDonePurpose === 'detection') ? _leakResolved.zone : null;
+  const leakCauseCategory = (workDonePurpose === 'detection') ? _leakResolved.category : null;
 
   // ─── 공통 검증 ───
   if(!cost || cost < 0){ toast('견적/수리 금액을 입력해 주세요.','e'); return; }
@@ -4929,6 +5065,9 @@ async function submitWorkDone(){
     if(!leakDetailPart){ toast('누수 상세 부위는 필수입니다.','e'); return; }
     if(!detectionCount || detectionCount < 1){ toast('탐지 횟수를 입력해 주세요.','e'); return; }
     if(detectionTools.length === 0) detectionTools = null;
+    // v6.3.5: 누수 구역·원인 필수 (8단계 판단의 핵심 입력)
+    if(!leakZone){ toast('누수 구역을 선택해 주세요.','e'); return; }
+    if(!leakCause){ toast('누수 원인을 선택해 주세요.','e'); return; }
   } else if(workDonePurpose === 'interior'){
     interiorScope = Array.from(document.querySelectorAll('.wd_interior_scope:checked')).map(cb=>cb.value);
     workerCount = parseInt(document.getElementById('wd_worker_count').value)||null;
@@ -5102,7 +5241,9 @@ async function submitWorkDone(){
       p_interior_scope: interiorScope,
       p_worker_count: workerCount,
       p_construction_start_date: startDate,
-      p_construction_end_date: endDate
+      p_construction_end_date: endDate,
+      p_leak_zone: leakZone,
+      p_leak_cause_category: leakCauseCategory
     });
     if(error){
       progWrap.style.display = 'none';
@@ -6138,7 +6279,7 @@ if (typeof window.escapeHtml !== 'function') {
 }
 </script>
 
-<script src="./insurance-tab.js?v=6.2.201"></script>
+<script src="./insurance-tab.js?v=6.3.5"></script>
 <!-- v6 룰엔진은 유지 (분석에 사용되지 않으면 무해, 추출 단계 가드용일 가능성) -->
 <script src="./sabi-rule-v6.js?v=6.0.0"></script>
 <!-- v6.2.25: insurance-tab-v6-patch.js 일시 비활성화 — 옛 4-Call 분석 monkey-patch 가능성 차단.

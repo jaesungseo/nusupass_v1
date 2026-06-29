@@ -307,7 +307,12 @@ const INS_INSURERS = [
 // 기존 데이터 호환: accident_cause_type 컬럼은 text이므로 과거 '배관' 같은 단순 값도 허용.
 //                   프롬프트에서 하위원인 없으면 ⓐ(설비하자) 디폴트 규칙 적용.
 // ─────────────────────────────────────────────
+// v6.3.5: 누수 구역(leak_zone) 도입에 맞춰 원인 목록 재편
+//   - '공용부(공용배관/옥상/지하)' 1줄 삭제 → 공용부 원인 3종으로 분리 (구역=common 종속)
+//   - '세탁기 호스이탈' + '수도꼭지 미잠금' → '사용 부주의(...)' 1개로 통합 (둘 다 ⓒ 행위과실)
+//   - 각 원인의 구역(exclusive/common) 귀속은 INS_CAUSE_RULEBOOK_MAP[*].zone 으로 관리
 const INS_CAUSES = [
+  // ── 전유부(exclusive) 원인 ──
   '배관 (노후/파손)',           // → ⓐ 전유부 설비하자 (758 단서, 소유자)
   '배관 (관리과실/동파)',       // → ⓑ 전유부 관리과실 (758 본문, 점유자)
   '배관 (시공불량 10년이내)',   // → ⓔ 시공불량 (시공사)
@@ -315,37 +320,54 @@ const INS_CAUSES = [
   '방수층 (시공불량 10년이내)', // → ⓔ
   '분배기 (고장/노후)',         // → ⓐ
   '보일러 (고장/노후)',         // → ⓐ
-  '세탁기 호스이탈',            // → ⓒ 행위과실 (750, 점유자)
   '배수구 막힘 (관리태만)',     // → ⓑ
-  '수도꼭지 미잠금',            // → ⓒ
-  '공용부 (공용배관/옥상/지하)', // → ⓓ 공용부 (관리단)
+  '사용 부주의 (세탁기/정수기/비데/수도 등)', // → ⓒ 행위과실 (750, 점유자)
+  // ── 공용부(common) 원인 ──
+  '공용배관 (노후/파손)',       // → ⓓ 공용부 (관리단)
+  '옥상·외벽 등 (노후/파손)',   // → ⓓ
+  '공용설비 (시공불량)',        // → ⓓ
+  // ── 공통 ──
   '원인미상 (누수탐지 필요)',   // → 판단유보
   '기타(직접입력)',             // → 수리소견 기반 판단
 ];
 
 // 사고원인별 룰북 카테고리 사전 매핑 (프롬프트 주입용)
-// key: INS_CAUSES의 value, value: { rulebook_category, 설명 }
+// key: INS_CAUSES의 value
+// value: {
+//   cat   : 동그라미 라벨 (사람용/프롬프트 표시),
+//   code  : DB 저장용 영문 코드 (leak_cause_category: a/b/c/d/e/unknown),
+//   zone  : 구역 귀속 (exclusive=전유 / common=공용 / null=구역무관),
+//   label : 사람 친화 설명
+// }
+// v6.3.5: code(영문)·zone 추가. 구역↔원인 종속 필터링과 leak_cause_category 자동저장의 단일 출처.
 const INS_CAUSE_RULEBOOK_MAP = {
-  '배관 (노후/파손)':           { cat: 'ⓐ', label: '전유부 설비하자 (민법 제758조 제1항 단서, 소유자 책임)' },
-  '배관 (관리과실/동파)':       { cat: 'ⓑ', label: '전유부 관리과실 (민법 제758조 제1항 본문, 점유자 책임)' },
-  '배관 (시공불량 10년이내)':   { cat: 'ⓔ', label: '시공불량 (민법 제750조, 시공사 책임)' },
-  '방수층 (노후/파손)':         { cat: 'ⓐ', label: '전유부 설비하자 (민법 제758조 제1항 단서, 소유자 책임)' },
-  '방수층 (시공불량 10년이내)': { cat: 'ⓔ', label: '시공불량 (민법 제750조, 시공사 책임)' },
-  '분배기 (고장/노후)':         { cat: 'ⓐ', label: '전유부 설비하자 (민법 제758조 제1항 단서, 소유자 책임)' },
-  '보일러 (고장/노후)':         { cat: 'ⓐ', label: '전유부 설비하자 (민법 제758조 제1항 단서, 소유자 책임)' },
-  '세탁기 호스이탈':            { cat: 'ⓒ', label: '행위과실 (민법 제750조, 점유자 책임)' },
-  '배수구 막힘 (관리태만)':     { cat: 'ⓑ', label: '전유부 관리과실 (민법 제758조 제1항 본문, 점유자 책임)' },
-  '수도꼭지 미잠금':            { cat: 'ⓒ', label: '행위과실 (민법 제750조, 점유자 책임)' },
-  '공용부 (공용배관/옥상/지하)': { cat: 'ⓓ', label: '공용부 하자 (공동주택관리법 제63조·집합건물법 제16조, 관리단 책임)' },
-  '원인미상 (누수탐지 필요)':   { cat: '미지정', label: '사고원인 미확정 (판단유보)' },
-  // 레거시 호환 (v5.2 이전 값)
-  '배관':       { cat: 'ⓐ?', label: '전유부 설비하자 추정 (하위원인 미지정 — 수리소견으로 재확인 필요)' },
-  '방수층':     { cat: 'ⓐ?', label: '전유부 설비하자 추정 (하위원인 미지정 — 수리소견으로 재확인 필요)' },
-  '분배기':     { cat: 'ⓐ?', label: '전유부 설비하자 추정 (하위원인 미지정 — 수리소견으로 재확인 필요)' },
-  '보일러':     { cat: 'ⓐ?', label: '전유부 설비하자 추정 (하위원인 미지정 — 수리소견으로 재확인 필요)' },
-  '배수구 막힘': { cat: 'ⓑ?', label: '전유부 관리과실 추정 (하위원인 미지정)' },
-  '기타':        { cat: '?',   label: '수리소견으로 판단' },
-  '기타(직접입력)': { cat: '?', label: '수리소견으로 판단' },
+  // ── 전유부(exclusive) ──
+  '배관 (노후/파손)':           { cat: 'ⓐ', code: 'a', zone: 'exclusive', label: '전유부 설비하자 (민법 제758조 제1항 단서, 소유자 책임)' },
+  '배관 (관리과실/동파)':       { cat: 'ⓑ', code: 'b', zone: 'exclusive', label: '전유부 관리과실 (민법 제758조 제1항 본문, 점유자 책임)' },
+  '배관 (시공불량 10년이내)':   { cat: 'ⓔ', code: 'e', zone: 'exclusive', label: '시공불량 (민법 제750조, 시공사 책임)' },
+  '방수층 (노후/파손)':         { cat: 'ⓐ', code: 'a', zone: 'exclusive', label: '전유부 설비하자 (민법 제758조 제1항 단서, 소유자 책임)' },
+  '방수층 (시공불량 10년이내)': { cat: 'ⓔ', code: 'e', zone: 'exclusive', label: '시공불량 (민법 제750조, 시공사 책임)' },
+  '분배기 (고장/노후)':         { cat: 'ⓐ', code: 'a', zone: 'exclusive', label: '전유부 설비하자 (민법 제758조 제1항 단서, 소유자 책임)' },
+  '보일러 (고장/노후)':         { cat: 'ⓐ', code: 'a', zone: 'exclusive', label: '전유부 설비하자 (민법 제758조 제1항 단서, 소유자 책임)' },
+  '배수구 막힘 (관리태만)':     { cat: 'ⓑ', code: 'b', zone: 'exclusive', label: '전유부 관리과실 (민법 제758조 제1항 본문, 점유자 책임)' },
+  '사용 부주의 (세탁기/정수기/비데/수도 등)': { cat: 'ⓒ', code: 'c', zone: 'exclusive', label: '행위과실 (민법 제750조, 점유자 책임)' },
+  // ── 공용부(common) — 전부 ⓓ 관리단 책임 ──
+  '공용배관 (노후/파손)':       { cat: 'ⓓ', code: 'd', zone: 'common', label: '공용부 하자 (공동주택관리법 제63조·집합건물법 제16조, 관리단 책임)' },
+  '옥상·외벽 등 (노후/파손)':   { cat: 'ⓓ', code: 'd', zone: 'common', label: '공용부 하자 (공동주택관리법 제63조·집합건물법 제16조, 관리단 책임)' },
+  '공용설비 (시공불량)':        { cat: 'ⓓ', code: 'd', zone: 'common', label: '공용부 시공불량 (관리단 책임, 시공사 구상 여지)' },
+  // ── 공통 ──
+  '원인미상 (누수탐지 필요)':   { cat: '미지정', code: 'unknown', zone: null, label: '사고원인 미확정 (판단유보)' },
+  '기타(직접입력)':             { cat: '?', code: null, zone: null, label: '수리소견으로 판단' },
+  // 레거시 호환 (v5.2 이전 값 — DB에 남아있는 과거 데이터 표시용)
+  '세탁기 호스이탈':            { cat: 'ⓒ', code: 'c', zone: 'exclusive', label: '행위과실 (민법 제750조, 점유자 책임) [레거시]' },
+  '수도꼭지 미잠금':            { cat: 'ⓒ', code: 'c', zone: 'exclusive', label: '행위과실 (민법 제750조, 점유자 책임) [레거시]' },
+  '공용부 (공용배관/옥상/지하)': { cat: 'ⓓ', code: 'd', zone: 'common', label: '공용부 하자 (관리단 책임) [레거시]' },
+  '배관':       { cat: 'ⓐ?', code: 'a', zone: 'exclusive', label: '전유부 설비하자 추정 (하위원인 미지정 — 수리소견으로 재확인 필요)' },
+  '방수층':     { cat: 'ⓐ?', code: 'a', zone: 'exclusive', label: '전유부 설비하자 추정 (하위원인 미지정 — 수리소견으로 재확인 필요)' },
+  '분배기':     { cat: 'ⓐ?', code: 'a', zone: 'exclusive', label: '전유부 설비하자 추정 (하위원인 미지정 — 수리소견으로 재확인 필요)' },
+  '보일러':     { cat: 'ⓐ?', code: 'a', zone: 'exclusive', label: '전유부 설비하자 추정 (하위원인 미지정 — 수리소견으로 재확인 필요)' },
+  '배수구 막힘': { cat: 'ⓑ?', code: 'b', zone: 'exclusive', label: '전유부 관리과실 추정 (하위원인 미지정)' },
+  '기타':        { cat: '?',   code: null, zone: null, label: '수리소견으로 판단' },
 };
 
 // v6.2 INS_DOCS — 3그룹 A안 (사용자 결정사항 반영)
@@ -882,6 +904,7 @@ async function insFetchAllPartners(caseId) {
       id, case_id, partner_company_id, assignment_status, work_status, assignment_purpose,
       repair_cost, repair_opinion, work_done_at, work_started_at, visited_at, accident_occurred_at,
       attacker_unit, victim_unit, leak_area_type, leak_cause, leak_detail_part, detection_count,
+      leak_zone, leak_cause_category,
       accident_datetime_at_site, accident_datetime_source, accident_datetime_note,
       partner_companies(company_name, owner_name, business_no, phone, service_areas, stamp_image_path)
     `)
@@ -4027,11 +4050,10 @@ async function s2Analyze() {
       const r9 = stepResults[9] || {};
 
       // accident_type 매핑: '주택관리'/'일상생활'/'확인불가' 그대로 사용
-      // ⓓ 공용부, ⓒ 시공불량 케이스는 8단계에서 accident_category='주택관리'로 오지만
-      // 의미상 '공용부'/'시공불량'으로 세분화 가능 — accident_cause_category로 구분
+      // v6.3.5: 카테고리 5분류 정렬 — ⓓ 공용부 / ⓔ 시공불량 (기존 ⓒ=시공불량 오류 수정, ⓒ는 행위과실)
       let accidentTypeVal = r8.accident_category || null;
       if (r8.accident_cause_category === 'ⓓ') accidentTypeVal = '공용부';
-      else if (r8.accident_cause_category === 'ⓒ') accidentTypeVal = '시공불량';
+      else if (r8.accident_cause_category === 'ⓔ') accidentTypeVal = '시공불량';
 
       const claimUpdates = {
         // 1단계
@@ -4262,6 +4284,37 @@ function buildAnalysisInputs() {
   if (!inputs.accident_date && typeof _insClaim === 'object' && _insClaim) {
     if (_insClaim.accident_occurred_at) inputs.accident_date = _insClaim.accident_occurred_at;
   }
+
+  // ── v6.3.5: 현장(누수탐지) 구역·원인분류 주입 ──
+  // 파트너가 입력한 leak_zone(전유/공용/복합/확인불가) + leak_cause_category(a~e/unknown)를
+  // _insField(detection 배정)에서 끌어와 8단계 프롬프트가 추론 없이 사용하도록 전달.
+  // 단일 출처는 JS INS_CAUSE_RULEBOOK_MAP — 여기서 라벨까지 동봉.
+  const _fld = (typeof _insField === 'object' && _insField) ? _insField : {};
+  const _zoneRaw = _fld.leak_zone || (_insClaim && _insClaim.leak_zone) || null;
+  const _catRaw  = _fld.leak_cause_category || (_insClaim && _insClaim.leak_cause_category) || null;
+  const _zoneLabelMap = {
+    exclusive: '전유부 (세대 전용)',
+    common:    '공용부 (공용배관·옥상·외벽)',
+    mixed:     '전유부+공용부 (복합 — 발원지 안분 검토 필요)',
+    unknown:   '확인불가 (추가 탐지 필요)',
+  };
+  const _catLabelMap = {
+    a: 'ⓐ 전유부 설비하자 (민법 제758조 제1항 단서, 소유자 책임)',
+    b: 'ⓑ 전유부 관리과실 (민법 제758조 제1항 본문, 점유자 책임)',
+    c: 'ⓒ 행위과실 (민법 제750조, 점유자 책임)',
+    d: 'ⓓ 공용부 하자 (공동주택관리법 제63조·집합건물법 제16조, 관리단 책임)',
+    e: 'ⓔ 시공불량 (민법 제750조, 시공사 책임)',
+    unknown: '미지정 (판단유보)',
+  };
+  if (_zoneRaw) {
+    inputs.leak_zone = _zoneRaw;
+    inputs.leak_zone_label = _zoneLabelMap[_zoneRaw] || _zoneRaw;
+  }
+  if (_catRaw) {
+    inputs.field_cause_category = _catRaw;
+    inputs.field_cause_category_label = _catLabelMap[_catRaw] || _catRaw;
+  }
+
   console.log('[v6.2.26 buildAnalysisInputs] 핵심 입력값:',
     'leak_report=', (inputs.leak_report || '').slice(0, 60),
     '| incident_report=', (inputs.incident_report || '').slice(0, 60),
@@ -5450,7 +5503,7 @@ async function s3LoadReportData() {
     let pa = null;
     if (importedIds.length > 0) {
       const { data: imp } = await sb.from('partner_assignments')
-        .select('id, repair_cost, repair_opinion, work_done_at, visited_at, accident_occurred_at, attacker_unit, victim_unit, leak_area_type, leak_cause, assignment_purpose, partner_company_id')
+        .select('id, repair_cost, repair_opinion, work_done_at, visited_at, accident_occurred_at, attacker_unit, victim_unit, leak_area_type, leak_cause, leak_zone, leak_cause_category, assignment_purpose, partner_company_id')
         .in('id', importedIds)
         .order('work_done_at', { ascending: false })
         .limit(1).maybeSingle();
@@ -5459,7 +5512,7 @@ async function s3LoadReportData() {
     // 임포트가 비어있으면 case_id 기준으로 fallback
     if (!pa) {
       const { data: any } = await sb.from('partner_assignments')
-        .select('id, repair_cost, repair_opinion, work_done_at, visited_at, accident_occurred_at, attacker_unit, victim_unit, leak_area_type, leak_cause, assignment_purpose, partner_company_id')
+        .select('id, repair_cost, repair_opinion, work_done_at, visited_at, accident_occurred_at, attacker_unit, victim_unit, leak_area_type, leak_cause, leak_zone, leak_cause_category, assignment_purpose, partner_company_id')
         .eq('case_id', _insCaseId)
         .in('work_status', ['repair_done','repair_completed'])
         .order('work_done_at', { ascending: false })
