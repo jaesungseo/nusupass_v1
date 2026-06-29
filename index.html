@@ -4683,6 +4683,14 @@ function onLeakZoneChange() {
     if (causeEtc){ causeEtc.style.display='none'; causeEtc.value=''; }
     return;
   }
+  // 복합 → 원인 '담당자 확인필요' 고정 + 비활성 (발원지 안분 검토 → 8단계 검토필요)
+  if (zone === 'mixed') {
+    causeSel.innerHTML = '<option value="담당자 확인필요 (전유·공용 복합)">담당자 확인필요 (전유·공용 복합)</option>';
+    causeSel.value = '담당자 확인필요 (전유·공용 복합)';
+    causeSel.disabled = true;
+    if (causeEtc){ causeEtc.style.display='none'; causeEtc.value=''; }
+    return;
+  }
   causeSel.disabled = false;
 
   let opts = ['<option value="">선택</option>'];
@@ -4696,12 +4704,6 @@ function onLeakZoneChange() {
     // 공용부 원인 (zone===common) + 기타
     for (const [name, m] of Object.entries(map)) {
       if (m.zone === 'common') opts.push(`<option value="${name}">${name}</option>`);
-    }
-    opts.push('<option value="기타(직접입력)">기타(직접입력)</option>');
-  } else if (zone === 'mixed') {
-    // 복합 → 전유+공용 모두 노출
-    for (const [name, m] of Object.entries(map)) {
-      if (m.zone === 'exclusive' || m.zone === 'common') opts.push(`<option value="${name}">${name}</option>`);
     }
     opts.push('<option value="기타(직접입력)">기타(직접입력)</option>');
   } else {
@@ -4740,8 +4742,10 @@ function wdResolveLeakCause() {
     leakCauseText = etc || '기타';
     category = null;  // 기타는 수리소견 기반 판단 → category 미지정
   }
-  // 복합 구역은 category를 mixed 신호로 — 8단계에서 검토필요 처리
-  // (leak_zone='mixed'가 별도 전달되므로 category는 선택 원인 코드 유지)
+  // 복합(mixed)·확인불가(unknown) 고정값은 category=unknown → 8단계 검토필요/판단유보
+  if (zone === 'mixed' || zone === 'unknown') {
+    category = 'unknown';
+  }
   return { leakCauseText: leakCauseText || null, category, zone };
 }
 
