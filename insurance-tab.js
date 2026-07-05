@@ -2746,13 +2746,18 @@ ${typeCtx}
     };
 
     // ── Call 1: 보험증권 추출 ──
+    console.log('%c[추출진단] ══════ Call 1: 보험증권 ══════', 'color:#2563eb;font-weight:bold');
     if (_insUploaded['insurance_policy'] && _insUploaded['insurance_policy'].file_path) {
       showExtracting('보험증권 추출 중...', 10);
       const up = _insUploaded['insurance_policy'];
+      console.log('[추출진단] 보험증권 문서 발견:', up.doc_name || up.file_path);
       const b64 = await fetchBase64(up.file_path);
+      console.log('[추출진단] 보험증권 base64:', b64 ? `${(b64.length/1024/1024).toFixed(2)}MB 로드성공` : '❌ 로드실패(null)');
       if (b64) {
         const mt = docMediaType(up.file_path);
-        const r1 = await callClaudeDoc(b64, mt, '보험증권', SYS,
+        let r1 = null;
+        try {
+          r1 = await callClaudeDoc(b64, mt, '보험증권', SYS,
 `보험증권에서 아래 JSON을 추출하세요. 정보 없으면 빈 문자열.
 
 **필수 형식 규칙 (위반 시 시스템 오류):**
@@ -2772,6 +2777,10 @@ ${typeCtx}
   "deductible": "자기부담금 원 단위 숫자만 (예: 200000)",
   "rider_condition": "특약조건 (예: 가족일상생활배상책임)"
 }`);
+        } catch (e) {
+          console.error('[추출진단] ❌ 보험증권 callClaudeDoc 예외:', e.message);
+        }
+        console.log('[추출진단] 보험증권 응답:', r1 ? `✅ 수신 (insured_name="${r1.insured_name||''}", policy_no="${r1.policy_no||''}")` : '❌ null');
         if (r1) {
           addCandidate('policy_product_name', r1.policy_product_name, '보험증권');
           addCandidate('policy_no', r1.policy_no, '보험증권');
@@ -2789,18 +2798,24 @@ ${typeCtx}
           addCandidate('rider_condition', r1.rider_condition, '보험증권');
         }
       }
+    } else {
+      console.warn('[추출진단] ⚠️ 보험증권 문서 없음 — _insUploaded[insurance_policy] 비어있음');
     }
 
     // ── Call 2a: 피보험자 인적 정보 (등본 + 가족관계증명서) ──
+    console.log('%c[추출진단] ══════ Call 2a: 피보험자 인적(등본+가족관계) ══════', 'color:#2563eb;font-weight:bold');
     showExtracting('피보험자 인적 정보 추출 중...', 30);
     const insuredPersonalDocs = [];
     for (const code of ['family_doc', 'family_doc_2', 'resident_reg', 'family_cert']) {
       const up = _insUploaded[code];
+      console.log(`[추출진단] 2a 코드 '${code}':`, up ? (Array.isArray(up) ? `배열(${up.length})` : (up.file_path ? '객체 있음' : '객체이나 file_path 없음')) : '없음');
       if (up && !Array.isArray(up) && up.file_path) {
         const b64 = await fetchBase64(up.file_path);
+        console.log(`[추출진단]   → '${code}' base64:`, b64 ? `${(b64.length/1024/1024).toFixed(2)}MB` : '❌ 로드실패');
         if (b64) insuredPersonalDocs.push({ b64, mt: docMediaType(up.file_path), name: up.doc_name || code });
       }
     }
+    console.log(`[추출진단] 2a 수집 문서 수: ${insuredPersonalDocs.length}개, 합계 ${(insuredPersonalDocs.reduce((s,d)=>s+d.b64.length,0)/1024/1024).toFixed(2)}MB`);
     // v6.2.13: 보험증권에서 추출한 피보험자명을 컨텍스트로 전달
     const policyInsuredName = _extractedCandidates['insured_name']?.[0]?.value || '';
     if (insuredPersonalDocs.length > 0) {
@@ -2878,7 +2893,13 @@ JSON 출력 형식 (각 필드는 객체로):
 정보가 진짜 없으면(누락된 필드) value를 빈 문자열로. confidence는 high·low 둘 중 하나, reason은 low일 때만 채우세요.
 조금이라도 의심이 들면 무조건 low — 보수적으로 판단하는 것이 더 안전합니다.`});
       // v6.2.15: 교차검증 롤백 — 단일 호출로 복귀 (프롬프트 강화로 환각 차단)
-      const r2a = await callClaudeMulti(contentArr, SYS);
+      let r2a = null;
+      try {
+        r2a = await callClaudeMulti(contentArr, SYS);
+      } catch (e) {
+        console.error('[추출진단] ❌ 2a callClaudeMulti 예외:', e.message);
+      }
+      console.log('[추출진단] 2a 응답:', r2a ? `✅ 수신 (주소="${(r2a.insured_registered_address?.value||r2a.insured_registered_address||'')}", 동거인="${(r2a.insured_cohabitants?.value||r2a.insured_cohabitants||'')}")` : '❌ null');
       if (r2a) {
         addCandidate('insured_full_name', r2a.insured_full_name, '주민등록등본');
         addCandidate('insured_rrn', r2a.insured_rrn, '주민등록등본');
@@ -2887,18 +2908,24 @@ JSON 출력 형식 (각 필드는 객체로):
         addCandidate('insured_cohabitants', r2a.insured_cohabitants, '주민등록등본');
         addCandidate('family_relation_text', r2a.family_relation_text, '가족관계증명서');
       }
+    } else {
+      console.warn('[추출진단] ⚠️ 2a 수집 문서 0개 — 등본/가족관계 Call 스킵됨');
     }
 
     // ── Call 2b: 피보험자 소유자 정보 (건축물대장 + 등기부등본) ──
+    console.log('%c[추출진단] ══════ Call 2b: 피보험자 소유자(건축물대장) ══════', 'color:#2563eb;font-weight:bold');
     showExtracting('피보험자 소유자 정보 추출 중...', 45);
     const insuredOwnerDocs = [];
     for (const code of ['ownership_insured', 'ownership_insured_2', 'ownership_accident']) {
       const up = _insUploaded[code];
+      console.log(`[추출진단] 2b 코드 '${code}':`, up ? (Array.isArray(up) ? `배열(${up.length})` : (up.file_path ? '객체 있음' : '객체이나 file_path 없음')) : '없음');
       if (up && !Array.isArray(up) && up.file_path) {
         const b64 = await fetchBase64(up.file_path);
+        console.log(`[추출진단]   → '${code}' base64:`, b64 ? `${(b64.length/1024/1024).toFixed(2)}MB` : '❌ 로드실패');
         if (b64) insuredOwnerDocs.push({ b64, mt: docMediaType(up.file_path), name: up.doc_name || code });
       }
     }
+    console.log(`[추출진단] 2b 수집 문서 수: ${insuredOwnerDocs.length}개, 합계 ${(insuredOwnerDocs.reduce((s,d)=>s+d.b64.length,0)/1024/1024).toFixed(2)}MB`);
     if (insuredOwnerDocs.length > 0) {
       const contentArr = insuredOwnerDocs.map(d => {
         const isPdf = d.mt === 'application/pdf';
@@ -2956,22 +2983,34 @@ JSON 출력:
 
 조금이라도 의심이 들면 low — 보수적이 더 안전합니다.`});
       // v6.2.15: 교차검증 롤백 — 단일 호출
-      const r2b = await callClaudeMulti(contentArr, SYS);
+      let r2b = null;
+      try {
+        r2b = await callClaudeMulti(contentArr, SYS);
+      } catch (e) {
+        console.error('[추출진단] ❌ 2b callClaudeMulti 예외:', e.message);
+      }
+      console.log('[추출진단] 2b 응답:', r2b ? `✅ 수신 (소유자="${(r2b.insured_owner_name?.value||r2b.insured_owner_name||'')}")` : '❌ null');
       if (r2b) {
         addCandidate('insured_owner_name', r2b.insured_owner_name, '건축물대장/등기부');
       }
+    } else {
+      console.warn('[추출진단] ⚠️ 2b 수집 문서 0개 — 건축물대장 Call 스킵됨');
     }
 
     // ── Call 3a: 피해자 건축물대장 + 등기부 (1차, 90% 케이스 — 직하층 청구권자=건물소유자) ──
+    console.log('%c[추출진단] ══════ Call 3a: 피해자 소유자(건축물대장) ══════', 'color:#2563eb;font-weight:bold');
     showExtracting('피해자 건축물대장·등기부 추출 중...', 60);
     const victimOwnerDocs = [];
     for (const code of ['ownership_doc_victim', 'ownership_doc_victim_2', 'ownership_victim']) {
       const up = _insUploaded[code];
+      console.log(`[추출진단] 3a 코드 '${code}':`, up ? (Array.isArray(up) ? `배열(${up.length})` : (up.file_path ? '객체 있음' : '객체이나 file_path 없음')) : '없음');
       if (up && !Array.isArray(up) && up.file_path) {
         const b64 = await fetchBase64(up.file_path);
+        console.log(`[추출진단]   → '${code}' base64:`, b64 ? `${(b64.length/1024/1024).toFixed(2)}MB` : '❌ 로드실패');
         if (b64) victimOwnerDocs.push({ b64, mt: docMediaType(up.file_path), name: up.doc_name || code });
       }
     }
+    console.log(`[추출진단] 3a 수집 문서 수: ${victimOwnerDocs.length}개`);
     if (victimOwnerDocs.length > 0) {
       const contentArr = victimOwnerDocs.map(d => {
         const isPdf = d.mt === 'application/pdf';
@@ -3042,7 +3081,13 @@ JSON 출력 (객체 형태):
 
 조금이라도 의심이 들면 low. 보수적이 더 안전합니다.`});
       // v6.2.15: 교차검증 롤백 — 단일 호출 + 프롬프트 강화
-      const r3a = await callClaudeMulti(contentArr, SYS);
+      let r3a = null;
+      try {
+        r3a = await callClaudeMulti(contentArr, SYS);
+      } catch (e) {
+        console.error('[추출진단] ❌ 3a callClaudeMulti 예외:', e.message);
+      }
+      console.log('[추출진단] 3a 응답:', r3a ? `✅ 수신 (피해자소유자="${(r3a.victim_owner_name_only?.value||r3a.victim_owner_name_only||'')}", 주소="${(r3a.victim_building_address?.value||r3a.victim_building_address||'')}")` : '❌ null');
       if (r3a) {
         addCandidate('victim_owner_name_v0', r3a.victim_owner_name, '건축물대장/등기부');
         // 1차로 피해자 성명·주소 채움 (소유자=피해자 가정 — Call 3b의 등본이 있으면 덮어씀)
@@ -3399,6 +3444,14 @@ ${!_insUploaded['leak_opinion_external'] ? '※ 누수소견서가 없으므로 
     }
 
     showExtracting('완료', 100);
+    // v6.3.7 진단: 최종 추출 후보 요약
+    const candKeys = Object.keys(_extractedCandidates);
+    console.log('%c[추출진단] ══════ 최종 결과 요약 ══════', 'color:#16a34a;font-weight:bold');
+    console.log(`[추출진단] 추출된 후보 필드 ${candKeys.length}개:`, candKeys.join(', ') || '(없음)');
+    ['insured_registered_address','insured_owner_name','insured_cohabitants','victim_name_v0','victim_owner_name_v0'].forEach(k=>{
+      const v = _extractedCandidates[k]?.[0]?.value;
+      console.log(`[추출진단]   ${k}: ${v ? '✅ "'+v+'"' : '❌ 비어있음'}`);
+    });
     setTimeout(() => {
       hideExtracting();
       _insAnalyzing = false;
@@ -5236,7 +5289,13 @@ async function callClaudeDoc(b64, mediaType, title, system, prompt) {
   }
   const res = await resp.json();
   const raw = res.content?.[0]?.text || '{}';
-  return parseClaudeJson(raw, title);
+  const parsed = parseClaudeJson(raw, title);
+  const keyCount = Object.keys(parsed || {}).length;
+  if (keyCount === 0) {
+    console.warn(`[추출진단] ⚠️ ${title} 파싱결과 빈 객체! content블록:`,
+      (res.content||[]).map(c=>c.type).join(','), '| raw앞부분:', String(raw).slice(0,150));
+  }
+  return parsed;
 }
 
 // v6.2: 여러 문서 + 텍스트를 한 번의 호출로 보냄 (교차 분석용)
@@ -5305,7 +5364,17 @@ async function _callMultiRaw(contentArr, system) {
   }
   const res = await resp.json();
   const raw = res.content?.[0]?.text || '{}';
-  return parseClaudeJson(raw, 'multi');
+  // v6.3.7 진단: 응답 원본 앞부분 + content 블록 구조 로깅 (빈 객체 silent fail 추적)
+  const parsed = parseClaudeJson(raw, 'multi');
+  const keyCount = Object.keys(parsed || {}).length;
+  if (keyCount === 0) {
+    console.warn('[추출진단] ⚠️ _callMultiRaw 파싱결과 빈 객체! content블록:',
+      (res.content||[]).map(c=>c.type).join(','),
+      '| raw앞부분:', String(raw).slice(0,150));
+  } else {
+    console.log(`[추출진단] _callMultiRaw 파싱성공: ${keyCount}개 키 (${Object.keys(parsed).join(',')})`);
+  }
+  return parsed;
 }
 
 async function s2Save() {
