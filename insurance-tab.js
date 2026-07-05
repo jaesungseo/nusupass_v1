@@ -5,6 +5,26 @@
  *
  * 의존성: sb, toast(), curUser (index.html)
  *
+ * ✨ v6.4.2 변경사항 (2026-07-05) — 감리 지적사항 4건 정공법 수정
+ *   🔴 BUGFIX [Critical②]: 약관·전유공용 기준 상수 배선 끊김
+ *      - buildAnalysisInputs가 미존재 상수(INS_TERMS_TEXT·INS_AREAS_GUIDE)를 참조
+ *        → 7·8·9단계에 [적용 약관]/[전유공용 기준]이 항상 '정보 없음'으로 주입되던 버그
+ *      - TERMS_CONTENT[약관종류] / LEGAL_STATUTES_TEXT / EXCLUSIVE_COMMON_AREAS_TEXT로 배선
+ *      - legal_statutes도 구버전 INS_LEGAL(공동주택관리법·집합건물법 누락) → 신 상수로 교체
+ *   🔴 BUGFIX [Critical①]: liability_result='검토필요' 저장 실패
+ *      - 8단계 mixed(복합) 경로가 반환하는 '검토필요'가 insurance_claims CHECK 위반
+ *        → 분석 동기화 UPDATE 전체 실패(insurance_tab_status 포함)하던 버그
+ *      - DB CHECK에 '검토필요' 추가(마이그레이션 v6_4_2_*) + 저장부 화이트리스트 정규화
+ *      - _normLiabilityResult에 '검토필요' 명시 추가
+ *      - step9 프롬프트 3종: 검토필요 → 판단유보(복합구역_안분필요) 조항 신설
+ *      - step8 프롬프트: mixed 시 accident_cause_category ⓓ → '확인불가' (복합≠공용부)
+ *   🔴 BUGFIX [High③]: 기존 케이스 재진입 시 leak_zone 미전달
+ *      - _insField가 insFetchField의 얇은 row(leak_zone 미포함)로 남아
+ *        8단계 STEP 0(현장 구역 최우선 분기)이 무력화되던 버그
+ *      - buildAnalysisInputs의 구역·원인 출처를 _insPartners(detection·보고완료)로 전환
+ *        우선순위: 임포트된 detection > 보고완료 detection > _insField(하위호환)
+ *   🔴 FIX [Medium④]: step7 변수 계약 위반 — {victim_damages_text} → {victim_damage_text} (DB 프롬프트 수정)
+ *
  * ✨ v5.5 변경사항 (2026-04-19)
  *   🔴 FEAT: 파트너 현장 파악 사고일시 STEP 2 자동 반영
  *      - loadPartnerAccidentData(): partner_assignments.accident_datetime_at_site 로드
@@ -3705,7 +3725,14 @@ async function s2Analyze() {
         // 6단계: victim_damages 배열을 jsonb로 저장
         victim_damages: r6.victim_damages || null,
         // 8단계
-        liability_result: r8.liability_result || null,
+        // v6.4.2 [Critical①]: CHECK 허용값('성립/불성립/검토필요/확인불가')만 통과.
+        //   스펙 밖 값('yes'/'no'/살붙은 문장 등) 저장 시 UPDATE 전체 실패 방지.
+        liability_result: (() => {
+          const v = (r8.liability_result || '').trim();
+          if (v === 'yes') return '성립';
+          if (v === 'no')  return '불성립';
+          return ['성립','불성립','검토필요','확인불가'].includes(v) ? v : null;
+        })(),
         accident_type: accidentTypeVal,
         // v6.4.0: 8단계 원인 룰북 분류(ⓐ~ⓔ)를 insurance_claims에도 저장 (Q-B3 컬럼저장 결정 반영)
         //   그동안 claim_analyses에만 있어 보고서·통계에서 조인 필요했음 → 평탄화
@@ -3860,9 +3887,21 @@ function buildAnalysisInputs() {
   }
 
   // 추가 컨텍스트 자료 — 약관 본문, 법률 조문, 전유·공용 구분 기준은 코드에 상수로 두고 주입
-  inputs.terms_content = inputs.terms_content || (typeof INS_TERMS_TEXT === 'string' ? INS_TERMS_TEXT : '정보 없음');
-  inputs.legal_statutes = inputs.legal_statutes || (typeof INS_LEGAL === 'string' ? INS_LEGAL : '정보 없음');
-  inputs.exclusive_common_areas = inputs.exclusive_common_areas || (typeof INS_AREAS_GUIDE === 'string' ? INS_AREAS_GUIDE : '정보 없음');
+  // v6.4.2 [Critical②]: 미존재 상수(INS_TERMS_TEXT·INS_AREAS_GUIDE) 참조로 항상 '정보 없음'이
+  //   주입되던 버그 수정. 실제 정의된 상수 3종으로 배선:
+  //   - TERMS_CONTENT[약관종류]: 약관 전문 (family_daily_old/new, personal_daily 분기)
+  //   - LEGAL_STATUTES_TEXT: 민법 750·758 + 공동주택관리법 63조 + 집합건물법 16조
+  //   - EXCLUSIVE_COMMON_AREAS_TEXT: 전유·공용 구분 기준
+  //   구버전 INS_LEGAL은 공용부 법령이 없어 폴백으로만 유지.
+  const _policyKey = (_insClaim && _insClaim.insurance_type) || 'family_daily_new';
+  inputs.terms_content = inputs.terms_content
+    || (typeof TERMS_CONTENT === 'object' && TERMS_CONTENT && TERMS_CONTENT[_policyKey])
+    || '정보 없음';
+  inputs.legal_statutes = inputs.legal_statutes
+    || (typeof LEGAL_STATUTES_TEXT === 'string' ? LEGAL_STATUTES_TEXT
+        : (typeof INS_LEGAL === 'string' ? INS_LEGAL : '정보 없음'));
+  inputs.exclusive_common_areas = inputs.exclusive_common_areas
+    || (typeof EXCLUSIVE_COMMON_AREAS_TEXT === 'string' ? EXCLUSIVE_COMMON_AREAS_TEXT : '정보 없음');
 
   // v6.2.29: 6단계 보조 자료 — 현재 추출 단계에 들어가지 않으므로 명시적 빈 값으로 안전 처리
   // (TODO v6.3: 문답서·민원일지 추출 추가 시 _extractedCandidates에서 가져오도록 변경)
@@ -3931,9 +3970,19 @@ function buildAnalysisInputs() {
 
   // ── v6.3.5: 현장(누수탐지) 구역·원인분류 주입 ──
   // 파트너가 입력한 leak_zone(전유/공용/복합/확인불가) + leak_cause_category(a~e/unknown)를
-  // _insField(detection 배정)에서 끌어와 8단계 프롬프트가 추론 없이 사용하도록 전달.
-  // 단일 출처는 JS INS_CAUSE_RULEBOOK_MAP — 여기서 라벨까지 동봉.
-  const _fld = (typeof _insField === 'object' && _insField) ? _insField : {};
+  // 8단계 프롬프트가 추론 없이 사용하도록 전달. 단일 출처는 JS INS_CAUSE_RULEBOOK_MAP.
+  // v6.4.2 [High③]: 출처를 _insField → _insPartners로 전환.
+  //   기존 케이스 재진입 시 _insField가 insFetchField의 얇은 row(leak_zone 컬럼 미포함)라
+  //   STEP 0(현장 구역 최우선 분기)이 무력화되던 버그 수정.
+  //   우선순위: ①임포트된 detection 파트너 → ②보고완료 detection 파트너 → ③_insField(하위호환)
+  const _partnersArr = Array.isArray(_insPartners) ? _insPartners : [];
+  const _detImported = _partnersArr.find(p => p && p.has_report
+    && isDetection(p.assignment_purpose)
+    && _insImportedPartners && _insImportedPartners.has(p.id)) || null;
+  const _detAny = _partnersArr.find(p => p && p.has_report
+    && isDetection(p.assignment_purpose)) || null;
+  const _fld = _detImported || _detAny
+    || ((typeof _insField === 'object' && _insField) ? _insField : {});
   const _zoneRaw = _fld.leak_zone || (_insClaim && _insClaim.leak_zone) || null;
   const _catRaw  = _fld.leak_cause_category || (_insClaim && _insClaim.leak_cause_category) || null;
   const _zoneLabelMap = {
@@ -4302,13 +4351,15 @@ async function s2Save() {
       p_coverage_limit:     _insResult.coverage_limit||null,
       p_deductible:         ded||null,
     });
-    // v6.2.18: liability_result 정규화 — DB CHECK은 '성립/불성립/확인불가'만 허용
-    //          AI나 옛 코드가 'no'/'yes'를 반환할 수 있으므로 한글로 변환 후 저장
+    // v6.2.18: liability_result 정규화 — AI나 옛 코드가 'no'/'yes'를 반환할 수 있으므로 한글 변환 후 저장
+    // v6.4.2 [Critical①]: DB CHECK가 '성립/불성립/검토필요/확인불가' 4종으로 확장(복합구역 A안).
+    //   '검토필요' 명시 + 스펙 밖 값은 null로 차단 (기존 `return v`는 CHECK 위반 값을 통과시켰음)
     const _normLiabilityResult = (v) => {
       if (v === 'no'  || v === '불성립') return '불성립';
       if (v === 'yes' || v === '성립')   return '성립';
+      if (v === '검토필요') return '검토필요';
       if (v === '확인불가') return '확인불가';
-      return v || null;  // 그 외는 그대로 (null 포함)
+      return null;  // 스펙 밖 값은 저장하지 않음 (CHECK 위반 방지)
     };
     const _liabResultForDB = _normLiabilityResult(_insResult.liability_result);
 
@@ -4894,7 +4945,7 @@ function insStep3HTML() {
           <div>보고서 번호 · ${escapeHtml(reportNo)}</div>
           <div>약관 · ${escapeHtml(insTypeLabel)}</div>
           <div>판단 결과 · ${covVal || '미산출'}</div>
-          <div>버전 · v6.2.197</div>
+          <div>버전 · v6.2.198</div>
         </div>
       </div>
     </div>
