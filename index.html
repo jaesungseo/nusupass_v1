@@ -4223,7 +4223,10 @@ function renderCaseList(cases){
     if(c.detection_partner_name) pts.push(c.detection_partner_name + (c.detection_status==='requested' ? '<span class="pl-wait">수락 대기</span>' : ''));
     if(c.interior_partner_name)  pts.push(c.interior_partner_name  + (c.interior_status==='requested'  ? '<span class="pl-wait">수락 대기</span>' : ''));
     const ptHtml = pts.length ? pts.join('<br>') : '<span style="color:#A6B4C6">—</span>';
-    const nx = PL_NEXT[stage] || ['—',''];
+    const insOnly = c.needs_insurance === true && !c.needs_detection && !c.needs_interior;
+    const nx = (stage === 'received' && insOnly)
+      ? ['자료 수령 후 보험자료 시작','관리자']
+      : (PL_NEXT[stage] || ['—','']);
     const canSubmit = stage === 'analyzed';
     const canCancel = stage === 'submitted' && curUser && curUser.role_code === 'superadmin';
 
@@ -4243,7 +4246,7 @@ function renderCaseList(cases){
         <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openCaseDetail('${c.id}')">상세</button>
         ${canEnterInsurance ? `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openInsuranceTab('${c.id}','${c.case_no}')">보험자료</button>` : ''}
         ${canStartInsurance ? `<button class="btn btn-ghost btn-sm" style="border-color:var(--blue);color:var(--blue)" onclick="event.stopPropagation();startInsuranceForCase('${c.id}','${c.case_no}','${c.customer_name||''}')">보험자료 시작</button>` : ''}
-        ${canSubmit ? `<button class="btn btn-ghost btn-sm" style="border-color:var(--green);color:var(--green)" onclick="event.stopPropagation();openSubmitModal('${c.id}','${c.case_no}','${(c.customer_name||'').replace(/'/g,'')}','${(c.claim_insurer_name||'').replace(/'/g,'')}','${(c.claim_insurer_contact||'').replace(/'/g,'')}')">제출 완료</button>` : ''}
+        ${canSubmit ? `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openSubmitModal('${c.id}','${c.case_no}','${(c.customer_name||'').replace(/'/g,'')}','${(c.claim_insurer_name||'').replace(/'/g,'')}','${(c.claim_insurer_contact||'').replace(/'/g,'')}')">📮 제출 기록</button>` : ''}
         ${canCancel ? `<button class="btn btn-ghost btn-sm" style="border-color:var(--red);color:var(--red)" onclick="event.stopPropagation();cancelSubmission('${c.id}','${c.case_no}')">제출 취소</button>` : ''}
       </td>
     </tr>
