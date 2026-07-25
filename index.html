@@ -66,6 +66,7 @@ a{text-decoration:none;color:inherit}
 .badge-amber{background:#fef3c7;color:#d97706}
 .badge-red{background:#fee2e2;color:#dc2626}
 .badge-gray{background:#f1f5f9;color:#64748b}
+.badge-purple{background:#EFEBFB;color:#5338B4}
 .badge-teal{background:#ccfbf1;color:#0f766e}
 
 .table-wrap{overflow-x:auto}
@@ -106,6 +107,34 @@ select.form-control{cursor:pointer}
 @keyframes slide-in{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
 
 /* ── 모달 ── */
+/* ═══ v6.5.0: 작업 큐·파이프라인 UI ═══ */
+.queue-bar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.q-tab{display:flex;align-items:center;gap:7px;padding:8px 14px;border-radius:9px;border:1px solid var(--line);background:var(--surface);font-size:13px;font-weight:600;color:var(--muted);cursor:pointer}
+.q-tab:hover{border-color:#B9C7DA;color:var(--ink,#1B2637)}
+.q-tab.on{background:#0F1D33;border-color:#0F1D33;color:#fff}
+.q-tab .n{font-size:12px;font-weight:700;background:rgba(120,140,170,.14);border-radius:999px;padding:1px 8px;min-width:26px;text-align:center}
+.q-tab.on .n{background:rgba(255,255,255,.18);color:#fff}
+.q-tab .q-alert{width:7px;height:7px;border-radius:50%;background:var(--red)}
+.pl-dots{display:inline-flex;gap:4px;align-items:center;vertical-align:middle}
+.pl-dots i{width:9px;height:9px;border-radius:50%;background:#E1E8F1;display:inline-block}
+.pl-dots i.f{background:var(--primary)}
+.pl-dots i.now{background:#fff;border:2px solid var(--primary);width:11px;height:11px}
+.pl-dots i.end{background:var(--green)}
+tr.pl-late{background:#FDF6F6}
+tr.pl-late:hover td{background:#FBEFEF}
+.pl-age{font-variant-numeric:tabular-nums;font-size:12.5px;color:var(--muted)}
+.pl-age.hot{color:var(--red);font-weight:800}
+.pl-late-tag{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:800;color:var(--red)}
+.pl-late-tag::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--red)}
+.pl-wait{display:inline-block;font-size:10px;font-weight:800;padding:2px 7px;border-radius:999px;background:#FBF1DF;color:#9C6212;margin-left:5px;vertical-align:middle}
+.tgl-late{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:var(--muted);border:1px solid var(--line);border-radius:8px;padding:8px 12px;background:var(--surface);cursor:pointer}
+.tgl-late.on{background:#FBEAEA;border-color:#EBC2C2;color:var(--red)}
+.stat-card{position:relative;cursor:pointer}
+.stat-sub{font-size:11.5px;color:var(--muted);margin-top:4px}
+.stat-sub b{color:inherit}
+.stat-late-badge{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:800;color:var(--red);background:#FBEAEA;border:1px solid #EBC2C2;border-radius:999px;padding:2px 9px;margin-left:8px;vertical-align:middle}
+.stat-late-badge::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--red)}
+.stat-hint{font-size:10.5px;color:#A6B4C6;margin-top:2px}
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:center;justify-content:center;padding:20px}
 .modal-overlay.open{display:flex}
 .modal{background:var(--surface);border-radius:16px;padding:28px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.25)}
@@ -2805,37 +2834,84 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
         </div>
         <button class="btn btn-ghost btn-sm" onclick="loadCaseList()">↻ 새로고침</button>
       </div>
+      <!-- v6.5.0: 작업 큐 탭 -->
+      <div class="queue-bar" id="queueBar"></div>
+
       <div class="card">
         <div class="filter-bar">
-          <input class="search-input" id="caseSearch" placeholder="고객명, 접수번호, 지역 검색…" oninput="filterCases()"/>
-          <select class="form-control" style="width:auto" id="caseStatusFilter" onchange="filterCases()">
-            <option value="">전체 상태</option>
-            <option value="접수">접수</option>
-            <option value="파트너배정중">파트너배정중</option>
-            <option value="배정완료">배정완료</option>
-            <option value="수리완료">수리완료</option>
-            <option value="거절">거절</option>
+          <input class="search-input" id="caseSearch" placeholder="접수번호, 고객명, 지역, 파트너 검색…" oninput="filterCases()"/>
+          <select class="form-control" style="width:auto" id="caseInsFilter" onchange="filterCases()">
+            <option value="">보험 전체</option>
+            <option value="yes">가입</option>
+            <option value="unknown">모름</option>
+            <option value="no">미가입</option>
           </select>
+          <button class="tgl-late" id="lateToggle" onclick="toggleLateOnly()">⚠ 지연만</button>
         </div>
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
                 <th>접수번호</th>
-                <th>고객명</th>
-                <th>지역</th>
-                <th>보험</th>
-                <th>전체상태</th>
-                <th>탐지</th>
-                <th>인테리어</th>
+                <th>고객 · 지역</th>
                 <th>접수일</th>
+                <th>보험</th>
+                <th>진행</th>
+                <th>현 단계</th>
+                <th>파트너</th>
+                <th>단계 경과</th>
+                <th>다음 액션</th>
                 <th></th>
               </tr>
             </thead>
             <tbody id="caseListBody">
-              <tr><td colspan="9" class="loading"><span class="spinner"></span> 로딩 중…</td></tr>
+              <tr><td colspan="10" class="loading"><span class="spinner"></span> 로딩 중…</td></tr>
             </tbody>
           </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- v6.5.0: 보험사 제출 기록 모달 -->
+    <div class="modal-overlay" id="submitModalOverlay">
+      <div class="modal">
+        <div class="modal-header">
+          <div class="modal-title">📮 보험사 제출 기록</div>
+          <button class="modal-close" onclick="closeSubmitModal()">✕</button>
+        </div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:16px" id="submitModalCase"></div>
+        <div class="form-group">
+          <label class="form-label">보험사명 *</label>
+          <input class="form-control" id="smInsurer" placeholder="예) DB손해보험"/>
+        </div>
+        <div class="form-group" style="display:grid;grid-template-columns:130px 1fr;gap:8px">
+          <div>
+            <label class="form-label">발송 수단 *</label>
+            <select class="form-control" id="smChannel">
+              <option value="email">메일</option>
+              <option value="fax">팩스</option>
+              <option value="other">기타</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label">메일주소 / 팩스번호</label>
+            <input class="form-control" id="smAddress" placeholder="예) claim@dbins.co.kr 또는 02-0000-0000"/>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">발송 일시 *</label>
+          <input class="form-control" type="datetime-local" id="smSentAt"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">메모 (선택)</label>
+          <input class="form-control" id="smNote" placeholder="예) 최초 제출 / 보완 재제출"/>
+        </div>
+        <div style="font-size:11.5px;color:var(--muted);line-height:1.6;background:var(--bg);border-radius:8px;padding:10px 12px">
+          이 기록은 <b>실제 발송을 완료한 뒤</b> 남기는 제출 이력입니다. 저장 시 케이스가 「제출됨」으로 이동하고 금월 제출 집계에 반영됩니다.
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" onclick="closeSubmitModal()">취소</button>
+          <button class="btn btn-primary" id="smSaveBtn" onclick="saveSubmission()">제출 기록 저장</button>
         </div>
       </div>
     </div>
@@ -3716,6 +3792,13 @@ const STATUS_BADGE = {
   '배정완료':'badge-teal',
   '수리완료':'badge-green',
   '거절':'badge-red',
+  // v6.5.0 파이프라인 단계 라벨
+  '위임 대기':'badge-gray',
+  '현장 진행중':'badge-blue',
+  '분석 대기':'badge-amber',
+  '검수 대기':'badge-purple',
+  '제출됨':'badge-green',
+  '종결':'badge-teal',
   // 아래는 v5.7에서 활성화 예정 — 혹시 레거시 데이터가 있으면 표시용으로만 유지
   '검토중':'badge-amber',
   '방문중':'badge-blue',
@@ -3904,21 +3987,49 @@ async function loadDashboard(){
 
   if(!isReal){ renderDashboardMock(); return; }
 
-  // 접수건 통계
-  const { data: cases } = await sb.from('admin_case_list_v').select('customer_status,display_status');
-  const total = cases?.length||0;
-  const DONE_STATUSES = ['완료','보험청구완료','수리완료'];
-  const pending = cases?.filter(c=>!DONE_STATUSES.includes(c.display_status)).length||0;
-  const done = cases?.filter(c=>DONE_STATUSES.includes(c.display_status)).length||0;
+  // v6.5.0: pipeline_stage 기반 3카드 — 들어옴(금월 접수) / 쌓임(미결+지연) / 나감(금월 제출)
+  const { data: cases } = await sb.from('admin_case_list_v')
+    .select('created_at,pipeline_stage,stage_entered_at,submitted_at');
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const prevStart  = new Date(now.getFullYear(), now.getMonth()-1, 1);
+  const arr = cases||[];
+  const inMonth  = d => d && new Date(d) >= monthStart;
+  const inPrev   = d => d && new Date(d) >= prevStart && new Date(d) < monthStart;
+
+  const mIntake = arr.filter(c=>inMonth(c.created_at)).length;
+  const pIntake = arr.filter(c=>inPrev(c.created_at)).length;
+  const tIntake = arr.length;
+  const openArr = arr.filter(c=>!['submitted','closed'].includes(c.pipeline_stage));
+  const lateN   = openArr.filter(c=>plIsLate(c.pipeline_stage, c.stage_entered_at)).length;
+  const mSubmit = arr.filter(c=>inMonth(c.submitted_at)).length;
+  const pSubmit = arr.filter(c=>inPrev(c.submitted_at)).length;
+  const tSubmit = arr.filter(c=>c.submitted_at).length;
+  const delta = (m,p)=> m===p ? '' : (m>p
+    ? `<span style="font-size:11.5px;font-weight:800;color:var(--green);margin-left:6px">▲ 전월 ${p}건</span>`
+    : `<span style="font-size:11.5px;font-weight:800;color:var(--red);margin-left:6px">▼ 전월 ${p}건</span>`);
 
   document.getElementById('dashStats').innerHTML=`
-    <div class="stat-card blue"><div class="stat-label">전체 접수</div><div class="stat-value">${total}</div></div>
-    <div class="stat-card amber"><div class="stat-label">진행 중</div><div class="stat-value">${pending}</div></div>
-    <div class="stat-card green"><div class="stat-label">완료</div><div class="stat-value">${done}</div></div>
+    <div class="stat-card blue" onclick="go('caseList')">
+      <div class="stat-label">금월 접수 <span style="font-weight:500;opacity:.6">${now.getMonth()+1}. 1 ~</span></div>
+      <div class="stat-value">${mIntake}${delta(mIntake,pIntake)}</div>
+      <div class="stat-sub">전월 <b>${pIntake}건</b> · 누적 <b>${tIntake}건</b></div>
+    </div>
+    <div class="stat-card amber" onclick="go('caseList')">
+      <div class="stat-label">미결 (제출 전)${lateN?`<span class="stat-late-badge">지연 ${lateN}</span>`:''}</div>
+      <div class="stat-value">${openArr.length}</div>
+      <div class="stat-sub">단계 분해는 전체 접수 목록의 큐 탭에서</div>
+    </div>
+    <div class="stat-card green" onclick="curQueue='submitted';go('caseList')">
+      <div class="stat-label">금월 보고서 제출</div>
+      <div class="stat-value">${mSubmit}${delta(mSubmit,pSubmit)}</div>
+      <div class="stat-sub">전월 <b>${pSubmit}건</b> · 누적 <b>${tSubmit}건</b></div>
+      ${tSubmit===0?'<div class="stat-hint">「제출 완료」 기록 시점부터 집계됩니다</div>':''}
+    </div>
   `;
 
   // 최근 5건
-  const { data: recent } = await sb.from('admin_case_list_v').select('case_no,customer_name,address_region,display_status,created_at').order('created_at',{ascending:false}).limit(5);
+  const { data: recent } = await sb.from('admin_case_list_v').select('case_no,customer_name,address_region,pipeline_stage,stage_entered_at,created_at').order('created_at',{ascending:false}).limit(5);
   if(!recent||!recent.length){ document.getElementById('dashRecentCases').innerHTML='<div class="empty"><div class="empty-text">접수건 없음</div></div>'; }
   else{
     document.getElementById('dashRecentCases').innerHTML = recent.map(c=>`
@@ -3927,7 +4038,7 @@ async function loadDashboard(){
           <div style="font-size:13px;font-weight:700">${c.customer_name}</div>
           <div style="font-size:11px;color:var(--muted)">${c.case_no} · ${c.address_region||'-'}</div>
         </div>
-        ${statusBadge(c.display_status)}
+        <span>${statusBadge(PL_LABEL[c.pipeline_stage]||c.pipeline_stage)}${plIsLate(c.pipeline_stage,c.stage_entered_at)?' <span class="pl-late-tag" style="margin-left:6px">지연</span>':''}</span>
       </div>
     `).join('');
   }
@@ -4022,54 +4133,178 @@ async function submitIntake(){
 }
 
 // ══════════════════════════════════════════════════════════
-// 관리자: 전체 목록
+// 관리자: 전체 목록 (v6.5.0 — 작업 큐)
 // ══════════════════════════════════════════════════════════
+// pipeline_stage 정의 (DB CHECK와 1:1)
+const PL_STAGES = ['received','assigned','field_done','analyzed','submitted','closed'];
+const PL_LABEL  = { received:'위임 대기', assigned:'현장 진행중', field_done:'분석 대기', analyzed:'검수 대기', submitted:'제출됨', closed:'종결' };
+const PL_PILL   = { received:'', assigned:'blue', field_done:'amber', analyzed:'violet', submitted:'green', closed:'green' };
+// 지연 기준일 (자리표시자 — 테스트 실측 후 조정)
+const PL_LATE_DAYS = { received:2, assigned:7, field_done:3, analyzed:2 };
+const PL_NEXT = {
+  received:['파트너 위임','관리자'], assigned:['수리완료 보고 대기','파트너'],
+  field_done:['추출·분석 실행','관리자'], analyzed:['검수 후 보험사 제출','관리자'],
+  submitted:['보험사 회신 대기',''], closed:['—',''] };
+
+function plDays(enteredAt){
+  if(!enteredAt) return null;
+  return Math.floor((Date.now() - new Date(enteredAt).getTime()) / 86400000);
+}
+function plIsLate(stage, enteredAt){
+  const lim = PL_LATE_DAYS[stage];
+  const d = plDays(enteredAt);
+  return lim != null && d != null && d > lim;
+}
+function plDots(stage){
+  const idx = PL_STAGES.indexOf(stage);
+  let h = '<span class="pl-dots" title="' + (PL_LABEL[stage]||stage) + '">';
+  for(let i=0;i<6;i++){
+    if(stage==='closed' && i===5) h += '<i class="end"></i>';
+    else if(i < idx) h += '<i class="f"></i>';
+    else if(i === idx) h += '<i class="now"></i>';
+    else h += '<i></i>';
+  }
+  return h + '</span>';
+}
+let curQueue = 'all';       // 'all' | pipeline_stage 값
+let lateOnly = false;
+
 async function loadCaseList(){
-  document.getElementById('caseListBody').innerHTML='<tr><td colspan="8" class="loading"><span class="spinner"></span> 로딩 중…</td></tr>';
+  document.getElementById('caseListBody').innerHTML='<tr><td colspan="10" class="loading"><span class="spinner"></span> 로딩 중…</td></tr>';
   document.getElementById('caseListSub').textContent='로딩 중…';
 
   if(!isReal){ renderCaseListMock(); return; }
 
   const { data, error } = await sb.from('admin_case_list_v').select('*').order('created_at',{ascending:false});
-  if(error){ document.getElementById('caseListBody').innerHTML=`<tr><td colspan="8" style="color:var(--red);padding:20px">오류: ${error.message}</td></tr>`; return; }
+  if(error){ document.getElementById('caseListBody').innerHTML=`<tr><td colspan="10" style="color:var(--red);padding:20px">오류: ${error.message}</td></tr>`; return; }
   allCases = data||[];
-  document.getElementById('caseListSub').textContent=`총 ${allCases.length}건`;
-  renderCaseList(allCases);
+  filterCases();
+}
+
+function renderQueueBar(){
+  const bar = document.getElementById('queueBar');
+  if(!bar) return;
+  const tabs = [{id:'all', l:'전체'}].concat(PL_STAGES.map(s=>({id:s, l:PL_LABEL[s]})));
+  bar.innerHTML = tabs.map(t=>{
+    const arr = t.id==='all' ? allCases : allCases.filter(c=>c.pipeline_stage===t.id);
+    const hasLate = arr.some(c=>plIsLate(c.pipeline_stage, c.stage_entered_at));
+    return `<button class="q-tab ${curQueue===t.id?'on':''}" onclick="setQueue('${t.id}')">${t.l}<span class="n">${arr.length}</span>${hasLate?'<span class="q-alert" title="지연 건 있음"></span>':''}</button>`;
+  }).join('');
+}
+function setQueue(q){ curQueue = q; filterCases(); }
+function toggleLateOnly(){
+  lateOnly = !lateOnly;
+  document.getElementById('lateToggle').classList.toggle('on', lateOnly);
+  filterCases();
 }
 
 function renderCaseList(cases){
+  renderQueueBar();
+  const openN = allCases.filter(c=>!['submitted','closed'].includes(c.pipeline_stage)).length;
+  const lateN = allCases.filter(c=>plIsLate(c.pipeline_stage, c.stage_entered_at)).length;
+  document.getElementById('caseListSub').textContent = `총 ${allCases.length}건 · 미결 ${openN}건 · 지연 ${lateN}건`;
+
   if(!cases.length){
-    document.getElementById('caseListBody').innerHTML='<tr><td colspan="9"><div class="empty"><div class="empty-icon">📋</div><div class="empty-text">접수건이 없습니다</div></div></td></tr>';
+    document.getElementById('caseListBody').innerHTML='<tr><td colspan="10"><div class="empty"><div class="empty-icon">📋</div><div class="empty-text">조건에 맞는 접수건이 없습니다</div></div></td></tr>';
     return;
   }
   document.getElementById('caseListBody').innerHTML = cases.map(c=>{
-    // v6.2.12: 보험자료 진입 조건 (옵션 A)
+    const stage = c.pipeline_stage || 'received';
+    const days = plDays(c.stage_entered_at);
+    const late = plIsLate(stage, c.stage_entered_at);
+    // v6.2.12 보험자료 진입 조건 유지
     const canEnterInsurance = c.needs_insurance === true
       || c.insurance_status === 'active'
       || c.detection_work_status === 'repair_done' || c.detection_work_status === 'repair_completed'
       || c.interior_work_status === 'repair_done' || c.interior_work_status === 'repair_completed';
     const canStartInsurance = !canEnterInsurance && c.insurance_status !== 'active';
+    // 파트너 표기: 탐지·인테리어 이름 병기 + 미수락 배지
+    const pts = [];
+    if(c.detection_partner_name) pts.push(c.detection_partner_name + (c.detection_status==='requested' ? '<span class="pl-wait">수락 대기</span>' : ''));
+    if(c.interior_partner_name)  pts.push(c.interior_partner_name  + (c.interior_status==='requested'  ? '<span class="pl-wait">수락 대기</span>' : ''));
+    const ptHtml = pts.length ? pts.join('<br>') : '<span style="color:#A6B4C6">—</span>';
+    const nx = PL_NEXT[stage] || ['—',''];
+    const canSubmit = stage === 'analyzed';
+    const canCancel = stage === 'submitted' && curUser && curUser.role_code === 'superadmin';
 
     return `
-    <tr class="clickable" onclick="openCaseDetail('${c.id}')">
-      <td><span style="font-family:'JetBrains Mono',monospace;font-size:12px">${c.case_no||'-'}</span></td>
-      <td><strong>${c.customer_name}</strong></td>
-      <td>${c.address_region||'-'}</td>
-      <td style="font-size:11px;color:var(--muted)">${INSURANCE_LABELS[c.insurance_subscribed]||'-'}</td>
-      <td>${statusBadge(c.display_status)}</td>
-      <td>${purposeStatusBadge(c.needs_detection, c.detection_status, c.detection_work_status)}
-          ${c.needs_detection && c.detection_partner_name ? `<div style="font-size:10px;color:var(--muted);margin-top:2px">${c.detection_partner_name}</div>` : ''}</td>
-      <td>${purposeStatusBadge(c.needs_interior, c.interior_status, c.interior_work_status)}
-          ${c.needs_interior && c.interior_partner_name ? `<div style="font-size:10px;color:var(--muted);margin-top:2px">${c.interior_partner_name}</div>` : ''}</td>
+    <tr class="clickable ${late?'pl-late':''}" onclick="openCaseDetail('${c.id}')">
+      <td><span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700">${c.case_no||'-'}</span></td>
+      <td><strong>${c.customer_name}</strong><div style="font-size:11px;color:var(--muted)">${c.address_region||'-'}</div></td>
       <td style="font-size:12px;color:var(--muted)">${fmtDate(c.created_at)}</td>
+      <td style="font-size:11px;color:var(--muted)">${INSURANCE_LABELS[c.insurance_subscribed]||'-'}</td>
+      <td>${plDots(stage)}</td>
+      <td>${statusBadge(PL_LABEL[stage]||stage)}</td>
+      <td style="font-size:12px">${ptHtml}</td>
+      <td>${PL_LATE_DAYS[stage]==null ? '<span class="pl-age">—</span>'
+            : `<span class="pl-age ${late?'hot':''}">${days==null?'-':days+'일'}</span>${late?' <span class="pl-late-tag">지연</span>':''}`}</td>
+      <td style="font-size:12px">${nx[0]}${nx[1]?` <span style="color:var(--muted)">· ${nx[1]}</span>`:''}</td>
       <td style="display:flex;gap:6px;flex-wrap:wrap">
         <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openCaseDetail('${c.id}')">상세</button>
         ${canEnterInsurance ? `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openInsuranceTab('${c.id}','${c.case_no}')">보험자료</button>` : ''}
         ${canStartInsurance ? `<button class="btn btn-ghost btn-sm" style="border-color:var(--blue);color:var(--blue)" onclick="event.stopPropagation();startInsuranceForCase('${c.id}','${c.case_no}','${c.customer_name||''}')">보험자료 시작</button>` : ''}
+        ${canSubmit ? `<button class="btn btn-ghost btn-sm" style="border-color:var(--green);color:var(--green)" onclick="event.stopPropagation();openSubmitModal('${c.id}','${c.case_no}','${(c.customer_name||'').replace(/'/g,'')}','${(c.claim_insurer_name||'').replace(/'/g,'')}','${(c.claim_insurer_contact||'').replace(/'/g,'')}')">제출 완료</button>` : ''}
+        ${canCancel ? `<button class="btn btn-ghost btn-sm" style="border-color:var(--red);color:var(--red)" onclick="event.stopPropagation();cancelSubmission('${c.id}','${c.case_no}')">제출 취소</button>` : ''}
       </td>
     </tr>
   `;}).join('');
 }
+
+// ═══ v6.5.0: 보험사 제출 기록 ═══
+let _submitCaseId = null;
+function openSubmitModal(caseId, caseNo, customerName, insurerName, insurerContact){
+  _submitCaseId = caseId;
+  document.getElementById('submitModalCase').innerHTML = `<b>${caseNo} · ${customerName}</b> — 실제 발송을 완료한 뒤 기록하세요.`;
+  document.getElementById('smInsurer').value = insurerName || '';
+  document.getElementById('smAddress').value = insurerContact || '';
+  document.getElementById('smChannel').value = 'email';
+  document.getElementById('smNote').value = '';
+  const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  document.getElementById('smSentAt').value = d.toISOString().slice(0,16);
+  document.getElementById('submitModalOverlay').classList.add('open');
+}
+function closeSubmitModal(){ document.getElementById('submitModalOverlay').classList.remove('open'); _submitCaseId = null; }
+async function saveSubmission(){
+  const insurer = document.getElementById('smInsurer').value.trim();
+  if(!insurer){ toast('보험사명을 입력하세요', 'e'); return; }
+  const sentAtRaw = document.getElementById('smSentAt').value;
+  if(!sentAtRaw){ toast('발송 일시를 입력하세요', 'e'); return; }
+  const btn = document.getElementById('smSaveBtn');
+  btn.disabled = true; btn.textContent = '저장 중…';
+  try{
+    const { error } = await sb.rpc('rpc_record_submission', {
+      p_case_id: _submitCaseId,
+      p_insurer_name: insurer,
+      p_channel: document.getElementById('smChannel').value,
+      p_channel_address: document.getElementById('smAddress').value.trim() || null,
+      p_sent_at: new Date(sentAtRaw).toISOString(),
+      p_note: document.getElementById('smNote').value.trim() || null
+    });
+    if(error) throw error;
+    toast('제출 기록이 저장됐습니다. 「제출됨」으로 이동합니다.', 's');
+    closeSubmitModal();
+    await loadCaseList();
+  }catch(e){
+    toast('저장 실패: ' + (e.message||e), 'e');
+  }finally{
+    btn.disabled = false; btn.textContent = '제출 기록 저장';
+  }
+}
+async function cancelSubmission(caseId, caseNo){
+  if(!confirm(`「${caseNo}」 건의 최근 제출 기록을 취소하고 「검수 대기」로 되돌릴까요?\n(superadmin 전용 — 오클릭 복구용)`)) return;
+  try{
+    const { error } = await sb.rpc('rpc_cancel_submission', { p_case_id: caseId });
+    if(error) throw error;
+    toast('제출이 취소됐습니다.', 's');
+    await loadCaseList();
+  }catch(e){ toast('취소 실패: ' + (e.message||e), 'e'); }
+}
+window.openSubmitModal = openSubmitModal;
+window.closeSubmitModal = closeSubmitModal;
+window.saveSubmission = saveSubmission;
+window.cancelSubmission = cancelSubmission;
+window.setQueue = setQueue;
+window.toggleLateOnly = toggleLateOnly;
 
 // v6.2.12: 외부에서 보고 받은 케이스 (카카오톡 등) — 손해사정사 수동 진입
 async function startInsuranceForCase(caseId, caseNo, customerName){
@@ -4091,18 +4326,20 @@ window.startInsuranceForCase = startInsuranceForCase;
 
 function filterCases(){
   const kw = document.getElementById('caseSearch').value.toLowerCase();
-  const st = document.getElementById('caseStatusFilter').value;
+  const ins = document.getElementById('caseInsFilter').value;
   const filtered = allCases.filter(c=>{
+    if(curQueue !== 'all' && (c.pipeline_stage||'received') !== curQueue) return false;
+    if(ins && c.insurance_subscribed !== ins) return false;
+    if(lateOnly && !plIsLate(c.pipeline_stage, c.stage_entered_at)) return false;
     const match = !kw || [c.case_no,c.customer_name,c.address_region,c.detection_partner_name,c.interior_partner_name].some(v=>(v||'').toLowerCase().includes(kw));
-    const stMatch = !st || c.display_status===st;
-    return match && stMatch;
+    return match;
   });
   renderCaseList(filtered);
 }
 
 function renderCaseListMock(){
   document.getElementById('caseListSub').textContent='MOCK 모드';
-  document.getElementById('caseListBody').innerHTML='<tr><td colspan="9"><div class="empty"><div class="empty-icon">🔑</div><div class="empty-text">실제 Supabase 키 필요</div></div></td></tr>';
+  document.getElementById('caseListBody').innerHTML='<tr><td colspan="10"><div class="empty"><div class="empty-icon">🔑</div><div class="empty-text">실제 Supabase 키 필요</div></div></td></tr>';
 }
 
 // ══════════════════════════════════════════════════════════
