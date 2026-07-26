@@ -5,6 +5,14 @@
  *
  * 의존성: sb, toast(), curUser (index.html)
  *
+ * ✨ v6.4.3 변경사항 (2026-07-26) — 라벨 v6.2.199
+ *   🔴 BUGFIX [Critical]: 추출 시 다중 파일 슬롯(배열) 통째 스킵
+ *      - multipleFiles 슬롯에 파일 2개 이상 업로드 시 _insUploaded[code]가 배열이 되는데,
+ *        5개 수집 루프의 `!Array.isArray(up)` 조건이 배열을 전부 건너뜀
+ *      - 증상: 등본이 AI에 미전달 → 소재지·동거인 공백 / 건축물대장 Call 스킵 → 소유자 전부 공백
+ *        (SMPL_03 박세영 케이스에서 발견 — 콘솔 [추출진단] "2b 수집 문서 수: 0개" 로그로 확정)
+ *      - 수정: 배열이면 전 파일 순회하여 수집 (Call 2a·2b·3a·피해자 인적·청구서 5곳 동일 적용)
+ *
  * ✨ v6.4.2 변경사항 (2026-07-05) — 감리 지적사항 4건 정공법 수정
  *   🔴 BUGFIX [Critical②]: 약관·전유공용 기준 상수 배선 끊김
  *      - buildAnalysisInputs가 미존재 상수(INS_TERMS_TEXT·INS_AREAS_GUIDE)를 참조
@@ -2822,10 +2830,12 @@ ${typeCtx}
     for (const code of ['family_doc', 'family_doc_2', 'resident_reg', 'family_cert']) {
       const up = _insUploaded[code];
       console.log(`[추출진단] 2a 코드 '${code}':`, up ? (Array.isArray(up) ? `배열(${up.length})` : (up.file_path ? '객체 있음' : '객체이나 file_path 없음')) : '없음');
-      if (up && !Array.isArray(up) && up.file_path) {
-        const b64 = await fetchBase64(up.file_path);
+      // v6.2.199 [Critical]: 다중 파일 슬롯(배열)이 통째로 스킵되던 버그 수정 — 배열이면 전 파일 순회
+      const _ups = Array.isArray(up) ? up.filter(u => u && u.file_path) : ((up && up.file_path) ? [up] : []);
+      for (const _u of _ups) {
+        const b64 = await fetchBase64(_u.file_path);
         console.log(`[추출진단]   → '${code}' base64:`, b64 ? `${(b64.length/1024/1024).toFixed(2)}MB` : '❌ 로드실패');
-        if (b64) insuredPersonalDocs.push({ b64, mt: docMediaType(up.file_path), name: up.doc_name || code });
+        if (b64) insuredPersonalDocs.push({ b64, mt: docMediaType(_u.file_path), name: _u.doc_name || code });
       }
     }
     console.log(`[추출진단] 2a 수집 문서 수: ${insuredPersonalDocs.length}개, 합계 ${(insuredPersonalDocs.reduce((s,d)=>s+d.b64.length,0)/1024/1024).toFixed(2)}MB`);
@@ -2932,10 +2942,12 @@ JSON 출력 형식 (각 필드는 객체로):
     for (const code of ['ownership_insured', 'ownership_insured_2', 'ownership_accident']) {
       const up = _insUploaded[code];
       console.log(`[추출진단] 2b 코드 '${code}':`, up ? (Array.isArray(up) ? `배열(${up.length})` : (up.file_path ? '객체 있음' : '객체이나 file_path 없음')) : '없음');
-      if (up && !Array.isArray(up) && up.file_path) {
-        const b64 = await fetchBase64(up.file_path);
+      // v6.2.199 [Critical]: 다중 파일 슬롯(배열)이 통째로 스킵되던 버그 수정 — 배열이면 전 파일 순회
+      const _ups = Array.isArray(up) ? up.filter(u => u && u.file_path) : ((up && up.file_path) ? [up] : []);
+      for (const _u of _ups) {
+        const b64 = await fetchBase64(_u.file_path);
         console.log(`[추출진단]   → '${code}' base64:`, b64 ? `${(b64.length/1024/1024).toFixed(2)}MB` : '❌ 로드실패');
-        if (b64) insuredOwnerDocs.push({ b64, mt: docMediaType(up.file_path), name: up.doc_name || code });
+        if (b64) insuredOwnerDocs.push({ b64, mt: docMediaType(_u.file_path), name: _u.doc_name || code });
       }
     }
     console.log(`[추출진단] 2b 수집 문서 수: ${insuredOwnerDocs.length}개, 합계 ${(insuredOwnerDocs.reduce((s,d)=>s+d.b64.length,0)/1024/1024).toFixed(2)}MB`);
@@ -3017,10 +3029,12 @@ JSON 출력:
     for (const code of ['ownership_doc_victim', 'ownership_doc_victim_2', 'ownership_victim']) {
       const up = _insUploaded[code];
       console.log(`[추출진단] 3a 코드 '${code}':`, up ? (Array.isArray(up) ? `배열(${up.length})` : (up.file_path ? '객체 있음' : '객체이나 file_path 없음')) : '없음');
-      if (up && !Array.isArray(up) && up.file_path) {
-        const b64 = await fetchBase64(up.file_path);
+      // v6.2.199 [Critical]: 다중 파일 슬롯(배열)이 통째로 스킵되던 버그 수정 — 배열이면 전 파일 순회
+      const _ups = Array.isArray(up) ? up.filter(u => u && u.file_path) : ((up && up.file_path) ? [up] : []);
+      for (const _u of _ups) {
+        const b64 = await fetchBase64(_u.file_path);
         console.log(`[추출진단]   → '${code}' base64:`, b64 ? `${(b64.length/1024/1024).toFixed(2)}MB` : '❌ 로드실패');
-        if (b64) victimOwnerDocs.push({ b64, mt: docMediaType(up.file_path), name: up.doc_name || code });
+        if (b64) victimOwnerDocs.push({ b64, mt: docMediaType(_u.file_path), name: _u.doc_name || code });
       }
     }
     console.log(`[추출진단] 3a 수집 문서 수: ${victimOwnerDocs.length}개`);
@@ -3118,9 +3132,11 @@ JSON 출력 (객체 형태):
     const victimPersonalDocs = [];
     for (const code of ['family_doc_victim', 'family_doc_victim_2']) {
       const up = _insUploaded[code];
-      if (up && !Array.isArray(up) && up.file_path) {
-        const b64 = await fetchBase64(up.file_path);
-        if (b64) victimPersonalDocs.push({ b64, mt: docMediaType(up.file_path), name: up.doc_name || code });
+      // v6.2.199 [Critical]: 다중 파일 슬롯(배열) 스킵 버그 수정
+      const _ups = Array.isArray(up) ? up.filter(u => u && u.file_path) : ((up && up.file_path) ? [up] : []);
+      for (const _u of _ups) {
+        const b64 = await fetchBase64(_u.file_path);
+        if (b64) victimPersonalDocs.push({ b64, mt: docMediaType(_u.file_path), name: _u.doc_name || code });
       }
     }
     if (victimPersonalDocs.length > 0) {
@@ -3203,9 +3219,11 @@ JSON 출력 (객체 형태):
     const claimDocs = [];
     for (const code of ['claim_form', 'incident_statement']) {
       const up = _insUploaded[code];
-      if (up && !Array.isArray(up) && up.file_path) {
-        const b64 = await fetchBase64(up.file_path);
-        if (b64) claimDocs.push({ b64, mt: docMediaType(up.file_path), name: up.doc_name || code });
+      // v6.2.199 [Critical]: 다중 파일 슬롯(배열) 스킵 버그 수정
+      const _ups = Array.isArray(up) ? up.filter(u => u && u.file_path) : ((up && up.file_path) ? [up] : []);
+      for (const _u of _ups) {
+        const b64 = await fetchBase64(_u.file_path);
+        if (b64) claimDocs.push({ b64, mt: docMediaType(_u.file_path), name: _u.doc_name || code });
       }
     }
     // 파트너 임포트가 있으면 그것도 활용 (텍스트로 첨부)
@@ -4945,7 +4963,7 @@ function insStep3HTML() {
           <div>보고서 번호 · ${escapeHtml(reportNo)}</div>
           <div>약관 · ${escapeHtml(insTypeLabel)}</div>
           <div>판단 결과 · ${covVal || '미산출'}</div>
-          <div>버전 · v6.2.198</div>
+          <div>버전 · v6.2.199</div>
         </div>
       </div>
     </div>
