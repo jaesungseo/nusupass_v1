@@ -2730,6 +2730,12 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
           <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2"/></svg>
           배정 목록
         </button>
+        <!-- v6.5.6: 파트너도 비밀번호 변경 가능해야 함 (초기비번 고착 방지) -->
+        <div class="sb-group">내 계정</div>
+        <button class="sb-btn" onclick="go('myaccount')">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+          내 프로필 · 비밀번호
+        </button>
       </div>
     </nav>
     <div class="sb-footer">
@@ -6214,7 +6220,10 @@ window.accEditSave = accEditSave;
 async function loadMyAccount(){
   document.getElementById('my-name').textContent = curUser?.name || '-';
   document.getElementById('my-email').textContent = curUser?.email || '-';
-  document.getElementById('my-role').textContent = ROLE_LABEL[curUser?.role_code] || curUser?.role_code || '-';
+  document.getElementById('my-role').textContent =
+    curRole === 'partner'
+      ? ('파트너' + (curUser?.company_name ? ' · ' + curUser.company_name : ''))
+      : (ROLE_LABEL[curUser?.role_code] || curUser?.role_code || '-');
   document.getElementById('my-pw1').value='';
   document.getElementById('my-pw2').value='';
   document.getElementById('my-pw-result').innerHTML='';
