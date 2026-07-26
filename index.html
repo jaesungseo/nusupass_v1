@@ -127,6 +127,7 @@ tr.pl-late:hover td{background:#FBEFEF}
 .pl-late-tag{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:800;color:var(--red)}
 .pl-late-tag::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--red)}
 .pl-wait{display:inline-block;font-size:10px;font-weight:800;padding:2px 7px;border-radius:999px;background:#FBF1DF;color:#9C6212;margin-left:5px;vertical-align:middle}
+.pl-need{display:inline-block;font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:999px;background:#FBEAEA;color:#CB4444;border:1px solid #EBC2C2}
 .tgl-late{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:var(--muted);border:1px solid var(--line);border-radius:8px;padding:8px 12px;background:var(--surface);cursor:pointer}
 .tgl-late.on{background:#FBEAEA;border-color:#EBC2C2;color:var(--red)}
 .stat-card{position:relative;cursor:pointer}
@@ -4222,6 +4223,11 @@ function renderCaseList(cases){
     const pts = [];
     if(c.detection_partner_name) pts.push(c.detection_partner_name + (c.detection_status==='requested' ? '<span class="pl-wait">수락 대기</span>' : ''));
     if(c.interior_partner_name)  pts.push(c.interior_partner_name  + (c.interior_status==='requested'  ? '<span class="pl-wait">수락 대기</span>' : ''));
+    // v6.5.3: 진행 중 취소 감지 — 현장 이후 단계인데 필요 업종의 유효 배정이 사라진 경우
+    if(stage === 'assigned' || stage === 'field_done'){
+      if(c.needs_detection && !c.detection_partner_name) pts.push('<span class="pl-need">⚠ 탐지 재위임 필요</span>');
+      if(c.needs_interior  && !c.interior_partner_name)  pts.push('<span class="pl-need">⚠ 인테리어 재위임 필요</span>');
+    }
     const ptHtml = pts.length ? pts.join('<br>') : '<span style="color:#A6B4C6">—</span>';
     const insOnly = c.needs_insurance === true && !c.needs_detection && !c.needs_interior;
     const nx = (stage === 'received' && insOnly)
