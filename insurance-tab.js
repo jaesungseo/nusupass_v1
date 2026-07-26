@@ -5,6 +5,13 @@
  *
  * 의존성: sb, toast(), curUser (index.html)
  *
+ * ✨ v6.4.4 변경사항 (2026-07-26) — 라벨 v6.2.200
+ *   🎨 보고서 사진 표시 개선 (report-template-v2.html 동반 수정)
+ *      - 손해사정서 사진 슬롯: 액자화(통일 배경+테두리) + 높이 120→140px
+ *        가로·세로 혼합 사진의 들쭉날쭉 체감 해소, contain 유지(증거 잘림 금지)
+ *      - iframe tv 파라미터 6.2.197→6.2.200 (템플릿 캐시버스팅)
+ *      - index.html 누수소견서 사진 cover→contain 통일
+ *
  * ✨ v6.4.3 변경사항 (2026-07-26) — 라벨 v6.2.199
  *   🔴 BUGFIX [Critical]: 추출 시 다중 파일 슬롯(배열) 통째 스킵
  *      - multipleFiles 슬롯에 파일 2개 이상 업로드 시 _insUploaded[code]가 배열이 되는데,
@@ -4916,7 +4923,7 @@ function insStep3HTML() {
       <div id="tab-content-report" style="display:block">
         <iframe
           id="reportFrame"
-          src="./report-template-v2.html?embed=1&tv=6.2.197&case=${encodeURIComponent(cl.case_no || 'SMPL_01_백석균')}&recipient=${encodeURIComponent(_reportRecipient || '')}&dept=${encodeURIComponent(_reportDept || '손해사정팀')}&title=${encodeURIComponent(cl.report_title || '누수사고 손해사정서')}&policyNo=${encodeURIComponent(cl.policy_no || r.policy_no || '')}"
+          src="./report-template-v2.html?embed=1&tv=6.2.200&case=${encodeURIComponent(cl.case_no || 'SMPL_01_백석균')}&recipient=${encodeURIComponent(_reportRecipient || '')}&dept=${encodeURIComponent(_reportDept || '손해사정팀')}&title=${encodeURIComponent(cl.report_title || '누수사고 손해사정서')}&policyNo=${encodeURIComponent(cl.policy_no || r.policy_no || '')}"
           style="width:100%;height:1400px;border:1px solid var(--ins-line);border-radius:6px;background:white;display:block;"
           title="손해사정서 양식 (SMPL_01 기반 v6.1.4)"
           onload="s3InjectReportData()"
@@ -4963,7 +4970,7 @@ function insStep3HTML() {
           <div>보고서 번호 · ${escapeHtml(reportNo)}</div>
           <div>약관 · ${escapeHtml(insTypeLabel)}</div>
           <div>판단 결과 · ${covVal || '미산출'}</div>
-          <div>버전 · v6.2.199</div>
+          <div>버전 · v6.2.200</div>
         </div>
       </div>
     </div>

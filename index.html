@@ -1214,8 +1214,9 @@ tr.pl-late:hover td{background:#FBEFEF}
 .report-photo-label{font-size:12px;font-weight:700;color:#444;margin-bottom:6px;padding-left:4px;border-left:2px solid #2E5C4A;padding-left:8px}
 .report-photo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .report-photo{
-  width:100%;aspect-ratio:4/3;object-fit:cover;
-  border:1px solid #d4d0c8;border-radius:4px;background:#f5f5f0;
+  /* v6.2.200: cover→contain — 증거 사진 잘림 방지, 여백은 액자 배경으로 통일 */
+  width:100%;aspect-ratio:4/3;object-fit:contain;
+  border:1px solid #d4d0c8;border-radius:4px;background:#f1f1ee;
 }
 .report-photo-empty{
   width:100%;aspect-ratio:4/3;border:1.5px dashed #d4d0c8;border-radius:4px;
