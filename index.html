@@ -3226,6 +3226,25 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
           <div>역할: <b id="my-role">-</b></div>
         </div>
       </div>
+      <!-- v6.5.5: 담당자 정보 셀프 편집 — 설정이 superadmin 전용이 되면서 이동 -->
+      <div class="card" style="padding:20px;margin-bottom:16px;max-width:520px;" id="my-contact-card" hidden>
+        <div style="font-weight:700;margin-bottom:4px;">담당자 정보 <span style="font-weight:500;font-size:12px;color:#6b7280;">보고서 "담당자 / H.P / E-MAIL" 줄에 표시</span></div>
+        <div style="font-size:11.5px;color:#9ca3af;margin-bottom:12px;">본인 정보만 수정할 수 있습니다. 회사 정보·도장은 대표관리자가 설정에서 관리합니다.</div>
+        <label style="display:block;margin-bottom:10px;">
+          <span style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;">직급</span>
+          <input id="my-position" style="width:100%;padding:9px;border:1px solid #d1d5db;border-radius:6px;" placeholder="예) 과장">
+        </label>
+        <label style="display:block;margin-bottom:10px;">
+          <span style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;">휴대폰</span>
+          <input id="my-phone" style="width:100%;padding:9px;border:1px solid #d1d5db;border-radius:6px;" placeholder="010-0000-0000">
+        </label>
+        <label style="display:block;margin-bottom:14px;">
+          <span style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;">개인 이메일 (보고서 표시용)</span>
+          <input id="my-personal-email" style="width:100%;padding:9px;border:1px solid #d1d5db;border-radius:6px;" placeholder="example@gmail.com">
+        </label>
+        <button class="btn btn-primary btn-sm" onclick="mySaveContact()">담당자 정보 저장</button>
+        <div id="my-contact-result" style="margin-top:10px;font-size:13px;"></div>
+      </div>
       <div class="card" style="padding:20px;max-width:520px;">
         <div style="font-weight:700;margin-bottom:12px;">비밀번호 변경</div>
         <label style="display:block;margin-bottom:10px;">
@@ -3907,14 +3926,16 @@ function showApp(){
   const rc = curUser?.role_code;
   const isManager = (curRole==='admin' && (rc==='superadmin' || rc==='manager'));
   const isSuper   = (curRole==='admin' && rc==='superadmin');
-  // 관리 그룹 (계정관리·설정): manager 이상
-  ['navGroupManage','navAccounts','navSettings'].forEach(id => {
+  // v6.5.5: 관리 그룹 분리 — 계정관리는 manager 이상, 설정(회사 정보·도장)은 superadmin 전용
+  ['navGroupManage','navAccounts'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = isManager ? '' : 'none';
   });
-  // 프롬프트 관리: superadmin only
-  const navPrompts = document.getElementById('navPrompts');
-  if (navPrompts) navPrompts.style.display = isSuper ? '' : 'none';
+  // 설정·프롬프트 관리: superadmin only
+  ['navSettings','navPrompts'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = isSuper ? '' : 'none';
+  });
 
   if(curRole==='admin') go('dashboard');
   else go('pHome');
@@ -5610,6 +5631,12 @@ let SETTINGS_STAMP = {
 };
 
 async function loadSettings(){
+  // v6.5.5: 대표관리자 전용 (RLS도 superadmin 쓰기만 허용 — UI는 2차 방어선)
+  if(!(curUser && curUser.role_code === 'superadmin')){
+    toast('설정은 대표관리자 전용입니다', 'e');
+    go('dashboard');
+    return;
+  }
   // 처음 진입 시에만 데이터 로드 + 이벤트 바인딩 (재진입 시엔 dirty 체크)
   if(!isReal){
     toast('Supabase 연결이 필요합니다','e');
@@ -6025,7 +6052,7 @@ async function loadAccounts(){
     // 직원(admin_users) + 파트너(partner_companies + users)
     const [{ data:admins }, { data:partners }] = await Promise.all([
       sb.from('admin_users').select('id,email,name,role_code,is_active,phone').order('role_code'),
-      sb.from('partner_companies').select('id,company_name,owner_name,specialty_codes,is_active,phone,partner_users(email,is_active)').order('company_name'),
+      sb.from('partner_companies').select('id,company_name,owner_name,specialty_codes,is_active,phone,partner_users(id,email,is_active)').order('company_name'),
     ]);
 
     const adminRows = (admins||[]).map(a=>`
@@ -6035,7 +6062,7 @@ async function loadAccounts(){
         <td>${escapeHtml(a.email||'-')}</td>
         <td>${escapeHtml(a.phone||'-')}</td>
         <td>${a.is_active?'<span style="color:#16a34a;">활성</span>':'<span style="color:#9ca3af;">비활성</span>'}</td>
-        <td>${a.role_code==='superadmin'?'<span style="color:#9ca3af;font-size:11px;">대표관리자 계정</span>':`<button class="btn btn-ghost btn-sm" onclick="accEdit('admin','${a.id}','${escapeHtml(a.name||'')}','${escapeHtml(a.phone||'')}','${a.role_code}')">수정</button> <button class="btn btn-ghost btn-sm" onclick="accToggleActive('admin','${a.id}',${!a.is_active})">${a.is_active?'비활성화':'활성화'}</button>`}</td>
+        <td>${a.role_code==='superadmin'?'<span style="color:#9ca3af;font-size:11px;">대표관리자 계정</span>':`<button class="btn btn-ghost btn-sm" onclick="accEdit('admin','${a.id}','${escapeHtml(a.name||'')}','${escapeHtml(a.phone||'')}','${a.role_code}')">수정</button> <button class="btn btn-ghost btn-sm" onclick="accToggleActive('admin','${a.id}',${!a.is_active})">${a.is_active?'비활성화':'활성화'}</button>${curUser&&curUser.role_code==='superadmin'?` <button class="btn btn-ghost btn-sm" style="border-color:#C97F1D;color:#9C6212" onclick="accResetPw('admin','${a.id}','${escapeHtml(a.email||'')}')">비번 초기화</button>`:''}`}</td>
       </tr>`).join('');
 
     const partnerRows = (partners||[]).map(p=>{
@@ -6049,7 +6076,7 @@ async function loadAccounts(){
         <td>${escapeHtml(email)}</td>
         <td>${escapeHtml(p.phone||'-')}</td>
         <td>${p.is_active?'<span style="color:#16a34a;">활성</span>':'<span style="color:#9ca3af;">비활성</span>'}</td>
-        <td><button class="btn btn-ghost btn-sm" onclick="accEdit('partner','${p.id}','${escapeHtml(p.owner_name||'')}','${escapeHtml(p.phone||'')}','${specCode}')">수정</button> <button class="btn btn-ghost btn-sm" onclick="accToggleActive('partner','${p.id}',${!p.is_active})">${p.is_active?'비활성화':'활성화'}</button></td>
+        <td><button class="btn btn-ghost btn-sm" onclick="accEdit('partner','${p.id}','${escapeHtml(p.owner_name||'')}','${escapeHtml(p.phone||'')}','${specCode}')">수정</button> <button class="btn btn-ghost btn-sm" onclick="accToggleActive('partner','${p.id}',${!p.is_active})">${p.is_active?'비활성화':'활성화'}</button>${curUser&&curUser.role_code==='superadmin'&&p.partner_users&&p.partner_users[0]?` <button class="btn btn-ghost btn-sm" style="border-color:#C97F1D;color:#9C6212" onclick="accResetPw('partner','${p.partner_users[0].id}','${escapeHtml(email)}')">비번 초기화</button>`:''}</td>
       </tr>`;
     }).join('');
 
@@ -6065,6 +6092,27 @@ async function loadAccounts(){
     listEl.innerHTML = `<div class="empty"><div class="empty-text">로드 실패: ${escapeHtml(e.message||String(e))}</div></div>`;
   }
 }
+
+// v6.5.4: 비밀번호 초기화 (대표관리자 전용) — Edge Function reset-password 호출
+async function accResetPw(targetType, targetId, email){
+  if(!confirm(`「${email}」 계정의 비밀번호를 초기값(nusupass24)으로 재설정할까요?\n\n초기화 후 당사자에게 안내하고, 로그인 후 비밀번호를 변경하도록 해주세요.`)) return;
+  try {
+    const { data:{ session } } = await sb.auth.getSession();
+    if(!session) throw new Error('로그인이 필요합니다');
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/reset-password`, {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'Authorization':`Bearer ${session.access_token}` },
+      body: JSON.stringify({ target_type: targetType, target_id: targetId }),
+    });
+    const out = await res.json();
+    if(!out.ok) throw new Error(out.error || '초기화 실패');
+    toast(`${out.email} 비밀번호가 nusupass24 로 초기화됐습니다`, 's');
+  } catch(e){
+    console.error('[accResetPw]', e);
+    toast('초기화 실패: ' + (e.message||e), 'e');
+  }
+}
+window.accResetPw = accResetPw;
 
 async function accToggleActive(type, id, next){
   if(!confirm(next?'이 계정을 활성화할까요?':'이 계정을 비활성화할까요? (로그인이 차단됩니다)')) return;
@@ -6163,14 +6211,52 @@ window.accEditSave = accEditSave;
 
 
 
-function loadMyAccount(){
+async function loadMyAccount(){
   document.getElementById('my-name').textContent = curUser?.name || '-';
   document.getElementById('my-email').textContent = curUser?.email || '-';
   document.getElementById('my-role').textContent = ROLE_LABEL[curUser?.role_code] || curUser?.role_code || '-';
   document.getElementById('my-pw1').value='';
   document.getElementById('my-pw2').value='';
   document.getElementById('my-pw-result').innerHTML='';
+  // v6.5.5: 관리자 계정이면 담당자 정보(직급·휴대폰·개인 이메일) 셀프 편집 카드 표시
+  const card = document.getElementById('my-contact-card');
+  if(card){
+    if(curRole === 'admin' && isReal){
+      card.hidden = false;
+      try{
+        const { data:{ session } } = await sb.auth.getSession();
+        const { data: me } = await sb.from('admin_users')
+          .select('position,phone,personal_email').eq('id', session.user.id).single();
+        document.getElementById('my-position').value = me?.position || '';
+        document.getElementById('my-phone').value = me?.phone || '';
+        document.getElementById('my-personal-email').value = me?.personal_email || '';
+      }catch(e){ console.error('[loadMyAccount]', e); }
+    } else {
+      card.hidden = true;
+    }
+  }
 }
+
+async function mySaveContact(){
+  const resultEl = document.getElementById('my-contact-result');
+  try{
+    const { data:{ session } } = await sb.auth.getSession();
+    if(!session) throw new Error('로그인이 필요합니다');
+    const payload = {
+      position: document.getElementById('my-position').value.trim() || null,
+      phone: formatPhone(document.getElementById('my-phone').value.trim()) || null,
+      personal_email: document.getElementById('my-personal-email').value.trim() || null,
+    };
+    const { error } = await sb.from('admin_users').update(payload).eq('id', session.user.id);
+    if(error) throw error;
+    resultEl.innerHTML = '<span style="color:#166534;">✅ 저장됐습니다. 다음 보고서부터 반영됩니다.</span>';
+    toast('담당자 정보 저장 완료','s');
+  }catch(e){
+    console.error('[mySaveContact]', e);
+    resultEl.innerHTML = `<span style="color:#b91c1c;">실패: ${escapeHtml(e.message||String(e))}</span>`;
+  }
+}
+window.mySaveContact = mySaveContact;
 
 async function myChangePassword(){
   const pw1 = document.getElementById('my-pw1').value;
