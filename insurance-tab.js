@@ -5,6 +5,14 @@
  *
  * 의존성: sb, toast(), curUser (index.html)
  *
+ * ✨ v6.5.0 변경사항 (2026-07-26) — 라벨 v6.2.201 : 보고서 사진 구성 전면 개편
+ *   📷 본문 4. 사고사항: 단계별 대표 최대 2장(총 6장) + 캡션 — 미지정 시 앞 2장 자동
+ *   📎 별첨 자동 생성: ①현장 사진 대지(대표 제외 나머지 전량, 3열) ②참고 도면 — 있을 때만, 번호 동적
+ *   📋 7. 첨부자료 목록에 별첨 행 자동 반영
+ *   🛠 편집 패널: ★대표 지정(단계별 2장 강제)·캡션 입력·도면 분류·중복 사진 감지 배지
+ *   🗃 case_documents: is_representative·caption·is_drawing (마이그레이션 v6_6_0)
+ *   🖼 홀수 장수 빈 칸도 액자 배경 유지 / report-template-v2.html 동반 수정 (tv=6.2.201)
+ *
  * ✨ v6.4.4 변경사항 (2026-07-26) — 라벨 v6.2.200
  *   🎨 보고서 사진 표시 개선 (report-template-v2.html 동반 수정)
  *      - 손해사정서 사진 슬롯: 액자화(통일 배경+테두리) + 높이 120→140px
@@ -4551,7 +4559,7 @@ async function s3LoadReportData() {
   try {
     const importedIds = Array.from(_insImportedPartners || []);
     let docsQuery = sb.from('case_documents')
-      .select('id, document_type, file_url, file_name, created_at, assignment_id, report_include, report_stage, report_order')
+      .select('id, document_type, file_url, file_name, created_at, assignment_id, report_include, report_stage, report_order, is_representative, caption, is_drawing')
       .eq('case_id', _insCaseId)
       .in('document_type', ['repair_photo_before','repair_photo_during','repair_photo_after'])
       .order('report_order', { ascending: true, nullsFirst: false })
@@ -4602,6 +4610,10 @@ async function s3LoadReportData() {
             partner_name: partnerInfo.name,
             partner_purpose: partnerInfo.purpose,
             partner_purpose_label: partnerInfo.purposeLabel,
+            // v6.2.201: 보고서 구성 메타
+            is_rep: d.is_representative === true,
+            caption: d.caption || '',
+            is_drawing: d.is_drawing === true,
           };
           _insAllPhotos[stage].push(photoObj);
           if (photoObj.report_include) _insRepairPhotos[stage].push(photoObj);
@@ -4923,7 +4935,7 @@ function insStep3HTML() {
       <div id="tab-content-report" style="display:block">
         <iframe
           id="reportFrame"
-          src="./report-template-v2.html?embed=1&tv=6.2.200&case=${encodeURIComponent(cl.case_no || 'SMPL_01_백석균')}&recipient=${encodeURIComponent(_reportRecipient || '')}&dept=${encodeURIComponent(_reportDept || '손해사정팀')}&title=${encodeURIComponent(cl.report_title || '누수사고 손해사정서')}&policyNo=${encodeURIComponent(cl.policy_no || r.policy_no || '')}"
+          src="./report-template-v2.html?embed=1&tv=6.2.201&case=${encodeURIComponent(cl.case_no || 'SMPL_01_백석균')}&recipient=${encodeURIComponent(_reportRecipient || '')}&dept=${encodeURIComponent(_reportDept || '손해사정팀')}&title=${encodeURIComponent(cl.report_title || '누수사고 손해사정서')}&policyNo=${encodeURIComponent(cl.policy_no || r.policy_no || '')}"
           style="width:100%;height:1400px;border:1px solid var(--ins-line);border-radius:6px;background:white;display:block;"
           title="손해사정서 양식 (SMPL_01 기반 v6.1.4)"
           onload="s3InjectReportData()"
@@ -4970,7 +4982,7 @@ function insStep3HTML() {
           <div>보고서 번호 · ${escapeHtml(reportNo)}</div>
           <div>약관 · ${escapeHtml(insTypeLabel)}</div>
           <div>판단 결과 · ${covVal || '미산출'}</div>
-          <div>버전 · v6.2.200</div>
+          <div>버전 · v6.2.201</div>
         </div>
       </div>
     </div>
@@ -6009,9 +6021,10 @@ function buildReportData(cl, r, co, partners, victims, photos, handler) {
       cause: accCause,
       desc: accDesc,
       photos: {
-        before: (photos.before || []).map(p => ({ url: p.url || '' })),
-        during: (photos.during || []).map(p => ({ url: p.url || '' })),
-        after:  (photos.after  || []).map(p => ({ url: p.url || '' })),
+        // v6.2.201: 캡션·대표·도면 메타 동봉 — 템플릿이 본문 대표/별첨을 분리
+        before: (photos.before || []).map(p => ({ url: p.url || '', caption: p.caption || '', rep: !!p.is_rep, drawing: !!p.is_drawing })),
+        during: (photos.during || []).map(p => ({ url: p.url || '', caption: p.caption || '', rep: !!p.is_rep, drawing: !!p.is_drawing })),
+        after:  (photos.after  || []).map(p => ({ url: p.url || '', caption: p.caption || '', rep: !!p.is_rep, drawing: !!p.is_drawing })),
       }
     },
     liability: {
@@ -6280,17 +6293,35 @@ function s3PhotoEditPanelHTML() {
   const all = _insAllPhotos || { before: [], during: [], after: [] };
   const total = all.before.length + all.during.length + all.after.length;
 
+  // v6.2.201: 중복 감지 — 같은 원본 파일이 보고서 포함 상태로 2곳 이상
+  const dupCount = {};
+  ['before','during','after'].forEach(st => (all[st]||[]).forEach(p => {
+    if (p.report_include) dupCount[p.file_url] = (dupCount[p.file_url] || 0) + 1;
+  }));
+  const dupTotal = Object.values(dupCount).filter(n => n > 1).length;
+
   const cardHTML = (p) => {
     const dimmed = p.report_include ? '' : 'opacity:.4;filter:grayscale(1)';
     const src = escapeHtml(p.partner_name || '');
+    const isDup = p.report_include && dupCount[p.file_url] > 1;
     return `
-      <div style="position:relative;border:1px solid var(--ins-line);border-radius:6px;overflow:hidden;background:#fff;${dimmed}">
+      <div style="position:relative;border:1.5px solid ${isDup ? '#CB4444' : 'var(--ins-line)'};border-radius:6px;overflow:hidden;background:#fff;${dimmed}">
+        ${isDup ? `<span style="position:absolute;top:3px;right:3px;z-index:2;font-size:9px;font-weight:800;background:#CB4444;color:#fff;padding:1px 6px;border-radius:3px">중복</span>` : ''}
+        ${p.is_rep && !p.is_drawing ? `<span style="position:absolute;top:3px;left:3px;z-index:2;font-size:9px;font-weight:800;background:#2563eb;color:#fff;padding:1px 6px;border-radius:3px">★ 본문</span>` : ''}
+        ${p.is_drawing ? `<span style="position:absolute;top:3px;left:3px;z-index:2;font-size:9px;font-weight:800;background:#8a7d5f;color:#fff;padding:1px 6px;border-radius:3px">도면</span>` : ''}
         <img src="${p.url}" alt="" style="width:100%;height:90px;object-fit:cover;display:block">
         <div style="font-size:9px;color:#6b7280;padding:2px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📸 ${src}</div>
+        <input value="${escapeHtml(p.caption || '')}" placeholder="캡션 (촬영 부위)"
+          onchange="s3PhotoCaption('${p.doc_id}', this.value)"
+          style="width:100%;border:none;border-top:1px solid var(--ins-line);font-size:10px;padding:3px 5px;background:#fffdf5">
         <div style="display:flex;border-top:1px solid var(--ins-line)">
+          ${p.is_drawing ? '' : `<button onclick="s3PhotoRep('${p.doc_id}', ${p.is_rep ? 'false' : 'true'})" title="본문 대표 지정/해제 (단계별 최대 2장)"
+            style="flex:1;border:none;background:${p.is_rep ? '#EFF6FF' : '#fff'};color:${p.is_rep ? '#2563eb' : '#6b7280'};font-size:11px;padding:3px;cursor:pointer">★</button>`}
+          <button onclick="s3PhotoDrawing('${p.doc_id}', ${p.is_drawing ? 'false' : 'true'})" title="도면으로 분류 (별첨 도면행)"
+            style="flex:1;border:none;border-left:1px solid var(--ins-line);background:${p.is_drawing ? '#F5F1E6' : '#fff'};color:${p.is_drawing ? '#8a7d5f' : '#6b7280'};font-size:10px;padding:3px;cursor:pointer">도면</button>
           ${p.report_include
-            ? `<button onclick="s3PhotoToggle('${p.doc_id}',false)" title="보고서에서 제외" style="flex:1;border:none;background:#fef2f2;color:#b91c1c;font-size:11px;padding:3px;cursor:pointer">✕ 제외</button>`
-            : `<button onclick="s3PhotoToggle('${p.doc_id}',true)" title="보고서에 복원" style="flex:1;border:none;background:#f0fdf4;color:#15803d;font-size:11px;padding:3px;cursor:pointer">↩ 복원</button>`}
+            ? `<button onclick="s3PhotoToggle('${p.doc_id}',false)" title="보고서에서 제외" style="flex:1;border:none;border-left:1px solid var(--ins-line);background:#fef2f2;color:#b91c1c;font-size:11px;padding:3px;cursor:pointer">✕</button>`
+            : `<button onclick="s3PhotoToggle('${p.doc_id}',true)" title="보고서에 복원" style="flex:1;border:none;border-left:1px solid var(--ins-line);background:#f0fdf4;color:#15803d;font-size:11px;padding:3px;cursor:pointer">↩</button>`}
           <select onchange="s3PhotoMove('${p.doc_id}', this.value)" title="단계 이동" style="flex:1;border:none;border-left:1px solid var(--ins-line);font-size:10px;cursor:pointer;background:#fff">
             <option value="before" ${p.stage==='before'?'selected':''}>전</option>
             <option value="during" ${p.stage==='during'?'selected':''}>중</option>
@@ -6322,14 +6353,63 @@ function s3PhotoEditPanelHTML() {
   return `
     <div class="no-print" style="margin-top:16px;padding:14px 16px;background:#fafafa;border:1px solid var(--ins-line);border-radius:8px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-        <div style="font-size:14px;font-weight:700;color:var(--ins-ink-1)">🖼 현장사진 편집 <span style="font-size:11px;font-weight:400;color:var(--ins-muted)">· 전체 ${total}장 · 변경 즉시 저장</span></div>
-        <div style="font-size:11px;color:var(--ins-muted)">제외/단계이동/외부추가 — 보고서에 바로 반영</div>
+        <div style="font-size:14px;font-weight:700;color:var(--ins-ink-1)">🖼 현장사진 편집 <span style="font-size:11px;font-weight:400;color:var(--ins-muted)">· 전체 ${total}장 · 변경 즉시 저장</span>
+          ${dupTotal ? `<span style="font-size:11px;font-weight:800;color:#CB4444;margin-left:8px">⚠ 중복 사진 ${dupTotal}건 — 한쪽을 제외하세요</span>` : ''}</div>
+        <div style="font-size:11px;color:var(--ins-muted)">★ 본문 대표(단계별 최대 2장, 미지정 시 앞 2장 자동) · 나머지는 별첨 사진대지 · 도면은 별첨 도면</div>
       </div>
       ${stageBlock('before')}
       ${stageBlock('during')}
       ${stageBlock('after')}
     </div>`;
 }
+
+// v6.2.201: 본문 대표 지정 (단계별 최대 2장 강제)
+async function s3PhotoRep(docId, on) {
+  try {
+    if (on) {
+      const all = _insAllPhotos || {};
+      let target = null;
+      ['before','during','after'].forEach(st => (all[st]||[]).forEach(p => { if (p.doc_id === docId) target = p; }));
+      if (target) {
+        const reps = (all[target.stage]||[]).filter(p => p.is_rep && !p.is_drawing && p.report_include);
+        if (reps.length >= 2) { toast(`${_S3_STAGE_LABEL[target.stage]} 대표는 최대 2장입니다 — 기존 ★를 해제 후 지정하세요`, 'e'); return; }
+      }
+    }
+    const { error } = await sb.from('case_documents')
+      .update({ is_representative: on }).eq('id', docId);
+    if (error) throw error;
+    await s3LoadReportData();
+    insRender();
+    toast(on ? '본문 대표로 지정됨' : '대표 해제됨', 's');
+  } catch (e) { console.warn('[s3PhotoRep]', e); toast('변경 실패: ' + e.message, 'e'); }
+}
+window.s3PhotoRep = s3PhotoRep;
+
+// v6.2.201: 캡션 저장 (blur/change 시)
+async function s3PhotoCaption(docId, text) {
+  try {
+    const { error } = await sb.from('case_documents')
+      .update({ caption: (text || '').trim() || null }).eq('id', docId);
+    if (error) throw error;
+    await s3LoadReportData();
+    insRender();
+  } catch (e) { console.warn('[s3PhotoCaption]', e); toast('캡션 저장 실패: ' + e.message, 'e'); }
+}
+window.s3PhotoCaption = s3PhotoCaption;
+
+// v6.2.201: 도면 분류 토글 (도면이면 대표 해제 — 도면은 본문 미출력)
+async function s3PhotoDrawing(docId, on) {
+  try {
+    const upd = { is_drawing: on };
+    if (on) upd.is_representative = false;
+    const { error } = await sb.from('case_documents').update(upd).eq('id', docId);
+    if (error) throw error;
+    await s3LoadReportData();
+    insRender();
+    toast(on ? '도면으로 분류됨 (별첨 도면)' : '사진으로 복귀', 's');
+  } catch (e) { console.warn('[s3PhotoDrawing]', e); toast('변경 실패: ' + e.message, 'e'); }
+}
+window.s3PhotoDrawing = s3PhotoDrawing;
 
 // 보고서 포함/제외 토글
 async function s3PhotoToggle(docId, include) {

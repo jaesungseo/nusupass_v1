@@ -270,7 +270,7 @@ body:not(.embed) .page{
   letter-spacing:0.05em;
 }
 .photo-cell{
-  height:140px;
+  height:158px;
   padding:6px !important;
   text-align:center;
 }
@@ -290,7 +290,7 @@ body:not(.embed) .page{
   justify-content:center;
   font-size:11px;
   color:var(--ink-3);
-  height:140px;
+  height:158px;
   overflow:hidden;
 }
 .photo-slot img{
@@ -308,6 +308,35 @@ body:not(.embed) .page{
 }
 .photo-row td.photo-cell{
   padding:6px !important;
+}
+/* v6.2.201: 슬롯 내 캡션·번호 배지 — 본문 대표 사진용 */
+.photo-slot{ position:relative; flex-direction:column; }
+.photo-slot img{ flex:1; min-height:0; }
+.ph-no{
+  position:absolute; top:4px; left:5px; z-index:1;
+  font-size:9px; letter-spacing:.05em; color:#fff;
+  background:rgba(30,30,30,.55); padding:1px 6px; border-radius:3px;
+  font-family:'Malgun Gothic',sans-serif;
+}
+.ph-cap{
+  flex:none; width:100%; background:#fff; border-top:1px solid #e2e0d8;
+  font-size:9.5px; line-height:1.35; color:#333; padding:3px 5px;
+  font-family:'Malgun Gothic',sans-serif; text-align:left;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+/* v6.2.201: 별첨 사진대지·도면 */
+.apx-sub{ font-size:12px; font-weight:700; margin:14px 0 6px; }
+.apx-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+.apx-grid.two{ grid-template-columns:repeat(2,1fr); }
+.apx-item{ border:1px solid #999; page-break-inside:avoid; break-inside:avoid; position:relative; }
+.apx-item .apx-ph{
+  height:112px; background:#f1f1ee; display:flex; align-items:center; justify-content:center; overflow:hidden;
+}
+.apx-item.tall .apx-ph{ height:230px; }
+.apx-item .apx-ph img{ width:100%; height:100%; object-fit:contain; }
+.apx-cap{
+  border-top:1px solid #ccc; font-size:9.5px; line-height:1.35; color:#333;
+  padding:3px 5px; min-height:24px; font-family:'Malgun Gothic',sans-serif;
 }
 /* 사진 행 단위 페이지 분할 허용 (한 페이지 못 들어가면 다음 페이지로 자연스럽게) */
 .photo-row{
@@ -825,6 +854,77 @@ function renderPage4(){
 // ════════════════════════════════════════════════════════════════
 // Page 5: 4. 사고사항 (사고개요 + 현장사진 표 1행=1구분, 가로 2칸)
 // ════════════════════════════════════════════════════════════════
+// v6.2.201: 사진 구성 개편 — 본문엔 단계별 대표(최대 2장)+캡션, 나머지·도면은 별첨으로
+function splitStagePhotos(list){
+  const arr = (list || []).filter(p => p && p.url);
+  const nonDraw = arr.filter(p => !p.drawing);
+  let reps = nonDraw.filter(p => p.rep).slice(0, 2);
+  if (reps.length === 0) reps = nonDraw.slice(0, 2);   // 대표 미지정 시 앞 2장 폴백
+  const repSet = new Set(reps);
+  return {
+    reps,
+    rest: nonDraw.filter(p => !repSet.has(p)),
+    drawings: arr.filter(p => p.drawing),
+  };
+}
+let _PH = null;      // 단계별 분리 결과 캐시
+let _APX = [];       // 별첨 [{title, html}]
+function computePhotoLayout(){
+  const a = D.accident || {};
+  const ph = a.photos || { before:[], during:[], after:[] };
+  _PH = {
+    before: splitStagePhotos(ph.before),
+    during: splitStagePhotos(ph.during),
+    after:  splitStagePhotos(ph.after),
+  };
+  _APX = [];
+  const stages = [['before','수리 전','전'],['during','수리 중','중'],['after','수리 후','후']];
+  // 별첨: 사진 대지 (대표 제외 나머지 — 있을 때만)
+  const restTotal = stages.reduce((n,[k]) => n + _PH[k].rest.length, 0);
+  if (restTotal > 0) {
+    const blocks = stages.map(([k, label, pfx]) => {
+      const st = _PH[k];
+      if (!st.rest.length) return '';
+      const items = st.rest.map((p, i) => `
+        <div class="apx-item">
+          <div class="apx-ph"><span class="ph-no">${pfx} ${circled(st.reps.length + i + 1)}</span><img src="${escapeHtml(p.url||'')}" alt=""/></div>
+          <div class="apx-cap">${escapeHtml(p.caption || '')}</div>
+        </div>`).join('');
+      return `<div class="apx-sub">${label} (${st.rest.length}매)</div><div class="apx-grid">${items}</div>`;
+    }).join('');
+    _APX.push({
+      title: `현장 사진 대지 (전체 ${stages.reduce((n,[k]) => n + _PH[k].reps.length + _PH[k].rest.length, 0)}매 중 ${restTotal}매)`,
+      short: '현장 사진 대지',
+      html: blocks,
+    });
+  }
+  // 별첨: 참고 도면 (있을 때만)
+  const drawings = stages.flatMap(([k]) => _PH[k].drawings);
+  if (drawings.length > 0) {
+    const items = drawings.map(p => `
+      <div class="apx-item tall">
+        <div class="apx-ph"><img src="${escapeHtml(p.url||'')}" alt=""/></div>
+        <div class="apx-cap">${escapeHtml(p.caption || '')}</div>
+      </div>`).join('');
+    _APX.push({
+      title: `참고 도면 (${drawings.length}매)`,
+      short: '참고 도면',
+      html: `<div class="apx-grid two">${items}</div>`,
+    });
+  }
+}
+function circled(n){
+  const c = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮'];
+  return c[n-1] || `(${n})`;
+}
+function renderAppendixPages(){
+  return _APX.map((ap, i) => `
+<section class="page" data-page="apx${i+1}">
+  <h2 class="sec-title">별첨 ${i+1}. ${escapeHtml(ap.title)}</h2>
+  ${ap.html}
+</section>`).join('');
+}
+
 function renderPhotoRow(label, photos){
   const p = photos || [];
   if (p.length === 0) {
@@ -843,11 +943,13 @@ function renderPhotoRow(label, photos){
   // v6.2.197: rowspan 제거 + 매 행에 단계 라벨.
   //   rowspan이 페이지 분할을 막아 앞 페이지가 비고 다음 장에 몰리던 문제 해결.
   //   각 행이 독립적으로 페이지 경계를 넘으며 자연스럽게 채워짐. 라벨은 매 행 표시(A-1).
+  const pfx = label.startsWith('수리전') ? '전' : label.startsWith('수리중') ? '중' : '후';
+  const slot = (item, num) => item
+    ? `<div class="photo-slot"><span class="ph-no">${pfx} ${circled(num)}</span><img src="${escapeHtml(item.url||'')}" alt=""/>${item.caption ? `<div class="ph-cap">${escapeHtml(item.caption)}</div>` : ''}</div>`
+    : `<div class="photo-slot"></div>`;   /* 홀수 빈 칸도 액자 배경 유지 */
   const rows = [];
   for (let i = 0; i < p.length; i += 2) {
-    const a = p[i] ? `<div class="photo-slot"><img src="${escapeHtml(p[i].url||'')}" alt=""/></div>` : `<div class="photo-slot"></div>`;
-    const b = p[i+1] ? `<div class="photo-slot"><img src="${escapeHtml(p[i+1].url||'')}" alt=""/></div>` : `<div class="photo-slot"></div>`;
-    rows.push({ a, b });
+    rows.push({ a: slot(p[i], i+1), b: slot(p[i+1], i+2) });
   }
   const totalRows = rows.length;
   return rows.map((r, idx) => `
@@ -892,9 +994,9 @@ function renderPage5(){
         <td class="lbl">사고경위</td>
         <td class="val" colspan="2">${nl2br(a.desc)}</td>
       </tr>
-      ${renderPhotoRow('수리전', a.photos.before)}
-      ${renderPhotoRow('수리중', a.photos.during)}
-      ${renderPhotoRow('수리후', a.photos.after)}
+      ${renderPhotoRow('수리전', _PH.before.reps)}
+      ${renderPhotoRow('수리중', _PH.during.reps)}
+      ${renderPhotoRow('수리후', _PH.after.reps)}
     </tbody>
   </table>
 </section>`;
@@ -985,6 +1087,8 @@ function renderPage6(){
 function renderPage7(){
   // 7번 첨부자료는 항상 7행 보장 (부족하면 빈칸)
   const fixedRows = [...D.attachments];
+  // v6.2.201: 별첨(사진대지·도면)이 생성되면 첨부목록에 자동 반영
+  _APX.forEach((ap, i) => fixedRows.push(`별첨 ${i+1}. ${ap.short}`));
   while (fixedRows.length < 7) fixedRows.push('..');
   const attachRows = fixedRows.slice(0, 20).map((a, i) => `
     <tr>
@@ -1057,9 +1161,11 @@ function renderPage7(){
 // 렌더 + postMessage 데이터 주입
 // ════════════════════════════════════════════════════════════════
 function renderAll(){
+  computePhotoLayout();   /* v6.2.201: 대표/별첨/도면 분리 선계산 */
   document.getElementById('reportRoot').innerHTML =
     renderPage1() + renderPage2() + renderPage3() + renderPage4()
-    + renderPage5() + renderPage6() + renderPage7();
+    + renderPage5() + renderPage6() + renderPage7()
+    + renderAppendixPages();
 
   // v6.1.4: 모든 본문 셀을 contenteditable로 만들어 수기 수정 가능
   applyEditableCells();
