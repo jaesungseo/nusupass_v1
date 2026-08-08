@@ -4382,6 +4382,20 @@ function renderCaseListMock(){
 // ══════════════════════════════════════════════════════════
 // 관리자: 접수 상세 & 배정
 // ══════════════════════════════════════════════════════════
+// v6.5.8: 상세에서 필요 업종 추가/제외 (랜딩 UNSURE 건 → 상담 후 확정)
+async function toggleCaseNeeds(purpose, on){
+  if(!selectedCaseId) return;
+  const col = purpose === 'detection' ? 'needs_detection' : 'needs_interior';
+  try {
+    const { error } = await sb.from('intake_cases').update({ [col]: on }).eq('id', selectedCaseId);
+    if (error) throw error;
+    toast(`${PURPOSE_LABELS[purpose]} ${on ? '추가' : '제외'}됨`, 's');
+    await openCaseDetail(selectedCaseId);
+    if (typeof loadCaseList === 'function') loadCaseList();
+  } catch(e){ toast('변경 실패: ' + (e.message || e), 'e'); }
+}
+window.toggleCaseNeeds = toggleCaseNeeds;
+
 async function openCaseDetail(caseId){
   selectedCaseId = caseId;
   document.getElementById('caseDetailBody').innerHTML='<div class="loading"><span class="spinner"></span> 로딩 중…</div>';
@@ -4491,9 +4505,12 @@ async function openCaseDetail(caseId){
 // purpose별 섹션 렌더링 (탐지 또는 인테리어)
 function renderPurposeSection(purpose, needs, active, history){
   if(!needs){
+    // v6.5.8: 랜딩 접수(필요 업종 미정) 대응 — 상담 후 상세에서 업종을 켤 수 있어야 위임 가능
     return `
-      <div style="margin-top:16px;padding:12px;background:var(--bg);border-radius:8px;border:1px dashed var(--line)">
-        <div style="font-size:12px;color:var(--muted)">${PURPOSE_LABELS[purpose]} — 이 접수건에는 불필요 (needs=false)</div>
+      <div style="margin-top:16px;padding:12px;background:var(--bg);border-radius:8px;border:1px dashed var(--line);display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <div style="font-size:12px;color:var(--muted)">${PURPOSE_LABELS[purpose]} — 필요 시 추가하세요</div>
+        <button class="btn btn-ghost btn-sm" style="border-color:var(--blue);color:var(--blue)"
+          onclick="toggleCaseNeeds('${purpose}', true)">➕ ${PURPOSE_LABELS[purpose]} 추가</button>
       </div>
     `;
   }
